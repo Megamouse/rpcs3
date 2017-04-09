@@ -347,6 +347,9 @@
     <ClCompile Include="Emu\Cell\Modules\cellFontFT.cpp">
       <Filter>Emu\Cell\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\Cell\Modules\cell_FreeType2.cpp">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Emu\Cell\Modules\cellFs.cpp">
       <Filter>Emu\Cell\Modules</Filter>
     </ClCompile>
@@ -1348,6 +1351,9 @@
     <ClInclude Include="Emu\Cell\Modules\cellSearch.h">
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
+    <ClInclude Include="Emu\Cell\Modules\cellSpudll.h">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellSpurs.h">
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
@@ -1362,6 +1368,9 @@
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellSync2.h">
       <Filter>Emu\Cell\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\Modules\cellSysconf.h">
+        <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellSysutil.h">
       <Filter>Emu\Cell\Modules</Filter>
@@ -1379,6 +1388,9 @@
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellVideoOut.h">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\Modules\cellVideoUpload.h">
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellVpost.h">
