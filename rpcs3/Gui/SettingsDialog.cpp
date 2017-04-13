@@ -266,8 +266,14 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 	wxStaticBoxSizer* s_round_core_lle = new wxStaticBoxSizer(wxVERTICAL, p_core, "Load libraries");
 	chbox_list_core_lle = new wxCheckListBox(p_core, wxID_ANY, wxDefaultPosition, wxDefaultSize, {}, wxLB_EXTENDED);
 	chbox_list_core_lle->Bind(wxEVT_CHECKLISTBOX, &SettingsDialog::OnModuleListItemToggled, this);
-	wxTextCtrl* s_module_search_box = new wxTextCtrl(p_core, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, {});
+	s_module_search_box = new wxTextCtrl(p_core, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, {});
 	s_module_search_box->Bind(wxEVT_TEXT, &SettingsDialog::OnSearchBoxTextChanged, this);
+	rbut_all_core_lle = new wxRadioButton(p_core, wxID_ANY, wxT("Select &All"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+	rbut_none_core_lle = new wxRadioButton(p_core, wxID_ANY, wxT("Select &None"));
+	rbut_all_core_lle->SetValue(false);
+	rbut_all_core_lle->Bind(wxEVT_COMMAND_RADIOBUTTON_SELECTED, &SettingsDialog::OnModuleListAllToggled, this);
+	rbut_none_core_lle->Bind(wxEVT_COMMAND_RADIOBUTTON_SELECTED, &SettingsDialog::OnModuleListNoneToggled, this);
+	wxBoxSizer* radio_sizer = new wxBoxSizer(wxHORIZONTAL);
 
 	// Graphics
 	wxStaticBoxSizer* s_round_gs_render = new wxStaticBoxSizer(wxVERTICAL, p_graphics, "Render");
@@ -310,8 +316,6 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 	wxComboBox* cbox_sys_lang = new wxComboBox(p_system, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0, NULL, wxCB_READONLY);
 
 	wxCheckBox* chbox_core_hook_stfunc = new wxCheckBox(p_core, wxID_ANY, "Hook static functions");
-	wxCheckBox* chbox_core_load_liblv2 = new wxCheckBox(p_core, wxID_ANY, "Load liblv2.sprx only");
-	wxCheckBox* chbox_core_load_libreq = new wxCheckBox(p_core, wxID_ANY, "Load required libraries");
 	wxCheckBox* chbox_vfs_enable_host_root = new wxCheckBox(p_system, wxID_ANY, "Enable /host_root/");
 	wxCheckBox* chbox_gs_log_prog = new wxCheckBox(p_graphics, wxID_ANY, "Log Shader Programs");
 	wxCheckBox* chbox_gs_dump_depth = new wxCheckBox(p_graphics, wxID_ANY, "Write Depth Buffer");
@@ -382,9 +386,16 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 	pads.emplace_back(std::make_unique<radiobox_pad>(std::move(spu_decoder_modes), rbox_spu_decoder));
 	rbox_spu_decoder->Enable(3, false); // TODO
 
+	radiobox_pad_helper lib_loader_modes({ "Core", "Lib Loader" });
+	rbox_lib_loader = new wxRadioBox(p_core, wxID_ANY, "Lib Loader", wxDefaultPosition, wxSize(-1, -1), lib_loader_modes, 1);
+	pads.emplace_back(std::make_unique<radiobox_pad>(std::move(lib_loader_modes), rbox_lib_loader));
+	rbox_lib_loader->Bind(wxEVT_COMMAND_RADIOBOX_SELECTED, &SettingsDialog::OnLibLoaderModeToggled, this);
+	if(rbox_lib_loader->GetSelection() != 0)
+	{
+		EnableModuleList(false);
+	}
+
 	pads.emplace_back(std::make_unique<checkbox_pad>(cfg_location{ "Core", "Hook static functions" }, chbox_core_hook_stfunc));
-	pads.emplace_back(std::make_unique<checkbox_pad>(cfg_location{ "Core", "Load liblv2.sprx only" }, chbox_core_load_liblv2));
-	pads.emplace_back(std::make_unique<checkbox_pad>(cfg_location{ "Core", "Load required libraries" }, chbox_core_load_libreq));
 	pads.emplace_back(std::make_unique<checkbox_pad>(cfg_location{ "VFS", "Enable /host_root/" }, chbox_vfs_enable_host_root));
 
 	pads.emplace_back(std::make_unique<combobox_pad>(cfg_location{ "Video", "Renderer" }, cbox_gs_render));
@@ -448,6 +459,9 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 	// Core
 	s_round_core_lle->Add(chbox_list_core_lle, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_round_core_lle->Add(s_module_search_box, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_round_core_lle->Add(radio_sizer, wxSizerFlags().Border(wxALL, 5).Expand());
+	radio_sizer->Add(rbut_all_core_lle, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+	radio_sizer->Add(rbut_none_core_lle, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
 	// Rendering
 	s_round_gs_render->Add(cbox_gs_render, wxSizerFlags().Border(wxALL, 5).Expand());
@@ -474,9 +488,8 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 	// Core
 	s_subpanel_core1->Add(rbox_ppu_decoder, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_subpanel_core1->Add(rbox_spu_decoder, wxSizerFlags().Border(wxALL, 5).Expand());
+	s_subpanel_core1->Add(rbox_lib_loader, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_subpanel_core1->Add(chbox_core_hook_stfunc, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel_core1->Add(chbox_core_load_liblv2, wxSizerFlags().Border(wxALL, 5).Expand());
-	s_subpanel_core1->Add(chbox_core_load_libreq, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_subpanel_core2->Add(s_round_core_lle, wxSizerFlags().Border(wxALL, 5).Expand());
 	s_subpanel_core->Add(s_subpanel_core1);
 	s_subpanel_core->Add(s_subpanel_core2);
@@ -580,13 +593,18 @@ SettingsDialog::SettingsDialog(wxWindow* parent, const std::string& path)
 
 void SettingsDialog::OnModuleListItemToggled(wxCommandEvent &event)
 {
-	lle_module_list[fmt::ToUTF8(event.GetString())] = chbox_list_core_lle->IsChecked(event.GetSelection());
+	bool isChecked = chbox_list_core_lle->IsChecked(event.GetSelection());
+	lle_module_list[fmt::ToUTF8(event.GetString())] = isChecked;
+	ToggleRadioButton(rbut_all_core_lle, isChecked, true);
+	ToggleRadioButton(rbut_none_core_lle, !isChecked, true);
 }
 
 void SettingsDialog::OnSearchBoxTextChanged(wxCommandEvent &event)
 {
 	// helper to preserve alphabetically order while inserting items
-	int item_index = 0;
+	unsigned int item_index = 0;
+	bool b_all_checked = true;
+	bool b_none_checked = true;
 
 	if (event.GetString().IsEmpty())
 	{
@@ -596,11 +614,13 @@ void SettingsDialog::OnSearchBoxTextChanged(wxCommandEvent &event)
 			{
 				chbox_list_core_lle->Check(chbox_list_core_lle->Insert(i.first, item_index));
 				item_index++;
+				if (b_none_checked) b_none_checked = false;
 			}
 
 			else
 			{
 				chbox_list_core_lle->Check(chbox_list_core_lle->Insert(i.first, chbox_list_core_lle->GetCount()), false);
+				if(b_all_checked) b_all_checked = false;
 			}
 		}
 	}
@@ -618,12 +638,112 @@ void SettingsDialog::OnSearchBoxTextChanged(wxCommandEvent &event)
 			{
 				chbox_list_core_lle->Check(chbox_list_core_lle->Insert(i.first, item_index));
 				item_index++;
+				if (b_none_checked) b_none_checked = false;
 			}
 
 			else
 			{
 				chbox_list_core_lle->Check(chbox_list_core_lle->Insert(i.first, chbox_list_core_lle->GetCount()), false);
+				if (b_all_checked) b_all_checked = false;
 			}
+		}
+	}
+	if (chbox_list_core_lle->GetCount() < 1)
+	{
+		b_all_checked = false;
+		b_none_checked = false;
+	}
+	ToggleRadioButton(rbut_all_core_lle, b_all_checked, false);
+	ToggleRadioButton(rbut_none_core_lle, b_none_checked, false);
+}
+
+void SettingsDialog::OnModuleListAllToggled(wxCommandEvent &event)
+{
+	for (unsigned int i = 0; i < chbox_list_core_lle->GetCount(); ++i)
+	{
+		chbox_list_core_lle->Check(i, true);
+		lle_module_list[fmt::ToUTF8(chbox_list_core_lle->GetString(i))] = chbox_list_core_lle->IsChecked(i);
+	}
+}
+
+void SettingsDialog::OnModuleListNoneToggled(wxCommandEvent &event)
+{
+	for (unsigned int i = 0; i < chbox_list_core_lle->GetCount(); ++i)
+	{
+		chbox_list_core_lle->Check(i, false);
+		lle_module_list[fmt::ToUTF8(chbox_list_core_lle->GetString(i))] = chbox_list_core_lle->IsChecked(i);
+	}
+}
+
+void SettingsDialog::OnLibLoaderModeToggled(wxCommandEvent& event)
+{
+	if (event.GetSelection() == 0)
+	{
+		EnableModuleList(true);
+	}
+	else
+	{
+		EnableModuleList(false);
+	}
+}
+
+// Enables or disables the modul list interaction
+void SettingsDialog::EnableModuleList(bool enabled)
+{
+	if (enabled)
+	{
+		chbox_list_core_lle->Enable();
+		s_module_search_box->Enable();
+		rbut_all_core_lle->Enable();
+		rbut_none_core_lle->Enable();
+	}
+	else
+	{
+		chbox_list_core_lle->Disable();
+		s_module_search_box->Disable();
+		rbut_all_core_lle->Disable();
+		rbut_none_core_lle->Disable();
+	}
+}
+
+// This toggles the radiobutton if its state doesn't fit the state of the shown list
+void SettingsDialog::ToggleRadioButton(wxRadioButton* button, bool conform, bool needs_check)
+{
+	// if button is active but list is not conform -> deactivate button
+	if (button->GetValue() && !conform)
+	{
+		button->SetValue(false);
+	}
+	// if button is not active but list is conform -> activate button  
+	// (e.g. when list gets full -> rbut_all_core_lle = active)
+	else if (!button->GetValue() && conform)
+	{
+		// check for list conformity. you don't need to care about all or none, because of logic of conform parameter
+		bool list_is_conform = true;
+		if (needs_check)
+		{
+			bool all_checked = true;
+			bool none_checked = true;
+			for (unsigned int i = 0; i < chbox_list_core_lle->GetCount(); ++i)
+			{
+				if (chbox_list_core_lle->IsChecked(i) && none_checked)
+				{
+					none_checked = false;
+				}
+				if (!chbox_list_core_lle->IsChecked(i) && all_checked)
+				{
+					all_checked = false;
+				}
+				if (!all_checked && !none_checked)
+				{
+					list_is_conform = false;
+					break;
+				}
+			}
+		}
+		if (list_is_conform)
+		{
+			button->SetValue(true);
 		}
 	}
 }
