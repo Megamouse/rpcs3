@@ -1048,6 +1048,19 @@ bool game_list_frame::IsValidFile(const QMimeData& md, bool savePaths)
 
 	for (int i = 0; i < list.count(); i++)
 	{
+		const QString path = list[i].toLocalFile();
+
+		if (QFileInfo(path).isDir() && (i == 0 || m_dropType == DROP_DIR))
+		{
+			m_dropType = DROP_DIR;
+
+			if (savePaths)
+			{
+				m_dropPaths.append(path);
+			}
+			continue;
+		}
+
 		QString suffix = QFileInfo(list[i].fileName()).suffix().toLower();
 
 		if (last_suffix.isEmpty())
@@ -1076,6 +1089,10 @@ bool game_list_frame::IsValidFile(const QMimeData& md, bool savePaths)
 		{
 			m_dropType = DROP_RAP;
 		}
+		else if (suffix == "bin")
+		{
+			m_dropType = DROP_GAME;
+		}
 		else
 		{
 			m_dropType = DROP_ERROR;
@@ -1084,7 +1101,7 @@ bool game_list_frame::IsValidFile(const QMimeData& md, bool savePaths)
 
 		if (savePaths)
 		{
-			m_dropPaths.append(list[i].toLocalFile());
+			m_dropPaths.append(path);
 		}
 	}
 	return true;
@@ -1118,6 +1135,20 @@ void game_list_frame::dropEvent(QDropEvent* event)
 				}
 			}
 			break;
+		case DROP_DIR:
+			for (const auto& path : m_dropPaths)
+			{
+				AddGamesFromPath(path);
+			}
+			Refresh(true);
+			break;
+		case DROP_GAME:
+			for (const auto& path : m_dropPaths)
+			{
+				AddGamesFromPath(path);
+			}
+			Refresh(true);
+			break;
 		default:
 			LOG_WARNING(GENERAL, "Invalid dropType in gamelist dropEvent");
 			break;
@@ -1125,6 +1156,7 @@ void game_list_frame::dropEvent(QDropEvent* event)
 	}
 
 	m_dropPaths.clear();
+	m_dropType = DROP_ERROR;
 }
 
 void game_list_frame::dragEnterEvent(QDragEnterEvent* event)
@@ -1146,4 +1178,64 @@ void game_list_frame::dragMoveEvent(QDragMoveEvent* event)
 void game_list_frame::dragLeaveEvent(QDragLeaveEvent* event)
 {
 	event->accept();
+}
+
+void game_list_frame::AddGamesFromPath(const QString& path)
+{
+	QStringList elf_list;
+	QStringList path_list;
+
+	if (QFileInfo(path).isDir())
+	{
+		elf_list << "/EBOOT.BIN" << "/USRDIR/EBOOT.BIN" << "/PS3_GAME/USRDIR/EBOOT.BIN";
+
+		for (const auto& entry : fs::dir(sstr(path)))
+		{
+			if (entry.is_directory && entry.name != "." && entry.name != "..")
+			{
+				path_list << path + "/" + qstr(entry.name);
+			}
+		}
+	}
+	else
+	{
+		elf_list << "";
+		path_list << path;
+	}
+
+	if (path_list.isEmpty()) return;
+
+	for (const auto& pth : path_list)
+	{
+		for (auto elf : elf_list)
+		{
+			elf = pth + elf;
+
+			if (!QFileInfo(elf).isFile()) continue;
+
+			const std::string dir = sstr(elf.section("/", 0, -4));
+
+			if (!fs::is_file(dir + "/PS3_DISC.SFB")) continue;
+
+			const fs::file sfo_file(dir + "/PS3_GAME/PARAM.SFO");
+
+			if (!sfo_file) continue;
+
+			const auto& psf = psf::load_object(sfo_file);
+
+			if (psf::get_string(psf, "CATEGORY") != "DG") continue;
+
+			YAML::Node games = YAML::Load(fs::file{ fs::get_config_dir() + "/games.yml", fs::read + fs::create }.to_string());
+
+			if (!games.IsMap()) games.reset();
+
+			games[psf::get_string(psf, "TITLE_ID")] = dir;
+
+			YAML::Emitter out;
+			out << games;
+			fs::file(fs::get_config_dir() + "/games.yml", fs::rewrite).write(out.c_str(), out.size());
+
+			LOG_SUCCESS(GENERAL, "Game addition to list by drop: %s", sstr(elf));
+		}
+	}
 }
