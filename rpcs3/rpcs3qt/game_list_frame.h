@@ -13,6 +13,7 @@
 #include <QToolBar>
 #include <QLineEdit>
 #include <QStackedWidget>
+#include <QDropEvent>
 
 #include <memory>
 
@@ -165,6 +166,15 @@ typedef struct Tool_Bar_Button
 	bool isActive;
 };
 
+enum {
+	DROP_ERROR,
+	DROP_PKG,
+	DROP_PUP,
+	DROP_RAP,
+	DROP_DIR,
+	DROP_GAME
+};
+
 class game_list_frame : public QDockWidget {
 	Q_OBJECT
 
@@ -198,7 +208,6 @@ public Q_SLOTS:
 	void RepaintToolBarIcons();
 
 private Q_SLOTS:
-	void Boot(int row);
 	void RemoveCustomConfiguration(int row);
 	void OnColClicked(int col);
 
@@ -207,21 +216,30 @@ private Q_SLOTS:
 	void doubleClickedSlot(const QModelIndex& index);
 Q_SIGNALS:
 	void game_list_frameClosed();
-	void RequestIconPathSet(const std::string path);
+	void RequestIconPathSet(const std::string& path);
 	void RequestAddRecentGame(const q_string_pair& entry);
 	void RequestIconSizeActSet(const int& idx);
 	void RequestListModeActSet(const bool& isList);
 	void RequestCategoryActSet(const int& id);
+	void RequestPackageInstall(const QStringList& paths);
+	void RequestFirmwareInstall(const QString& path);
 protected:
 	/** Override inherited method from Qt to allow signalling when close happened.*/
 	void closeEvent(QCloseEvent* event);
 	void resizeEvent(QResizeEvent *event);
+	void dropEvent(QDropEvent* event);
+	void dragEnterEvent(QDragEnterEvent* event);
+	void dragMoveEvent(QDragMoveEvent* event);
+	void dragLeaveEvent(QDragLeaveEvent* event);
 private:
+	bool Boot(const GameInfo& info);
 	void PopulateGameGrid(uint maxCols, const QSize& image_size, const QColor& image_color);
 	void FilterData();
 
 	int PopulateGameList();
 	bool SearchMatchesApp(const std::string& name, const std::string& serial);
+	bool IsValidFile(const QMimeData& md, bool savePaths = false);
+	void AddGamesFromPath(const QString& path);
 
 	std::string CurrentSelectionIconPath();
 	std::string GetStringFromU32(const u32& key, const std::map<u32, QString>& map, bool combined = false);
@@ -284,6 +302,8 @@ private:
 	qreal m_Text_Factor;
 	QStringList m_categoryFilters;
 	QString m_searchText;
+	QStringList m_dropPaths;
+	int m_dropType;
 	Render_Creator m_Render_Creator;
 
 	uint m_games_per_row = 0;

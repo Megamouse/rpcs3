@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QLabel>
+#include <QMimeData>
 
 static const std::string m_class_name = "GameViewer";
 inline std::string sstr(const QString& _in) { return _in.toUtf8().toStdString(); }
@@ -30,6 +31,8 @@ inline std::string sstr(const QString& _in) { return _in.toUtf8().toStdString();
 game_list_frame::game_list_frame(std::shared_ptr<gui_settings> settings, const Render_Creator& r_Creator, QWidget *parent)
 	: QDockWidget(tr("Game List"), parent), xgui_settings(settings), m_Render_Creator(r_Creator)
 {
+	setAcceptDrops(true);
+
 	m_isListLayout = xgui_settings->GetValue(GUI::gl_listMode).toBool();
 	m_Icon_Size_Str = xgui_settings->GetValue(GUI::gl_iconSize).toString();
 	m_Margin_Factor = xgui_settings->GetValue(GUI::gl_marginFactor).toReal();
@@ -549,19 +552,9 @@ void game_list_frame::doubleClickedSlot(const QModelIndex& index)
 	
 	if (1)
 	{
-		RequestIconPathSet(m_game_data[i].info.path);
-	
-		Emu.Stop();
-	
-		if (!Emu.BootGame(m_game_data[i].info.path))
-		{
-			LOG_ERROR(LOADER, "Failed to boot %s", m_game_data[i].info.path);
-		}
-		else
+		if (Boot(m_game_data[i].info))
 		{
 			LOG_SUCCESS(LOADER, "Boot from gamelist per doubleclick: done");
-			RequestAddRecentGame(q_string_pair(qstr(Emu.GetBoot()), qstr("[" + m_game_data[i].info.serial + "] " + m_game_data[i].info.name)));
-			Refresh(true);
 		}
 	}
 	else
@@ -630,7 +623,12 @@ void game_list_frame::ShowSpecifiedContextMenu(const QPoint &pos, int row)
 	myMenu.addSeparator();
 	QAction* checkCompat = myMenu.addAction(tr("&Check Game Compatibility"));
 
-	connect(boot, &QAction::triggered, [=]() {Boot(row); });
+	connect(boot, &QAction::triggered, [=]() {
+		if (Boot(m_game_data[row].info))
+		{
+			LOG_SUCCESS(LOADER, "Boot from gamelist per Boot: done");
+		}
+	});
 	connect(configure, &QAction::triggered, [=]() {
 		settings_dialog (xgui_settings, m_Render_Creator, 0, this, &currGame).exec();
 	});
@@ -680,22 +678,23 @@ void game_list_frame::ShowSpecifiedContextMenu(const QPoint &pos, int row)
 	myMenu.exec(globalPos);
 }
 
-void game_list_frame::Boot(int row)
+bool game_list_frame::Boot(const GameInfo& game)
 {
-	RequestIconPathSet(m_game_data[row].info.path);
+	RequestIconPathSet(game.path);
 
 	Emu.Stop();
 
-	if (!Emu.BootGame(m_game_data[row].info.path))
+	if (!Emu.BootGame(game.path))
 	{
-		QMessageBox::warning(this, tr("Warning!"), tr("Failed to boot ") + qstr(m_game_data[row].info.path));
-		LOG_ERROR(LOADER, "Failed to boot %s", m_game_data[row].info.path);
+		QMessageBox::warning(this, tr("Warning!"), tr("Failed to boot ") + qstr(game.path));
+		LOG_ERROR(LOADER, "Failed to boot %s", game.path);
+		return false;
 	}
 	else
 	{
-		LOG_SUCCESS(LOADER, "Boot from gamelist per Boot: done");
-		RequestAddRecentGame(q_string_pair(qstr(Emu.GetBoot()), qstr("[" + m_game_data[row].info.serial + "] " + m_game_data[row].info.name)));
+		RequestAddRecentGame(q_string_pair(qstr(Emu.GetBoot()), qstr("[" + game.serial + "] " + game.name)));
 		Refresh(true);
+		return true;
 	}
 }
 
@@ -1036,4 +1035,203 @@ std::string game_list_frame::GetStringFromU32(const u32& key, const std::map<u32
 	}
 
 	return sstr(string.join(", "));
+}
+
+bool game_list_frame::IsValidFile(const QMimeData& md, bool savePaths)
+{
+	const QList<QUrl> list = md.urls();
+	QString last_suffix;
+
+	for (int i = 0; i < list.count(); i++)
+	{
+		const QString path = list[i].toLocalFile();
+
+		if (QFileInfo(path).isDir() && (i == 0 || m_dropType == DROP_DIR))
+		{
+			m_dropType = DROP_DIR;
+
+			if (savePaths)
+			{
+				m_dropPaths.append(path);
+			}
+			continue;
+		}
+
+		QString suffix = QFileInfo(list[i].fileName()).suffix().toLower();
+
+		if (last_suffix.isEmpty())
+		{
+			last_suffix = suffix;
+		}
+		else if (last_suffix == "pup")
+		{
+			return list.count() == 1;
+		}
+		else if (last_suffix != suffix)
+		{
+			m_dropType = DROP_ERROR;
+			return false;
+		}
+
+		if (suffix == "pkg")
+		{
+			m_dropType = DROP_PKG;
+		}
+		else if (suffix == "pup")
+		{
+			m_dropType = DROP_PUP;
+		}
+		else if (suffix == "rap")
+		{
+			m_dropType = DROP_RAP;
+		}
+		else if (suffix == "bin")
+		{
+			m_dropType = DROP_GAME;
+		}
+		else
+		{
+			m_dropType = DROP_ERROR;
+			return false;
+		}
+
+		if (savePaths)
+		{
+			m_dropPaths.append(path);
+		}
+	}
+	return true;
+}
+
+void game_list_frame::dropEvent(QDropEvent* event)
+{
+	if (IsValidFile(*event->mimeData(), true))
+	{
+		switch (m_dropType)
+		{
+		case DROP_PKG:
+			RequestPackageInstall(m_dropPaths);
+			break;
+		case DROP_PUP:
+			RequestFirmwareInstall(m_dropPaths.first());
+			break;
+		case DROP_RAP:
+			for (const auto& rap : m_dropPaths)
+			{
+				const std::string rapname = sstr(QFileInfo(rap).fileName());
+
+				// TODO: use correct user ID once User Manager is implemented
+				if (!fs::copy_file(sstr(rap), fmt::format("%s/home/%s/exdata/%s", Emu.GetHddDir(), "00000001", rapname), false))
+				{
+					LOG_WARNING(GENERAL, "Could not copy rap file by drop: %s", rapname);
+				}
+				else
+				{
+					LOG_SUCCESS(GENERAL, "Successfully copied rap file by drop: %s", rapname);
+				}
+			}
+			break;
+		case DROP_DIR:
+			for (const auto& path : m_dropPaths)
+			{
+				AddGamesFromPath(path);
+			}
+			Refresh(true);
+			break;
+		case DROP_GAME:
+			for (const auto& path : m_dropPaths)
+			{
+				AddGamesFromPath(path);
+			}
+			Refresh(true);
+			break;
+		default:
+			LOG_WARNING(GENERAL, "Invalid dropType in gamelist dropEvent");
+			break;
+		}
+	}
+
+	m_dropPaths.clear();
+	m_dropType = DROP_ERROR;
+}
+
+void game_list_frame::dragEnterEvent(QDragEnterEvent* event)
+{
+	if (IsValidFile(*event->mimeData()))
+	{
+		event->accept();
+	}
+}
+
+void game_list_frame::dragMoveEvent(QDragMoveEvent* event)
+{
+	if (IsValidFile(*event->mimeData()))
+	{
+		event->accept();
+	}
+}
+
+void game_list_frame::dragLeaveEvent(QDragLeaveEvent* event)
+{
+	event->accept();
+}
+
+void game_list_frame::AddGamesFromPath(const QString& path)
+{
+	QStringList elf_list;
+	QStringList path_list;
+
+	if (QFileInfo(path).isDir())
+	{
+		elf_list << "/EBOOT.BIN" << "/USRDIR/EBOOT.BIN" << "/PS3_GAME/USRDIR/EBOOT.BIN";
+
+		for (const auto& entry : fs::dir(sstr(path)))
+		{
+			if (entry.is_directory && entry.name != "." && entry.name != "..")
+			{
+				path_list << path + "/" + qstr(entry.name);
+			}
+		}
+	}
+	else
+	{
+		elf_list << "";
+		path_list << path;
+	}
+
+	if (path_list.isEmpty()) return;
+
+	for (const auto& pth : path_list)
+	{
+		for (auto elf : elf_list)
+		{
+			elf = pth + elf;
+
+			if (!QFileInfo(elf).isFile()) continue;
+
+			const std::string dir = sstr(elf.section("/", 0, -4));
+
+			if (!fs::is_file(dir + "/PS3_DISC.SFB")) continue;
+
+			const fs::file sfo_file(dir + "/PS3_GAME/PARAM.SFO");
+
+			if (!sfo_file) continue;
+
+			const auto& psf = psf::load_object(sfo_file);
+
+			if (psf::get_string(psf, "CATEGORY") != "DG") continue;
+
+			YAML::Node games = YAML::Load(fs::file{ fs::get_config_dir() + "/games.yml", fs::read + fs::create }.to_string());
+
+			if (!games.IsMap()) games.reset();
+
+			games[psf::get_string(psf, "TITLE_ID")] = dir;
+
+			YAML::Emitter out;
+			out << games;
+			fs::file(fs::get_config_dir() + "/games.yml", fs::rewrite).write(out.c_str(), out.size());
+
+			LOG_SUCCESS(GENERAL, "Game addition to list by drop: %s", sstr(elf));
+		}
+	}
 }
