@@ -3,7 +3,7 @@
 
 namespace vm { using namespace ps3; }
 
-logs::channel sys_memory("sys_memory", logs::level::notice);
+logs::channel sys_memory("sys_memory");
 
 error_code sys_memory_allocate(u32 size, u64 flags, vm::ptr<u32> alloc_addr)
 {
@@ -12,6 +12,7 @@ error_code sys_memory_allocate(u32 size, u64 flags, vm::ptr<u32> alloc_addr)
 	// Check allocation size
 	switch (flags)
 	{
+	case 0:		//handle "default" value, issue 2510
 	case SYS_MEMORY_PAGE_SIZE_1M:
 	{
 		if (size % 0x100000)
@@ -86,28 +87,25 @@ error_code sys_memory_allocate_from_container(u32 size, u32 cid, u64 flags, vm::
 	}
 	}
 
-	error_code result{};
-
-	const auto ct = idm::get<lv2_memory_container>(cid, [&](u32, lv2_memory_container& ct)
+	const auto ct = idm::get<lv2_memory_container>(cid, [&](lv2_memory_container& ct) -> CellError
 	{
 		// Try to get "physical memory"
 		if (!ct.take(size))
 		{
-			result = CELL_ENOMEM;
-			return false;
+			return CELL_ENOMEM;
 		}
 
-		return true;
+		return {};
 	});
 
-	if (!ct && !result)
+	if (!ct)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (!ct)
+	if (ct.ret)
 	{
-		return result;
+		return ct.ret;
 	}
 
 	// Allocate memory, write back the start address of the allocated area, use cid as the supplementary info
@@ -125,7 +123,7 @@ error_code sys_memory_free(u32 addr)
 	verify(HERE), area;
 
 	// Deallocate memory
-	u32 cid, size = area->dealloc(addr, &cid);
+	u32 cid, size = area->dealloc(addr, nullptr, &cid);
 
 	if (!size)
 	{
@@ -147,13 +145,34 @@ error_code sys_memory_free(u32 addr)
 
 error_code sys_memory_get_page_attribute(u32 addr, vm::ptr<sys_page_attr_t> attr)
 {
-	sys_memory.error("sys_memory_get_page_attribute(addr=0x%x, attr=*0x%x)", addr, attr);
+	sys_memory.trace("sys_memory_get_page_attribute(addr=0x%x, attr=*0x%x)", addr, attr);
 
-	// TODO: Implement per thread page attribute setting.
-	attr->attribute = 0x40000ull; // SYS_MEMORY_PROT_READ_WRITE
-	attr->access_right = 0xFull; // SYS_MEMORY_ACCESS_RIGHT_ANY
-	attr->page_size = 4096;
+	if (!vm::check_addr(addr))
+	{
+		return CELL_EINVAL;
+	}
 
+	if (!vm::check_addr(attr.addr(), attr.size()))
+	{
+		return CELL_EFAULT;
+	}
+
+	attr->attribute = 0x40000ull; // SYS_MEMORY_PROT_READ_WRITE (TODO)
+	attr->access_right = 0xFull; // SYS_MEMORY_ACCESS_RIGHT_ANY (TODO)
+
+	if (vm::check_addr(addr, 1, vm::page_1m_size))
+	{
+		attr->page_size = 0x100000;
+	}
+	else if (vm::check_addr(addr, 1, vm::page_64k_size))
+	{
+		attr->page_size = 0x10000;
+	}
+	else
+	{
+		attr->page_size = 4096;
+	}
+	
 	return CELL_OK;
 }
 
@@ -206,28 +225,25 @@ error_code sys_memory_container_destroy(u32 cid)
 {
 	sys_memory.warning("sys_memory_container_destroy(cid=0x%x)", cid);
 
-	error_code result{};
-
-	const auto ct = idm::withdraw<lv2_memory_container>(cid, [&](u32, lv2_memory_container& ct)
+	const auto ct = idm::withdraw<lv2_memory_container>(cid, [](lv2_memory_container& ct) -> CellError
 	{
 		// Check if some memory is not deallocated (the container cannot be destroyed in this case)
 		if (!ct.used.compare_and_swap_test(0, ct.size))
 		{
-			result = CELL_EBUSY;
-			return false;
+			return CELL_EBUSY;
 		}
 
-		return true;
+		return {};
 	});
 
-	if (!ct && !result)
+	if (!ct)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (!ct)
+	if (ct.ret)
 	{
-		return result;
+		return ct.ret;
 	}
 
 	// Return "physical memory" to the default container
@@ -248,7 +264,11 @@ error_code sys_memory_container_get_size(vm::ptr<sys_memory_info_t> mem_info, u3
 	}
 
 	mem_info->total_user_memory = ct->size; // Total container memory
-	mem_info->available_user_memory = ct->size - ct->used; // Available container memory
+	// Available container memory, minus a hidden 'buffer' 
+	// This buffer seems to be used by the PS3 OS for c style 'mallocs'
+	// Todo: Research this more, even though we dont use this buffer, it helps out games when calculating 
+	//	     expected memory they can use allowing them to boot
+	mem_info->available_user_memory = ct->size - ct->used - 0x1000000; 
 
 	return CELL_OK;
 }

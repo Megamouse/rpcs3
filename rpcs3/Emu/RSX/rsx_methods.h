@@ -28,12 +28,20 @@ namespace rsx
 		primitive_type primitive;
 		draw_command command;
 
+		bool is_immediate_draw;
+		bool is_disjoint_primitive;
+
 		std::vector<u32> inline_vertex_array;
 
 		/**
 		* Stores the first and count argument from draw/draw indexed parameters between begin/end clauses.
 		*/
 		std::vector<std::pair<u32, u32> > first_count_commands;
+
+		/**
+		 * Optionally split first-count pairs for disjoint range rendering. Valid when emulating primitive restart
+		 */
+		std::vector<std::pair<u32, u32> > alternate_first_count_commands;
 
 		/**
 		 * Returns how many vertex or index will be consumed by the draw clause.
@@ -153,12 +161,13 @@ namespace rsx
 
 		/**
 		* RSX can sources vertex attributes from 2 places:
-		* - Immediate values passed by NV4097_SET_VERTEX_DATA*_M + ARRAY_ID write.
+		* 1. Immediate values passed by NV4097_SET_VERTEX_DATA*_M + ARRAY_ID write.
 		* For a given ARRAY_ID the last command of this type defines the actual type of the immediate value.
-		* Since there can be only a single value per ARRAY_ID passed this way, all vertex in the draw call
+		* If there is only a single value on an ARRAY_ID passed this way, all vertex in the draw call
 		* shares it.
-		* - Vertex array values passed by offset/stride/size/format description.
+		* Immediate mode rendering uses this method as well to upload vertex data.
 		*
+		* 2. Vertex array values passed by offset/stride/size/format description.
 		* A given ARRAY_ID can have both an immediate value and a vertex array enabled at the same time
 		* (See After Burner Climax intro cutscene). In such case the vertex array has precedence over the
 		* immediate value. As soon as the vertex array is disabled (size set to 0) the immediate value
@@ -286,9 +295,9 @@ namespace rsx
 			return decode<NV4097_SET_RESTART_INDEX>().restart_index();
 		}
 
-		u32 z_clear_value() const
+		u32 z_clear_value(bool is_depth_stencil) const
 		{
-			return decode<NV4097_SET_ZSTENCIL_CLEAR_VALUE>().clear_z();
+			return decode<NV4097_SET_ZSTENCIL_CLEAR_VALUE>().clear_z(is_depth_stencil);
 		}
 
 		u8 stencil_clear_value() const
@@ -334,6 +343,11 @@ namespace rsx
 		bool color_mask_a() const
 		{
 			return decode<NV4097_SET_COLOR_MASK>().color_a();
+		}
+
+		bool color_write_enabled() const
+		{
+			return decode<NV4097_SET_COLOR_MASK>().color_write_enabled();
 		}
 
 		u8 clear_color_b() const
@@ -651,6 +665,11 @@ namespace rsx
 			return decode<NV4097_SET_LINE_WIDTH>().line_width();
 		}
 
+		f32 point_size() const
+		{
+			return decode<NV4097_SET_POINT_SIZE>().point_size();
+		}
+
 		u8 alpha_ref() const
 		{
 			return decode<NV4097_SET_ALPHA_REF>().alpha_ref();
@@ -884,6 +903,11 @@ namespace rsx
 		primitive_type primitive_mode() const
 		{
 			return decode<NV4097_SET_BEGIN_END>().primitive();
+		}
+
+		u32 semaphore_context_dma_406e() const
+		{
+			return decode<NV406E_SET_CONTEXT_DMA_SEMAPHORE>().context_dma();
 		}
 
 		u32 semaphore_offset_406e() const
@@ -1139,6 +1163,46 @@ namespace rsx
 		u32 transform_constant_load()
 		{
 			return decode<NV4097_SET_TRANSFORM_CONSTANT_LOAD>().transform_constant_load();
+		}
+
+		u32 transform_branch_bits()
+		{
+			return registers[NV4097_SET_TRANSFORM_BRANCH_BITS];
+		}
+
+		u16 msaa_sample_mask()
+		{
+			return decode<NV4097_SET_ANTI_ALIASING_CONTROL>().msaa_sample_mask();
+		}
+
+		bool msaa_enabled()
+		{
+			return decode<NV4097_SET_ANTI_ALIASING_CONTROL>().msaa_enabled();
+		}
+
+		bool msaa_alpha_to_coverage_enabled()
+		{
+			return decode<NV4097_SET_ANTI_ALIASING_CONTROL>().msaa_alpha_to_coverage();
+		}
+
+		bool msaa_alpha_to_one_enabled()
+		{
+			return decode<NV4097_SET_ANTI_ALIASING_CONTROL>().msaa_alpha_to_one();
+		}
+
+		bool depth_clamp_enabled()
+		{
+			return decode<NV4097_SET_ZMIN_MAX_CONTROL>().depth_clamp_enabled();
+		}
+
+		bool depth_clip_enabled()
+		{
+			return decode<NV4097_SET_ZMIN_MAX_CONTROL>().depth_clip_enabled();
+		}
+
+		bool depth_clip_ignore_w()
+		{
+			return decode<NV4097_SET_ZMIN_MAX_CONTROL>().depth_clip_ignore_w();
 		}
 	};
 

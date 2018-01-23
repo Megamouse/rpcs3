@@ -14,6 +14,10 @@ enum ARMv7InstructionSet
 class ARMv7Thread final : public cpu_thread
 {
 public:
+	static const u32 id_base = 1;
+	static const u32 id_step = 2;
+	static const u32 id_count = 4096;
+
 	virtual std::string get_name() const override;
 	virtual std::string dump() const override;
 	virtual void cpu_task() override;
@@ -119,6 +123,9 @@ public:
 	} ITSTATE;
 
 	u32 TLS = 0;
+	u64 rtime = 0;
+	u32 raddr = 0;
+	u32 rdata = 0;
 
 	struct perf_counter
 	{
@@ -135,7 +142,7 @@ public:
 
 	const std::string m_name;
 
-	std::function<void(ARMv7Thread&)> custom_task;
+	atomic_t<void*> owner{};
 
 	const char* last_function = nullptr;
 

@@ -6,9 +6,16 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace fs
 {
+#ifdef _WIN32
+	using native_handle = void*;
+#else
+	using native_handle = int;
+#endif
+
 	// File open mode flags
 	enum class open_mode : u32
 	{
@@ -18,6 +25,7 @@ namespace fs
 		create,
 		trunc,
 		excl,
+		unshare,
 
 		__bitset_enum_max
 	};
@@ -28,6 +36,7 @@ namespace fs
 	constexpr auto create  = +open_mode::create; // Create file if it doesn't exist
 	constexpr auto trunc   = +open_mode::trunc; // Clear opened file if it's not empty
 	constexpr auto excl    = +open_mode::excl; // Failure if the file already exists (used with `create`)
+	constexpr auto unshare = +open_mode::unshare; // Prevent opening the file twice
 
 	constexpr auto rewrite = open_mode::write + open_mode::create + open_mode::trunc;
 
@@ -54,12 +63,19 @@ namespace fs
 		s64 ctime;
 	};
 
+	// Native handle getter
+	struct get_native_handle
+	{
+		virtual native_handle get() = 0;
+	};
+
 	// File handle base
 	struct file_base
 	{
-		virtual ~file_base() = default;
+		virtual ~file_base();
 
-		virtual stat_t stat() = 0;
+		virtual stat_t stat();
+		virtual void sync();
 		virtual bool trunc(u64 length) = 0;
 		virtual u64 read(void* buffer, u64 size) = 0;
 		virtual u64 write(const void* buffer, u64 size) = 0;
@@ -76,23 +92,34 @@ namespace fs
 	// Directory handle base
 	struct dir_base
 	{
-		virtual ~dir_base() = default;
+		virtual ~dir_base();
 
 		virtual bool read(dir_entry&) = 0;
 		virtual void rewind() = 0;
 	};
 
+	// Device information
+	struct device_stat
+	{
+		u64 block_size;
+		u64 total_size;
+		u64 total_free; // Total size of free space
+		u64 avail_free; // Free space available to unprivileged user
+	};
+
 	// Virtual device
 	struct device_base
 	{
-		virtual ~device_base() = default;
+		virtual ~device_base();
 
 		virtual bool stat(const std::string& path, stat_t& info) = 0;
+		virtual bool statfs(const std::string& path, device_stat& info) = 0;
 		virtual bool remove_dir(const std::string& path) = 0;
 		virtual bool create_dir(const std::string& path) = 0;
 		virtual bool rename(const std::string& from, const std::string& to) = 0;
 		virtual bool remove(const std::string& path) = 0;
 		virtual bool trunc(const std::string& path, u64 length) = 0;
+		virtual bool utime(const std::string& path, s64 atime, s64 mtime) = 0;
 
 		virtual std::unique_ptr<file_base> open(const std::string& path, bs_t<open_mode> mode) = 0;
 		virtual std::unique_ptr<dir_base> open_dir(const std::string& path) = 0;
@@ -119,6 +146,9 @@ namespace fs
 	// Check whether the directory exists and is NOT a file
 	bool is_dir(const std::string& path);
 
+	// Get filesystem information
+	bool statfs(const std::string& path, device_stat& info);
+
 	// Delete empty directory
 	bool remove_dir(const std::string& path);
 
@@ -129,7 +159,7 @@ namespace fs
 	bool create_path(const std::string& path);
 
 	// Rename (move) file or directory
-	bool rename(const std::string& from, const std::string& to);
+	bool rename(const std::string& from, const std::string& to, bool overwrite);
 
 	// Copy file contents
 	bool copy_file(const std::string& from, const std::string& to, bool overwrite);
@@ -139,6 +169,9 @@ namespace fs
 
 	// Change file size (possibly appending zeros)
 	bool truncate_file(const std::string& path, u64 length);
+
+	// Set file access/modification time
+	bool utime(const std::string& path, s64 atime, s64 mtime);
 
 	class file final
 	{
@@ -152,16 +185,18 @@ namespace fs
 		file() = default;
 
 		// Open file with specified mode
-		explicit file(const std::string& path, bs_t<open_mode> mode = ::fs::read)
-		{
-			open(path, mode);
-		}
-
-		// Open file with specified mode
-		bool open(const std::string& path, bs_t<open_mode> mode = ::fs::read);
+		explicit file(const std::string& path, bs_t<open_mode> mode = ::fs::read);		
 
 		// Open memory for read
 		explicit file(const void* ptr, std::size_t size);
+
+		// Open file with specified args (forward to constructor)
+		template <typename... Args>
+		bool open(Args&&... args)
+		{
+			*this = fs::file(std::forward<Args>(args)...);
+			return m_file.operator bool();
+		}
 
 		// Check whether the handle is valid (opened file)
 		explicit operator bool() const
@@ -197,6 +232,13 @@ namespace fs
 		{
 			if (!m_file) xnull();
 			return m_file->stat();
+		}
+
+		// Sync file buffers
+		void sync() const
+		{
+			if (!m_file) xnull();
+			return m_file->sync();
 		}
 
 		// Read the data from the file and return the amount of data written in buffer
@@ -319,6 +361,9 @@ namespace fs
 			if (seek(0), !read(result)) xfail();
 			return result;
 		}
+
+		// Get native handle if available
+		native_handle get_handle() const;
 	};
 
 	class dir final
@@ -377,7 +422,7 @@ namespace fs
 
 		class iterator
 		{
-			dir* m_parent;
+			const dir* m_parent;
 			dir_entry m_entry;
 
 		public:
@@ -387,7 +432,7 @@ namespace fs
 				from_current
 			};
 
-			iterator(dir* parent, mode mode_ = mode::from_first)
+			iterator(const dir* parent, mode mode_ = mode::from_first)
 				: m_parent(parent)
 			{
 				if (!m_parent)
@@ -413,7 +458,7 @@ namespace fs
 
 			iterator& operator++()
 			{
-				*this = { m_parent, mode::from_current };
+				*this = {m_parent, mode::from_current};
 				return *this;
 			}
 
@@ -423,22 +468,19 @@ namespace fs
 			}
 		};
 
-		iterator begin()
+		iterator begin() const
 		{
-			return{ m_dir ? this : nullptr };
+			return {m_dir ? this : nullptr};
 		}
 
-		iterator end()
+		iterator end() const
 		{
-			return{ nullptr };
+			return {nullptr};
 		}
 	};
 
 	// Get configuration directory
 	const std::string& get_config_dir();
-
-	// Get executable directory
-	const std::string& get_executable_dir();
 
 	// Get data/cache directory for specified prefix and suffix
 	std::string get_data_dir(const std::string& prefix, const std::string& location, const std::string& suffix);
@@ -459,8 +501,126 @@ namespace fs
 		inval,
 		noent,
 		exist,
+		acces,
+		notempty,
 	};
 
 	// Error code returned
 	extern thread_local error g_tls_error;
+
+	template <typename T>
+	struct container_stream final : file_base
+	{
+		// T can be a reference, but this is not recommended
+		using value_type = typename std::remove_reference_t<T>::value_type;
+
+		T obj;
+		u64 pos;
+
+		container_stream(T&& obj)
+			: obj(std::forward<T>(obj))
+			, pos(0)
+		{
+		}
+
+		~container_stream() override
+		{
+		}
+
+		bool trunc(u64 length) override
+		{
+			obj.resize(length);
+			return true;
+		}
+
+		u64 read(void* buffer, u64 size) override
+		{
+			const u64 end = obj.size();
+
+			if (pos < end)
+			{
+				// Get readable size
+				if (const u64 max = std::min<u64>(size, end - pos))
+				{
+					std::copy(obj.cbegin() + pos, obj.cbegin() + pos + max, static_cast<value_type*>(buffer));
+					pos = pos + max;
+					return max;
+				}
+			}
+
+			return 0;
+		}
+
+		u64 write(const void* buffer, u64 size) override
+		{
+			const u64 old_size = obj.size();
+
+			if (old_size + size < old_size)
+			{
+				fmt::raw_error("fs::container_stream<>::write(): overflow");
+			}
+
+			if (pos > old_size)
+			{
+				// Fill gap if necessary (default-initialized)
+				obj.resize(pos);
+			}
+
+			const auto src = static_cast<const value_type*>(buffer);
+
+			// Overwrite existing part
+			const u64 overlap = std::min<u64>(obj.size() - pos, size);
+			std::copy(src, src + overlap, obj.begin() + pos);
+
+			// Append new data
+			obj.insert(obj.end(), src + overlap, src + size);
+			pos += size;
+
+			return size;
+		}
+
+		u64 seek(s64 offset, seek_mode whence) override
+		{
+			const s64 new_pos =
+				whence == fs::seek_set ? offset :
+				whence == fs::seek_cur ? offset + pos :
+				whence == fs::seek_end ? offset + size() :
+				(fmt::raw_error("fs::container_stream<>::seek(): invalid whence"), 0);
+
+			if (new_pos < 0)
+			{
+				fs::g_tls_error = fs::error::inval;
+				return -1;
+			}
+
+			pos = new_pos;
+			return pos;
+		}
+
+		u64 size() override
+		{
+			return obj.size();
+		}
+	};
+
+	template <typename T>
+	file make_stream(T&& container = T{})
+	{
+		file result;
+		result.reset(std::make_unique<container_stream<T>>(std::forward<T>(container)));
+		return result;
+	}
+
+	template <typename... Args>
+	bool write_file(const std::string& path, bs_t<fs::open_mode> mode, const Args&... args)
+	{
+		if (fs::file f{path, mode})
+		{
+			// Write args sequentially
+			int seq[]{ (f.write(args), 0)... };
+			return true;
+		}
+
+		return false;
+	}
 }

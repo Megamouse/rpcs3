@@ -1,5 +1,10 @@
 #pragma once
 
+extern "C"
+{
+#include "libswscale/swscale.h"
+}
+
 namespace vm { using namespace ps3; }
 
 // Error Codes
@@ -321,10 +326,21 @@ struct CellVpostPictureInfo
 class VpostInstance
 {
 public:
+	static const u32 id_base = 1;
+	static const u32 id_step = 1;
+	static const u32 id_count = 1023;
+
 	const bool to_rgba;
+
+	SwsContext* sws{};
 
 	VpostInstance(bool rgba)
 		: to_rgba(rgba)
 	{
+	}
+
+	~VpostInstance()
+	{
+		sws_freeContext(sws);
 	}
 };

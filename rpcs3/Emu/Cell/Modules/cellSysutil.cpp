@@ -1,5 +1,4 @@
-#include "stdafx.h"
-#include "Utilities/Config.h"
+﻿#include "stdafx.h"
 #include "Emu/System.h"
 #include "Emu/IdManager.h"
 #include "Emu/Cell/PPUModule.h"
@@ -11,7 +10,7 @@
 #include <mutex>
 #include <queue>
 
-logs::channel cellSysutil("cellSysutil", logs::level::notice);
+logs::channel cellSysutil("cellSysutil");
 
 struct sysutil_cb_manager
 {
@@ -68,33 +67,41 @@ extern void sysutil_send_system_cmd(u64 status, u64 param)
 	}
 }
 
-cfg::map_entry<s32> g_cfg_sys_language(cfg::root.sys, "Language",
+template <>
+void fmt_class_string<CellSysutilLang>::format(std::string& out, u64 arg)
 {
-	{ "Japanese", CELL_SYSUTIL_LANG_JAPANESE },
-	{ "English (US)", CELL_SYSUTIL_LANG_ENGLISH_US },
-	{ "French", CELL_SYSUTIL_LANG_FRENCH },
-	{ "Spanish", CELL_SYSUTIL_LANG_SPANISH },
-	{ "German", CELL_SYSUTIL_LANG_GERMAN },
-	{ "Italian", CELL_SYSUTIL_LANG_ITALIAN },
-	{ "Dutch", CELL_SYSUTIL_LANG_DUTCH },
-	{ "Portuguese (PT)", CELL_SYSUTIL_LANG_PORTUGUESE_PT },
-	{ "Russian", CELL_SYSUTIL_LANG_RUSSIAN },
-	{ "Korean", CELL_SYSUTIL_LANG_KOREAN },
-	{ "Chinese (Trad.)", CELL_SYSUTIL_LANG_CHINESE_T },
-	{ "Chinese (Simp.)", CELL_SYSUTIL_LANG_CHINESE_S },
-	{ "Finnish", CELL_SYSUTIL_LANG_FINNISH },
-	{ "Swedish", CELL_SYSUTIL_LANG_SWEDISH },
-	{ "Danish", CELL_SYSUTIL_LANG_DANISH },
-	{ "Norwegian", CELL_SYSUTIL_LANG_NORWEGIAN },
-	{ "Polish", CELL_SYSUTIL_LANG_POLISH },
-	{ "English (UK)", CELL_SYSUTIL_LANG_ENGLISH_GB },
-});
+	format_enum(out, arg, [](CellSysutilLang value)
+	{
+		switch (value)
+		{
+		case CELL_SYSUTIL_LANG_JAPANESE: return "Japanese";
+		case CELL_SYSUTIL_LANG_ENGLISH_US: return "English (US)";
+		case CELL_SYSUTIL_LANG_FRENCH: return "French";
+		case CELL_SYSUTIL_LANG_SPANISH: return "Spanish";
+		case CELL_SYSUTIL_LANG_GERMAN: return "German";
+		case CELL_SYSUTIL_LANG_ITALIAN: return "Italian";
+		case CELL_SYSUTIL_LANG_DUTCH: return "Dutch";
+		case CELL_SYSUTIL_LANG_PORTUGUESE_PT: return "Portuguese (PT)";
+		case CELL_SYSUTIL_LANG_RUSSIAN: return "Russian";
+		case CELL_SYSUTIL_LANG_KOREAN: return "Korean";
+		case CELL_SYSUTIL_LANG_CHINESE_T: return "Chinese (Trad.)";
+		case CELL_SYSUTIL_LANG_CHINESE_S: return "Chinese (Simp.)";
+		case CELL_SYSUTIL_LANG_FINNISH: return "Finnish";
+		case CELL_SYSUTIL_LANG_SWEDISH: return "Swedish";
+		case CELL_SYSUTIL_LANG_DANISH: return "Danish";
+		case CELL_SYSUTIL_LANG_NORWEGIAN: return "Norwegian";
+		case CELL_SYSUTIL_LANG_POLISH: return "Polish";
+		case CELL_SYSUTIL_LANG_ENGLISH_GB: return "English (UK)";
+		case CELL_SYSUTIL_LANG_PORTUGUESE_BR: return "Portuguese (BR)";
+		case CELL_SYSUTIL_LANG_TURKISH: return "Turkish";
+		}
 
-// For test
-enum systemparam_id_name : s32 {};
+		return unknown;
+	});
+}
 
-template<>
-void fmt_class_string<systemparam_id_name>::format(std::string& out, u64 arg)
+template <>
+void fmt_class_string<CellSysutilParamId>::format(std::string& out, u64 arg)
 {
 	format_enum(out, arg, [](auto value)
 	{
@@ -123,16 +130,16 @@ void fmt_class_string<systemparam_id_name>::format(std::string& out, u64 arg)
 	});
 }
 
-s32 cellSysutilGetSystemParamInt(systemparam_id_name id, vm::ptr<s32> value)
+s32 cellSysutilGetSystemParamInt(CellSysutilParamId id, vm::ptr<s32> value)
 {
 	cellSysutil.warning("cellSysutilGetSystemParamInt(id=0x%x(%s), value=*0x%x)", id, id, value);
 
 	// TODO: load this information from config (preferably "sys/" group)
 
-	switch(id)
+	switch (id)
 	{
 	case CELL_SYSUTIL_SYSTEMPARAM_ID_LANG:
-		*value = g_cfg_sys_language.get();
+		*value = g_cfg.sys.language;
 	break;
 
 	case CELL_SYSUTIL_SYSTEMPARAM_ID_ENTER_BUTTON_ASSIGN:
@@ -198,13 +205,13 @@ s32 cellSysutilGetSystemParamInt(systemparam_id_name id, vm::ptr<s32> value)
 	return CELL_OK;
 }
 
-s32 cellSysutilGetSystemParamString(systemparam_id_name id, vm::ptr<char> buf, u32 bufsize)
+s32 cellSysutilGetSystemParamString(CellSysutilParamId id, vm::ptr<char> buf, u32 bufsize)
 {
 	cellSysutil.trace("cellSysutilGetSystemParamString(id=0x%x(%s), buf=*0x%x, bufsize=%d)", id, id, buf, bufsize);
 
 	memset(buf.get_ptr(), 0, bufsize);
 
-	switch(id)
+	switch (id)
 	{
 	case CELL_SYSUTIL_SYSTEMPARAM_ID_NICKNAME:
 		memcpy(buf.get_ptr(), "Unknown", 8); // for example
@@ -234,7 +241,7 @@ s32 cellSysutilCheckCallback(ppu_thread& ppu)
 			return res;
 		}
 
-		CHECK_EMU_STATUS;
+		thread_ctrl::test();
 	}
 
 	return CELL_OK;
@@ -383,7 +390,27 @@ s32 cellSysutilRegisterCallbackDispatcher()
 	fmt::throw_exception("Unimplemented" HERE);
 }
 
+s32 cellSysutilUnregisterCallbackDispatcher()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 cellSysutilPacketRead()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
 s32 cellSysutilPacketWrite()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 cellSysutilPacketBegin()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 cellSysutilPacketEnd()
 {
 	fmt::throw_exception("Unimplemented" HERE);
 }
@@ -411,6 +438,203 @@ s32 cellSysutilGamePowerOff_I()
 s32 cellSysutilGameReboot_I()
 {
 	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 cellSysutilSharedMemoryAlloc()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 cellSysutilSharedMemoryFree()
+{
+	fmt::throw_exception("Unimplemented" HERE);
+}
+
+s32 _ZN4cxml7Element11AppendChildERS0_()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8DocumentC1Ev()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8DocumentD1Ev()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document5ClearEv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document5WriteEPFiPKvjPvES3_()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document12RegisterFileEPKvjPNS_4FileE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document13CreateElementEPKciPNS_7ElementE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document14SetHeaderMagicEPKc()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document16CreateFromBufferEPKvjb()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN4cxml8Document18GetDocumentElementEv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml4File7GetAddrEv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml7Element12GetAttributeEPKcPNS_9AttributeE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml7Element13GetFirstChildEv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml7Element14GetNextSiblingEv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml9Attribute6GetIntEPi()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZNK4cxml9Attribute7GetFileEPNS_4FileE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil6SetIntERKN4cxml7ElementEPKci()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil6GetIntERKN4cxml7ElementEPKcPi()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil7SetFileERKN4cxml7ElementEPKcRKNS0_4FileE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil8GetFloatERKN4cxml7ElementEPKcPf()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil9GetStringERKN4cxml7ElementEPKcPS5_Pj()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil9SetStringERKN4cxml7ElementEPKcS5_()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil16CheckElementNameERKN4cxml7ElementEPKc()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil16FindChildElementERKN4cxml7ElementEPKcS5_S5_()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN8cxmlutil7GetFileERKN4cxml7ElementEPKcPNS0_4FileE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN16sysutil_cxmlutil11FixedMemory3EndEi()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN16sysutil_cxmlutil11FixedMemory5BeginEi()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN16sysutil_cxmlutil11FixedMemory8AllocateEN4cxml14AllocationTypeEPvS3_jPS3_Pj()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN16sysutil_cxmlutil12PacketWriter5WriteEPKvjPv()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 _ZN16sysutil_cxmlutil12PacketWriterC1EiiRN4cxml8DocumentE()
+{
+	UNIMPLEMENTED_FUNC(cellSysutil);
+	return CELL_OK;
+}
+
+s32 cellSysutil_E1EC7B6A(vm::ptr<u32> unk)
+{
+	cellSysutil.todo("cellSysutil_E1EC7B6A(unk=*0x%x)", unk);
+	*unk = 0;
+	return CELL_OK;
 }
 
 extern void cellSysutil_SaveData_init();
@@ -456,11 +680,55 @@ DECLARE(ppu_module_manager::cellSysutil)("cellSysutil", []()
 	REG_FUNC(cellSysutil, cellSysCacheClear);
 
 	REG_FUNC(cellSysutil, cellSysutilRegisterCallbackDispatcher);
+	REG_FUNC(cellSysutil, cellSysutilUnregisterCallbackDispatcher);
+	REG_FUNC(cellSysutil, cellSysutilPacketRead);
 	REG_FUNC(cellSysutil, cellSysutilPacketWrite);
+	REG_FUNC(cellSysutil, cellSysutilPacketBegin);
+	REG_FUNC(cellSysutil, cellSysutilPacketEnd);
 
 	REG_FUNC(cellSysutil, cellSysutilGameDataAssignVmc);
 	REG_FUNC(cellSysutil, cellSysutilGameDataExit);
 	REG_FUNC(cellSysutil, cellSysutilGameExit_I);
 	REG_FUNC(cellSysutil, cellSysutilGamePowerOff_I);
 	REG_FUNC(cellSysutil, cellSysutilGameReboot_I);
+
+	REG_FUNC(cellSysutil, cellSysutilSharedMemoryAlloc);
+	REG_FUNC(cellSysutil, cellSysutilSharedMemoryFree);
+
+	REG_FUNC(cellSysutil, _ZN4cxml7Element11AppendChildERS0_);
+
+	REG_FUNC(cellSysutil, _ZN4cxml8DocumentC1Ev);
+	REG_FUNC(cellSysutil, _ZN4cxml8DocumentD1Ev);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document5ClearEv);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document5WriteEPFiPKvjPvES3_);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document12RegisterFileEPKvjPNS_4FileE);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document13CreateElementEPKciPNS_7ElementE);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document14SetHeaderMagicEPKc);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document16CreateFromBufferEPKvjb);
+	REG_FUNC(cellSysutil, _ZN4cxml8Document18GetDocumentElementEv);
+
+	REG_FUNC(cellSysutil, _ZNK4cxml4File7GetAddrEv);
+	REG_FUNC(cellSysutil, _ZNK4cxml7Element12GetAttributeEPKcPNS_9AttributeE);
+	REG_FUNC(cellSysutil, _ZNK4cxml7Element13GetFirstChildEv);
+	REG_FUNC(cellSysutil, _ZNK4cxml7Element14GetNextSiblingEv);
+	REG_FUNC(cellSysutil, _ZNK4cxml9Attribute6GetIntEPi);
+	REG_FUNC(cellSysutil, _ZNK4cxml9Attribute7GetFileEPNS_4FileE);
+
+	REG_FUNC(cellSysutil, _ZN8cxmlutil6SetIntERKN4cxml7ElementEPKci);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil6GetIntERKN4cxml7ElementEPKcPi);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil7SetFileERKN4cxml7ElementEPKcRKNS0_4FileE);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil8GetFloatERKN4cxml7ElementEPKcPf);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil9GetStringERKN4cxml7ElementEPKcPS5_Pj);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil9SetStringERKN4cxml7ElementEPKcS5_);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil16CheckElementNameERKN4cxml7ElementEPKc);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil16FindChildElementERKN4cxml7ElementEPKcS5_S5_);
+	REG_FUNC(cellSysutil, _ZN8cxmlutil7GetFileERKN4cxml7ElementEPKcPNS0_4FileE);
+	
+	REG_FUNC(cellSysutil, _ZN16sysutil_cxmlutil11FixedMemory3EndEi);
+	REG_FUNC(cellSysutil, _ZN16sysutil_cxmlutil11FixedMemory5BeginEi);
+	REG_FUNC(cellSysutil, _ZN16sysutil_cxmlutil11FixedMemory8AllocateEN4cxml14AllocationTypeEPvS3_jPS3_Pj);
+	REG_FUNC(cellSysutil, _ZN16sysutil_cxmlutil12PacketWriter5WriteEPKvjPv);
+	REG_FUNC(cellSysutil, _ZN16sysutil_cxmlutil12PacketWriterC1EiiRN4cxml8DocumentE);
+	
+	REG_FNID(cellSysutil, 0xE1EC7B6A, cellSysutil_E1EC7B6A);
 });

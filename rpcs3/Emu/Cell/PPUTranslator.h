@@ -7,10 +7,12 @@
 #include <unordered_set>
 #include <set>
 #include <array>
+#include <vector>
 
 #include "../rpcs3/Emu/Cell/PPUOpcodes.h"
 #include "../rpcs3/Emu/Cell/PPUAnalyser.h"
 
+#include "restore_new.h"
 #ifdef _MSC_VER
 #pragma warning(push, 0)
 #endif
@@ -20,6 +22,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+#include "define_new_memleakdetect.h"
 
 #include "../Utilities/types.h"
 #include "../Utilities/StrFmt.h"
@@ -38,7 +41,7 @@ struct TypeGen<T, std::enable_if_t<std::is_void<T>::value>>
 };
 
 template<typename T>
-struct TypeGen<T, std::enable_if_t<std::is_same<T, s64>::value || std::is_same<T, u64>::value>>
+struct TypeGen<T, std::enable_if_t<std::is_same<T, s64>::value || std::is_same<T, u64>::value || std::is_same<T, uptr>::value>>
 {
 	static llvm::Type* get(llvm::LLVMContext& context) { return llvm::Type::getInt64Ty(context); }
 };
@@ -107,114 +110,89 @@ class PPUTranslator final //: public CPUTranslator
 	// Module to which all generated code is output to
 	llvm::Module* const m_module;
 
-	// Base address (TODO)
-	const u64 m_base_addr;
-
 	// Endianness, affects vector element numbering (TODO)
 	const bool m_is_be;
+
+	// PPU Module
+	const ppu_module& m_info;
+
+	// Relevant relocations
+	std::map<u64, const ppu_reloc*> m_relocs;
 
 	// Attributes for function calls which are "pure" and may be optimized away if their results are unused
 	const llvm::AttributeSet m_pure_attr;
 
-	// Available functions: types (not set or nullptr for untyped)
-	std::unordered_map<u64, llvm::FunctionType*> m_func_types;
-
-	// Available functions
-	std::unordered_map<u64, llvm::Function*> m_func_list;
-
-	// LLVM IR builder
+	// IR builder
 	llvm::IRBuilder<>* m_ir;
 
 	// LLVM function
 	llvm::Function* m_function;
 
-	// LLVM function type (may be null)
-	llvm::FunctionType* m_function_type;
+	llvm::MDNode* m_md_unlikely;
+	llvm::MDNode* m_md_likely;
 
-	// Function range
-	u64 m_start_addr, m_end_addr, m_current_addr;
+	// Current position-independent address
+	u64 m_addr = 0;
 
-	// Basic blocks for current function
-	std::unordered_map<u64, llvm::BasicBlock*> m_blocks;
+	// Relocation info
+	const ppu_segment* m_reloc = nullptr;
 
-	// Supplementary block info for all functions
-	std::set<u64> m_block_info;
-
-	// JT resolver block
-	llvm::BasicBlock* m_jtr;
-
-	// Current binary data
-	be_t<u32>* m_bin{};
+	// Set by instruction code after processing the relocation
+	const ppu_reloc* m_rel = nullptr;
 
 	/* Variables */
 
+	// Segments
+	std::vector<llvm::GlobalVariable*> m_segs;
+
 	// Memory base
-	llvm::Value* m_base;
+	llvm::GlobalVariable* m_base;
 	llvm::Value* m_base_loaded;
 
 	// Thread context
 	llvm::Value* m_thread;
 
 	// Callable functions
-	llvm::Value* m_call;
+	llvm::GlobalVariable* m_call;
+
+	// Main block
+	llvm::BasicBlock* m_body;
+	llvm::BasicBlock* m_entry;
 
 	// Thread context struct
 	llvm::StructType* m_thread_type;
 
-	llvm::Value* m_globals[96]{};
-	llvm::Value** const m_g_gpr = m_globals + 0;
-	llvm::Value** const m_g_fpr = m_globals + 32;
-	llvm::Value** const m_g_vr = m_globals + 64;
+	llvm::Value* m_mtocr_table{};
 
-	llvm::Value* m_locals[96]{};
-	llvm::Value** const m_gpr = m_locals + 0;
-	llvm::Value** const m_fpr = m_locals + 32;
-	llvm::Value** const m_vr = m_locals + 64;
+	llvm::Value* m_globals[173];
+	llvm::Value** const m_g_cr = m_globals + 99;
+	llvm::Value* m_locals[173];
+	llvm::Value** const m_gpr = m_locals + 3;
+	llvm::Value** const m_fpr = m_locals + 35;
+	llvm::Value** const m_vr = m_locals + 67;
+	llvm::Value** const m_cr = m_locals + 99;
+	llvm::Value** const m_fc = m_locals + 131; // FPSCR bits (used partially)
 
-	llvm::Value* m_cr[32]{};
-	llvm::Value* m_reg_lr;
-	llvm::Value* m_reg_ctr; // CTR register (counter)
-	llvm::Value* m_reg_vrsave;
-	llvm::Value* m_xer_so; // XER.SO bit, summary overflow
-	llvm::Value* m_xer_ov; // XER.OV bit, overflow flag
-	llvm::Value* m_xer_ca; // XER.CA bit, carry flag
-	llvm::Value* m_xer_count;
-	llvm::Value* m_vscr_nj; // VSCR.NJ bit, non-Java mode
-	llvm::Value* m_vscr_sat; // VSCR.SAT bit, sticky saturation flag
+#define DEF_VALUE(loc, glb, pos)\
+	llvm::Value*& loc = m_locals[pos];\
+	llvm::Value*& glb = m_globals[pos];
 
-	llvm::Value* m_fpscr[32]{};
-	llvm::Value* m_fpscr_fx; // bit 32 (first)
-	llvm::Value* m_fpscr_ox; // bit 35 (4th)
-	llvm::Value* m_fpscr_ux;
-	llvm::Value* m_fpscr_zx;
-	llvm::Value* m_fpscr_xx;
-	llvm::Value* m_fpscr_vxsnan;
-	llvm::Value* m_fpscr_vxisi;
-	llvm::Value* m_fpscr_vxidi;
-	llvm::Value* m_fpscr_vxzdz;
-	llvm::Value* m_fpscr_vximz;
-	llvm::Value* m_fpscr_vxvc;
-	llvm::Value* m_fpscr_fr;
-	llvm::Value* m_fpscr_fi;
-	llvm::Value* m_fpscr_c;
-	llvm::Value* m_fpscr_lt;
-	llvm::Value* m_fpscr_gt;
-	llvm::Value* m_fpscr_eq;
-	llvm::Value* m_fpscr_un;
-	llvm::Value* m_fpscr_reserved;
-	llvm::Value* m_fpscr_vxsoft;
-	llvm::Value* m_fpscr_vxsqrt;
-	llvm::Value* m_fpscr_vxcvi;
-	llvm::Value* m_fpscr_ve;
-	llvm::Value* m_fpscr_oe;
-	llvm::Value* m_fpscr_ue;
-	llvm::Value* m_fpscr_ze;
-	llvm::Value* m_fpscr_xe;
-	llvm::Value* m_fpscr_ni;
-	llvm::Value* m_fpscr_rnh; // RN high bit
-	llvm::Value* m_fpscr_rnl; // RN low bit
+	DEF_VALUE(m_lr, m_g_lr, 163); // LR, Link Register
+	DEF_VALUE(m_ctr, m_g_ctr, 164); // CTR, Counter Register
+	DEF_VALUE(m_vrsave, m_g_vrsave, 165);
+	DEF_VALUE(m_cia, m_g_cia, 166);
+	DEF_VALUE(m_so, m_g_so, 167); // XER.SO bit, summary overflow
+	DEF_VALUE(m_ov, m_g_ov, 168); // XER.OV bit, overflow flag
+	DEF_VALUE(m_ca, m_g_ca, 169); // XER.CA bit, carry flag
+	DEF_VALUE(m_cnt, m_g_cnt, 170); // XER.CNT
+	DEF_VALUE(m_sat, m_g_sat, 171); // VSCR.SAT bit, sticky saturation flag
+	DEF_VALUE(m_nj, m_g_nj, 172); // VSCR.NJ bit, non-Java mode
 
+#undef DEF_VALUE
 public:
+
+	// Get current instruction address
+	llvm::Value* GetAddr(u64 _add = 0);
 
 	// Change integer size for integer or integer vector type (by 2^degree)
 	llvm::Type* ScaleType(llvm::Type*, s32 pow2 = 0);
@@ -229,13 +207,19 @@ public:
 	llvm::Value* RotateLeft(llvm::Value* arg, llvm::Value* n);
 
 	// Emit function call
-	void CallFunction(u64 target, bool tail, llvm::Value* indirect = nullptr);
+	void CallFunction(u64 target, llvm::Value* indirect = nullptr);
 
-	// Set some registers to undef (after function call)
-	void UndefineVolatileRegisters();
+	// Initialize global for writing
+	llvm::Value* RegInit(llvm::Value*& local);
 
-	// Get the basic block for the specified address
-	llvm::BasicBlock* GetBasicBlock(u64 addr);
+	// Load last register value
+	llvm::Value* RegLoad(llvm::Value*& local);
+
+	// Store register value locally
+	void RegStore(llvm::Value* value, llvm::Value*& local);
+
+	// Write global registers
+	void FlushRegisters();
 
 	// Load gpr
 	llvm::Value* GetGpr(u32 r, u32 num_bits = 64);
@@ -338,6 +322,9 @@ public:
 	// Set CR field based on unsigned comparison
 	void SetCrFieldUnsignedCmp(u32 n, llvm::Value* a, llvm::Value* b);
 
+	// Set CR field from FPSCR CC fieds
+	void SetCrFieldFPCC(u32 n);
+
 	// Set FPSCR CC fields provided, optionally updating CR1
 	void SetFPCC(llvm::Value* lt, llvm::Value* gt, llvm::Value* eq, llvm::Value* un, bool set_cr = false);
 
@@ -374,14 +361,17 @@ public:
 	// Check condition for trap instructions
 	llvm::Value* CheckTrapCondition(u32 to, llvm::Value* left, llvm::Value* right);
 
-	// Emit trap
-	llvm::Value* Trap(u64 addr);
+	// Emit trap for current address
+	void Trap();
 
-	// Check condition for branch instructions
+	// Get condition for branch instructions
 	llvm::Value* CheckBranchCondition(u32 bo, u32 bi);
 
+	// Get hint for branch instructions
+	llvm::MDNode* CheckBranchProbability(u32 bo);
+
 	// Branch to next instruction if condition failed, never branch on nullptr
-	void UseCondition(llvm::Value* = nullptr);
+	void UseCondition(llvm::MDNode* hint, llvm::Value* = nullptr);
 
 	// Get memory pointer
 	llvm::Value* GetMemory(llvm::Value* addr, llvm::Type* type);
@@ -414,7 +404,7 @@ public:
 
 	// Call a function with attribute list
 	template<typename... Args>
-	llvm::Value* Call(llvm::Type* ret, llvm::AttributeSet attr, llvm::StringRef name, Args... args)
+	llvm::CallInst* Call(llvm::Type* ret, llvm::AttributeSet attr, llvm::StringRef name, Args... args)
 	{
 		// Call the function
 		return m_ir->CreateCall(m_module->getOrInsertFunction(name, llvm::FunctionType::get(ret, {args->getType()...}, false), attr), {args...});
@@ -422,7 +412,7 @@ public:
 
 	// Call a function
 	template<typename... Args>
-	llvm::Value* Call(llvm::Type* ret, llvm::StringRef name, Args... args)
+	llvm::CallInst* Call(llvm::Type* ret, llvm::StringRef name, Args... args)
 	{
 		return Call(ret, llvm::AttributeSet{}, name, args...);
 	}
@@ -430,20 +420,14 @@ public:
 	// Handle compilation errors
 	void CompilationError(const std::string& error);
 
-	PPUTranslator(llvm::LLVMContext& context, llvm::Module* module, u64 base);
+	PPUTranslator(llvm::LLVMContext& context, llvm::Module* module, const ppu_module& info);
 	~PPUTranslator();
 
 	// Get thread context struct type
 	llvm::Type* GetContextType();
 
-	// Add function
-	void AddFunction(u64 addr, llvm::Function* func, llvm::FunctionType* type = nullptr);
-
-	// Add block entry hint (not essential)
-	void AddBlockInfo(u64 addr);
-
 	// Parses PPU opcodes and translate them into LLVM IR
-	llvm::Function* TranslateToIR(const ppu_function& info, be_t<u32>* bin, void(*custom)(PPUTranslator*) = nullptr);
+	llvm::Function* Translate(const ppu_function& info);
 
 	void MFVSCR(ppu_opcode_t op);
 	void MTVSCR(ppu_opcode_t op);
@@ -600,7 +584,6 @@ public:
 	void ADDI(ppu_opcode_t op);
 	void ADDIS(ppu_opcode_t op);
 	void BC(ppu_opcode_t op);
-	void HACK(ppu_opcode_t op);
 	void SC(ppu_opcode_t op);
 	void B(ppu_opcode_t op);
 	void MCRF(ppu_opcode_t op);

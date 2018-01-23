@@ -25,6 +25,8 @@ enum class FUNCTION {
 	FUNCTION_TEXTURE_SAMPLE2D_PROJ,
 	FUNCTION_TEXTURE_SAMPLE2D_LOD,
 	FUNCTION_TEXTURE_SAMPLE2D_GRAD,
+	FUNCTION_TEXTURE_SHADOW2D,
+	FUNCTION_TEXTURE_SHADOW2D_PROJ,
 	FUNCTION_TEXTURE_SAMPLECUBE,
 	FUNCTION_TEXTURE_SAMPLECUBE_PROJ,
 	FUNCTION_TEXTURE_SAMPLECUBE_LOD,
@@ -108,6 +110,17 @@ struct ParamArray
 		}
 
 		return nullptr;
+	}
+
+	bool HasParamTypeless(const ParamFlag flag, const std::string& name)
+	{
+		for (u32 i = 0; i<params[flag].size(); ++i)
+		{
+			if (params[flag][i].SearchName(name))
+				return true;
+		}
+
+		return false;
 	}
 
 	bool HasParam(const ParamFlag flag, std::string type, const std::string& name)
@@ -233,4 +246,18 @@ public:
 
 		return name + "." + fmt::merge({ swizzles }, ".");
 	}
+};
+
+struct vertex_reg_info
+{
+	std::string name;           //output name
+	bool need_declare;          //needs explicit declaration as output (not language in-built)
+	std::string src_reg;        //reg to get data from
+	std::string src_reg_mask;   //input swizzle mask
+	bool need_cast;             //needs casting
+	std::string cond;           //update on condition
+	std::string default_val;    //fallback value on cond fail
+	std::string dst_alias;      //output name override
+	bool check_mask;            //check program output control mask for this output
+	u32  check_mask_value;      //program output control mask for testing
 };

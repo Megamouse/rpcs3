@@ -3,16 +3,17 @@
 
 #include "cellGame.h"
 
-logs::channel cellGameExec("cellGameExec", logs::level::notice);
+logs::channel cellGameExec("cellGameExec");
 
-s32 cellGameSetExitParam()
+s32 cellGameSetExitParam(u32 execdata)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	cellGameExec.todo("cellGameSetExitParam(execdata=0x%x)", execdata);
+	return CELL_OK;
 }
 
 s32 cellGameGetHomeDataExportPath(vm::ptr<char> exportPath)
 {
-	cellGameExec.warning("cellGameGetHomeDataExportPath(exportPath=0x%x)", exportPath);
+	cellGameExec.warning("cellGameGetHomeDataExportPath(exportPath=*0x%x)", exportPath);
 
 	// TODO: PlayStation home is defunct.
 
@@ -21,22 +22,30 @@ s32 cellGameGetHomeDataExportPath(vm::ptr<char> exportPath)
 
 s32 cellGameGetHomePath()
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	UNIMPLEMENTED_FUNC(cellGameExec);
+	return CELL_OK;
 }
 
-s32 cellGameGetHomeDataImportPath()
+s32 cellGameGetHomeDataImportPath(vm::ptr<char> importPath)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	cellGameExec.warning("cellGameGetHomeDataImportPath(importPath=*0x%x)", importPath);
+
+	// TODO: PlayStation home is defunct.
+
+	return CELL_GAME_ERROR_NOAPP;
 }
 
-s32 cellGameGetHomeLaunchOptionPath()
+s32 cellGameGetHomeLaunchOptionPath(vm::ptr<char> commonPath, vm::ptr<char> personalPath)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	cellGameExec.todo("cellGameGetHomeLaunchOptionPath(commonPath=%s, personalPath=%s)", commonPath, personalPath);
+
+	// TODO: PlayStation home is not supported atm.
+	return CELL_GAME_ERROR_NOAPP;
 }
 
-s32 cellGameGetBootGameInfo(vm::ptr<u32> type, vm::ptr<char> dirName, vm::ptr<u32> execData)
+s32 cellGameGetBootGameInfo(vm::ptr<u32> type, vm::ptr<char> dirName, vm::ptr<u32> execdata)
 {
-	cellGameExec.todo("cellGameGetBootGameInfo(type=*0x%x, dirName=*0x%x, execData=*0x%x)", type, dirName, execData);
+	cellGameExec.todo("cellGameGetBootGameInfo(type=*0x%x, dirName=%s, execdata=*0x%x)", type, dirName, execdata);
 
 	// TODO: Support more boot types
 	*type = CELL_GAME_GAMETYPE_SYS;

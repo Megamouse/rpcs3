@@ -3,34 +3,41 @@
 #include "Emu/System.h"
 #include "Emu/IdManager.h"
 #include "Emu/Cell/RawSPUThread.h"
+#include "Emu/Cell/lv2/sys_mmapper.h"
+#include "Emu/Cell/lv2/sys_event.h"
 #include "Thread.h"
+#include "sysinfo.h"
+#include <typeinfo>
+#include <thread>
 
 #ifdef _WIN32
 #include <Windows.h>
 #include <Psapi.h>
+#include <process.h>
 #else
 #ifdef __APPLE__
 #define _XOPEN_SOURCE
 #define __USE_GNU
+#include <mach/thread_act.h>
+#include <mach/thread_policy.h>
+#endif
+#if defined(__DragonFly__) || defined(__FreeBSD__)
+#include <pthread_np.h>
+#define cpu_set_t cpuset_t
 #endif
 #include <errno.h>
 #include <signal.h>
 #include <ucontext.h>
+#include <pthread.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #endif
 
-static void report_fatal_error(const std::string& msg)
-{
-	std::string _msg = msg + "\n"
-		"HOW TO REPORT ERRORS: Check the FAQ, README, other sources.\n"
-		"Please, don't send incorrect reports. Thanks for understanding.\n";
+#include "sync.h"
 
-#ifdef _WIN32
-	_msg += "Press (Ctrl+C) to copy this message.";
-	MessageBoxA(0, _msg.c_str(), "Fatal error", MB_ICONERROR); // TODO: unicode message
-#else
-	std::printf("Fatal error: \n%s", _msg.c_str());
-#endif
-}
+thread_local u64 g_tls_fault_all = 0;
+thread_local u64 g_tls_fault_rsx = 0;
+thread_local u64 g_tls_fault_spu = 0;
 
 [[noreturn]] void catch_all_exceptions()
 {
@@ -46,8 +53,6 @@ static void report_fatal_error(const std::string& msg)
 	{
 		report_fatal_error("Unhandled exception (unknown)");
 	}
-
-	std::abort();
 }
 
 enum x64_reg_t : u32
@@ -746,6 +751,90 @@ uint64_t* darwin_x64reg(x64_context *context, int reg)
 	}
 }
 
+#elif defined(__DragonFly__) || defined(__FreeBSD__)
+
+#define X64REG(context, reg) (freebsd_x64reg(context, reg))
+#ifdef __DragonFly__
+#  define XMMREG(context, reg) (reinterpret_cast<v128*>(((union savefpu*)(context)->uc_mcontext.mc_fpregs)->sv_xmm.sv_xmm[reg]))
+#else
+#  define XMMREG(context, reg) (reinterpret_cast<v128*>(((struct savefpu*)(context)->uc_mcontext.mc_fpstate)->sv_xmm[reg]))
+#endif
+#define EFLAGS(context) ((context)->uc_mcontext.mc_rflags)
+
+register_t* freebsd_x64reg(x64_context *context, int reg)
+{
+	auto *state = &context->uc_mcontext;
+	switch(reg)
+	{
+	case 0: return &state->mc_rax;
+	case 1: return &state->mc_rcx;
+	case 2: return &state->mc_rdx;
+	case 3: return &state->mc_rbx;
+	case 4: return &state->mc_rsp;
+	case 5: return &state->mc_rbp;
+	case 6: return &state->mc_rsi;
+	case 7: return &state->mc_rdi;
+	case 8: return &state->mc_r8;
+	case 9: return &state->mc_r9;
+	case 10: return &state->mc_r10;
+	case 11: return &state->mc_r11;
+	case 12: return &state->mc_r12;
+	case 13: return &state->mc_r13;
+	case 14: return &state->mc_r14;
+	case 15: return &state->mc_r15;
+	case 16: return &state->mc_rip;
+	default:
+		LOG_ERROR(GENERAL, "Invalid register index: %d", reg);
+		return nullptr;
+	}
+}
+
+#elif defined(__OpenBSD__)
+
+#define X64REG(context, reg) (openbsd_x64reg(context, reg))
+#define XMMREG(context, reg) (reinterpret_cast<v128*>((context)->sc_fpstate->fx_xmm[reg]))
+#define EFLAGS(context) ((context)->sc_rflags)
+
+long* openbsd_x64reg(x64_context *context, int reg)
+{
+	auto *state = &context->uc_mcontext;
+	switch(reg)
+	{
+	case 0: return &state->sc_rax;
+	case 1: return &state->sc_rcx;
+	case 2: return &state->sc_rdx;
+	case 3: return &state->sc_rbx;
+	case 4: return &state->sc_rsp;
+	case 5: return &state->sc_rbp;
+	case 6: return &state->sc_rsi;
+	case 7: return &state->sc_rdi;
+	case 8: return &state->sc_r8;
+	case 9: return &state->sc_r9;
+	case 10: return &state->sc_r10;
+	case 11: return &state->sc_r11;
+	case 12: return &state->sc_r12;
+	case 13: return &state->sc_r13;
+	case 14: return &state->sc_r14;
+	case 15: return &state->sc_r15;
+	case 16: return &state->sc_rip;
+	default:
+		LOG_ERROR(GENERAL, "Invalid register index: %d", reg);
+		return nullptr;
+	}
+}
+
+#elif defined(__NetBSD__)
+
+static const decltype(_REG_RAX) reg_table[] =
+{
+	_REG_RAX, _REG_RCX, _REG_RDX, _REG_RBX, _REG_RSP, _REG_RBP, _REG_RSI, _REG_RDI,
+	_REG_R8, _REG_R9, _REG_R10, _REG_R11, _REG_R12, _REG_R13, _REG_R14, _REG_R15, _REG_RIP
+};
+
+#define X64REG(context, reg) (&(context)->uc_mcontext.__gregs[reg_table[reg]])
+#define XMM_sig(context, reg) (reinterpret_cast<v128*>(((struct fxsave64*)(context)->uc_mcontext.__fpregs)->fx_xmm[reg]))
+#define EFLAGS(context) ((context)->uc_mcontext.__gregs[_REG_RFL])
+
 #else
 
 static const decltype(REG_RAX) reg_table[] =
@@ -755,7 +844,11 @@ static const decltype(REG_RAX) reg_table[] =
 };
 
 #define X64REG(context, reg) (&(context)->uc_mcontext.gregs[reg_table[reg]])
+#ifdef __sun
+#define XMMREG(context, reg) (reinterpret_cast<v128*>(&(context)->uc_mcontext.fpregs.fp_reg_set.fpchip_state.xmm[reg_table[reg]]))
+#else
 #define XMMREG(context, reg) (reinterpret_cast<v128*>(&(context)->uc_mcontext.fpregs->_xmm[reg]))
+#endif // __sun
 #define EFLAGS(context) ((context)->uc_mcontext.gregs[REG_EFL])
 
 #endif // __APPLE__
@@ -872,8 +965,8 @@ bool put_x64_reg_value(x64_context* context, x64_reg_t reg, size_t d_size, u64 v
 		// save the value into x64 register
 		switch (d_size)
 		{
-		case 1: *X64REG(context, reg - X64R_RAX) = value & 0xff | *X64REG(context, reg - X64R_RAX) & 0xffffff00; return true;
-		case 2: *X64REG(context, reg - X64R_RAX) = value & 0xffff | *X64REG(context, reg - X64R_RAX) & 0xffff0000; return true;
+		case 1: *X64REG(context, reg - X64R_RAX) = (value & 0xff) | (*X64REG(context, reg - X64R_RAX) & 0xffffff00); return true;
+		case 2: *X64REG(context, reg - X64R_RAX) = (value & 0xffff) | (*X64REG(context, reg - X64R_RAX) & 0xffff0000); return true;
 		case 4: *X64REG(context, reg - X64R_RAX) = value & 0xffffffff; return true;
 		case 8: *X64REG(context, reg - X64R_RAX) = value; return true;
 		}
@@ -965,7 +1058,7 @@ size_t get_x64_access_size(x64_context* context, x64_op_t op, x64_reg_t reg, siz
 	{
 		if (EFLAGS(context) & 0x400 /* direction flag */)
 		{
-			// skip reservation bound check (TODO)
+			// TODO
 			return 0;
 		}
 
@@ -981,22 +1074,6 @@ size_t get_x64_access_size(x64_context* context, x64_op_t op, x64_reg_t reg, siz
 		}
 	}
 
-	if (op == X64OP_CMPXCHG)
-	{
-		// Detect whether the instruction can't actually modify memory to avoid breaking reservation
-		u64 cmp, exch;
-		if (!get_x64_reg_value(context, reg, d_size, i_size, cmp) || !get_x64_reg_value(context, X64R_RAX, d_size, i_size, exch))
-		{
-			return -1;
-		}
-
-		if (cmp == exch)
-		{
-			// skip reservation bound check
-			return 0;
-		}
-	}
-
 	return d_size;
 }
 
@@ -1007,8 +1084,19 @@ namespace rsx
 
 bool handle_access_violation(u32 addr, bool is_writing, x64_context* context)
 {
+	g_tls_fault_all++;
+
+	const auto cpu = get_current_cpu_thread();
+
 	if (rsx::g_access_violation_handler && rsx::g_access_violation_handler(addr, is_writing))
 	{
+		g_tls_fault_rsx++;
+
+		if (cpu)
+		{
+			cpu->test_state();
+		}
+
 		return true;
 	}
 
@@ -1139,454 +1227,92 @@ bool handle_access_violation(u32 addr, bool is_writing, x64_context* context)
 
 		// skip processed instruction
 		RIP(context) += i_size;
+		g_tls_fault_spu++;
 		return true;
 	}
 
-	// check if fault is caused by the reservation
-	return vm::reservation_query(addr, (u32)a_size, is_writing, [&]() -> bool
+	if (vm::check_addr(addr, std::max<std::size_t>(1, d_size), vm::page_allocated | (is_writing ? vm::page_writable : vm::page_readable)))
 	{
-		// write memory using "privileged" access to avoid breaking reservation
-		if (!d_size || !i_size)
+		if (cpu)
 		{
-			LOG_ERROR(MEMORY, "Invalid or unsupported instruction (op=%d, reg=%d, d_size=%lld, a_size=0x%llx, i_size=%lld)", (u32)op, (u32)reg, d_size, a_size, i_size);
-			report_opcode();
-			return false;
+			cpu->test_state();
 		}
 
-		switch (op)
-		{
-		case X64OP_STORE:
-		case X64OP_STORE_BE:
-		{
-			if (d_size == 16 && op == X64OP_STORE)
-			{
-				if (reg - X64R_XMM0 >= 16)
-				{
-					LOG_ERROR(MEMORY, "X64OP_STORE: d_size=16, reg=%d", (u32)reg);
-					return false;
-				}
-
-				std::memcpy(vm::base_priv(addr), XMMREG(context, reg - X64R_XMM0), 16);
-				break;
-			}
-
-			u64 reg_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, reg_value))
-			{
-				return false;
-			}
-
-			if (op == X64OP_STORE_BE && d_size == 2)
-			{
-				reg_value = se_storage<u16>::swap((u16)reg_value);
-			}
-			else if (op == X64OP_STORE_BE && d_size == 4)
-			{
-				reg_value = se_storage<u32>::swap((u32)reg_value);
-			}
-			else if (op == X64OP_STORE_BE && d_size == 8)
-			{
-				reg_value = se_storage<u64>::swap(reg_value);
-			}
-			else if (op == X64OP_STORE_BE)
-			{
-				return false;	
-			}
-
-			if (d_size == 1)
-			{
-				*(volatile u8*)vm::base_priv(addr) = (u8)reg_value;
-			}
-			else if (d_size == 2 && addr % 2 == 0)
-			{
-				*(volatile u16*)vm::base_priv(addr) = (u16)reg_value; 
-			}
-			else if (d_size == 4 && addr % 4 == 0)
-			{
-				*(volatile u32*)vm::base_priv(addr) = (u32)reg_value;
-			}
-			else if (d_size == 8 && addr % 8 == 0)
-			{
-				*(volatile u64*)vm::base_priv(addr) = (u64)reg_value;
-			}
-			else
-			{
-				std::memcpy(vm::base_priv(addr), &reg_value, d_size);
-			}
-			
-			break;
-		}
-		case X64OP_MOVS:
-		{
-			if (d_size > 8)
-			{
-				LOG_ERROR(MEMORY, "X64OP_MOVS: d_size=%lld", d_size);
-				return false;
-			}
-
-			if (vm::base(addr) != (void*)RDI(context))
-			{
-				LOG_ERROR(MEMORY, "X64OP_MOVS: rdi=0x%llx, rsi=0x%llx, addr=0x%x", (u64)RDI(context), (u64)RSI(context), addr);
-				return false;
-			}
-
-			u32 a_addr = addr;
-
-			while (a_addr >> 12 == addr >> 12)
-			{
-				u64 value;
-
-				// copy data
-				std::memcpy(&value, (void*)RSI(context), d_size);
-				std::memcpy(vm::base_priv(a_addr), &value, d_size);
-
-				// shift pointers
-				if (EFLAGS(context) & 0x400 /* direction flag */)
-				{
-					LOG_ERROR(MEMORY, "X64OP_MOVS TODO: reversed direction");
-					return false;
-					//RSI(context) -= d_size;
-					//RDI(context) -= d_size;
-					//a_addr -= (u32)d_size;
-				}
-				else
-				{
-					RSI(context) += d_size;
-					RDI(context) += d_size;
-					a_addr += (u32)d_size;
-				}
-
-				// decrement counter
-				if (reg == X64_NOT_SET || !--RCX(context))
-				{
-					break;
-				}
-			}
-
-			if (reg == X64_NOT_SET || !RCX(context))
-			{
-				break;
-			}
-
-			// don't skip partially processed instruction
-			return true;
-		}
-		case X64OP_STOS:
-		{
-			if (d_size > 8)
-			{
-				LOG_ERROR(MEMORY, "X64OP_STOS: d_size=%lld", d_size);
-				return false;
-			}
-
-			if (vm::base(addr) != (void*)RDI(context))
-			{
-				LOG_ERROR(MEMORY, "X64OP_STOS: rdi=0x%llx, addr=0x%x", (u64)RDI(context), addr);
-				return false;
-			}
-
-			u64 value;
-			if (!get_x64_reg_value(context, X64R_RAX, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			u32 a_addr = addr;
-
-			while (a_addr >> 12 == addr >> 12)
-			{
-				// fill data with value
-				std::memcpy(vm::base_priv(a_addr), &value, d_size);
-
-				// shift pointers
-				if (EFLAGS(context) & 0x400 /* direction flag */)
-				{
-					LOG_ERROR(MEMORY, "X64OP_STOS TODO: reversed direction");
-					return false;
-					//RDI(context) -= d_size;
-					//a_addr -= (u32)d_size;
-				}
-				else
-				{
-					RDI(context) += d_size;
-					a_addr += (u32)d_size;
-				}
-
-				// decrement counter
-				if (reg == X64_NOT_SET || !--RCX(context))
-				{
-					break;
-				}
-			}
-
-			if (reg == X64_NOT_SET || !RCX(context))
-			{
-				break;
-			}
-
-			// don't skip partially processed instruction
-			return true;
-		}
-		case X64OP_XCHG:
-		{
-			u64 reg_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, reg_value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: reg_value = ((atomic_t<u8>*)vm::base_priv(addr))->exchange((u8)reg_value); break;
-			case 2: reg_value = ((atomic_t<u16>*)vm::base_priv(addr))->exchange((u16)reg_value); break;
-			case 4: reg_value = ((atomic_t<u32>*)vm::base_priv(addr))->exchange((u32)reg_value); break;
-			case 8: reg_value = ((atomic_t<u64>*)vm::base_priv(addr))->exchange((u64)reg_value); break;
-			default: return false;
-			}
-
-			if (!put_x64_reg_value(context, reg, d_size, reg_value))
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_CMPXCHG:
-		{
-			u64 reg_value, old_value, cmp_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, reg_value) || !get_x64_reg_value(context, X64R_RAX, d_size, i_size, cmp_value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: old_value = ((atomic_t<u8>*)vm::base_priv(addr))->compare_and_swap((u8)cmp_value, (u8)reg_value); break;
-			case 2: old_value = ((atomic_t<u16>*)vm::base_priv(addr))->compare_and_swap((u16)cmp_value, (u16)reg_value); break;
-			case 4: old_value = ((atomic_t<u32>*)vm::base_priv(addr))->compare_and_swap((u32)cmp_value, (u32)reg_value); break;
-			case 8: old_value = ((atomic_t<u64>*)vm::base_priv(addr))->compare_and_swap((u64)cmp_value, (u64)reg_value); break;
-			default: return false;
-			}
-
-			if (!put_x64_reg_value(context, X64R_RAX, d_size, old_value) || !set_x64_cmp_flags(context, d_size, cmp_value, old_value))
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_AND:
-		{
-			u64 value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: value = *(atomic_t<u8>*)vm::base_priv(addr) &= (u8)value; break;
-			case 2: value = *(atomic_t<u16>*)vm::base_priv(addr) &= (u16)value; break;
-			case 4: value = *(atomic_t<u32>*)vm::base_priv(addr) &= (u32)value; break;
-			case 8: value = *(atomic_t<u64>*)vm::base_priv(addr) &= (u64)value; break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, value, 0))
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_OR:
-		{
-			u64 value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: value = *(atomic_t<u8>*)vm::base_priv(addr) |= (u8)value; break;
-			case 2: value = *(atomic_t<u16>*)vm::base_priv(addr) |= (u16)value; break;
-			case 4: value = *(atomic_t<u32>*)vm::base_priv(addr) |= (u32)value; break;
-			case 8: value = *(atomic_t<u64>*)vm::base_priv(addr) |= (u64)value; break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, value, 0))
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_XOR:
-		{
-			u64 value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: value = *(atomic_t<u8>*)vm::base_priv(addr) ^= (u8)value; break;
-			case 2: value = *(atomic_t<u16>*)vm::base_priv(addr) ^= (u16)value; break;
-			case 4: value = *(atomic_t<u32>*)vm::base_priv(addr) ^= (u32)value; break;
-			case 8: value = *(atomic_t<u64>*)vm::base_priv(addr) ^= (u64)value; break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, value, 0))
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_INC:
-		{
-			u64 value;
-
-			switch (d_size)
-			{
-			case 1: value = ++*(atomic_t<u8>*)vm::base_priv(addr); break;
-			case 2: value = ++*(atomic_t<u16>*)vm::base_priv(addr); break;
-			case 4: value = ++*(atomic_t<u32>*)vm::base_priv(addr); break;
-			case 8: value = ++*(atomic_t<u64>*)vm::base_priv(addr); break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, value, 1, false)) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_DEC:
-		{
-			u64 value;
-
-			switch (d_size)
-			{
-			case 1: value = --*(atomic_t<u8>*)vm::base_priv(addr); break;
-			case 2: value = --*(atomic_t<u16>*)vm::base_priv(addr); break;
-			case 4: value = --*(atomic_t<u32>*)vm::base_priv(addr); break;
-			case 8: value = --*(atomic_t<u64>*)vm::base_priv(addr); break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, value, -1, false)) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_ADD:
-		{
-			u64 value, new_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: new_value = *(atomic_t<u8>*)vm::base_priv(addr) += (u8)value; break;
-			case 2: new_value = *(atomic_t<u16>*)vm::base_priv(addr) += (u16)value; break;
-			case 4: new_value = *(atomic_t<u32>*)vm::base_priv(addr) += (u32)value; break;
-			case 8: new_value = *(atomic_t<u64>*)vm::base_priv(addr) += (u64)value; break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, new_value, value)) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_ADC:
-		{
-			u64 value, new_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: new_value = *(atomic_t<u8>*)vm::base_priv(addr) += (u8)(value + (EFLAGS(context) & 1)); break;
-			case 2: new_value = *(atomic_t<u16>*)vm::base_priv(addr) += (u16)(value + (EFLAGS(context) & 1)); break;
-			case 4: new_value = *(atomic_t<u32>*)vm::base_priv(addr) += (u32)(value + (EFLAGS(context) & 1)); break;
-			case 8: new_value = *(atomic_t<u64>*)vm::base_priv(addr) += (u64)(value + (EFLAGS(context) & 1)); break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, new_value, value + (EFLAGS(context) & 1))) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_SUB:
-		{
-			u64 value, new_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: new_value = *(atomic_t<u8>*)vm::base_priv(addr) -= (u8)value; break;
-			case 2: new_value = *(atomic_t<u16>*)vm::base_priv(addr) -= (u16)value; break;
-			case 4: new_value = *(atomic_t<u32>*)vm::base_priv(addr) -= (u32)value; break;
-			case 8: new_value = *(atomic_t<u64>*)vm::base_priv(addr) -= (u64)value; break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, new_value, 0 - value)) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		case X64OP_SBB:
-		{
-			u64 value, new_value;
-			if (!get_x64_reg_value(context, reg, d_size, i_size, value))
-			{
-				return false;
-			}
-
-			switch (d_size)
-			{
-			case 1: new_value = *(atomic_t<u8>*)vm::base_priv(addr) -= (u8)(value + (EFLAGS(context) & 1)); break;
-			case 2: new_value = *(atomic_t<u16>*)vm::base_priv(addr) -= (u16)(value + (EFLAGS(context) & 1)); break;
-			case 4: new_value = *(atomic_t<u32>*)vm::base_priv(addr) -= (u32)(value + (EFLAGS(context) & 1)); break;
-			case 8: new_value = *(atomic_t<u64>*)vm::base_priv(addr) -= (u64)(value + (EFLAGS(context) & 1)); break;
-			default: return false;
-			}
-
-			if (!set_x64_cmp_flags(context, d_size, new_value, 0 - (value + (EFLAGS(context) & 1)))) // ???
-			{
-				return false;
-			}
-			break;
-		}
-		default:
-		{
-			LOG_ERROR(MEMORY, "Invalid or unsupported operation (op=%d, reg=%d, d_size=%lld, a_size=0x%llx, i_size=%lld)", (u32)op, (u32)reg, d_size, a_size, i_size);
-			report_opcode();
-			return false;
-		}
-		}
-
-		// skip processed instruction
-		RIP(context) += i_size;
 		return true;
-	});
+	}
 
-	// TODO: allow recovering from a page fault as a feature of PS3 virtual memory
+	if (cpu)
+	{
+		if (fxm::check<page_fault_notification_entries>())
+		{
+			for (const auto& entry : fxm::get<page_fault_notification_entries>()->entries)
+			{
+				auto mem = vm::get(vm::any, entry.start_addr);
+				if (!mem)
+				{
+					continue;
+				}
+				if (entry.start_addr <= addr && addr <= addr + mem->size - 1)
+				{
+					// Place the page fault event onto table so that other functions [sys_mmapper_free_address and ppu pagefault funcs] 
+					// know that this thread is page faulted and where.
+
+					auto pf_entries = fxm::get_always<page_fault_event_entries>();
+					{
+						semaphore_lock pf_lock(pf_entries->pf_mutex);
+						page_fault_event pf_event{ cpu->id, addr };
+						pf_entries->events.emplace_back(pf_event);
+					}
+
+					// Now, we notify the game that a page fault occurred so it can rectify it.
+					// Note, for data3, were the memory readable AND we got a page fault, it must be due to a write violation since reads are allowed.
+					be_t<u64> data1 = addr;
+					be_t<u64> data2 = (SYS_MEMORY_PAGE_FAULT_TYPE_PPU_THREAD << 32) + cpu->id; // TODO: fix hack for now that assumes PPU thread always.
+					be_t<u64> data3 = vm::check_addr(addr, a_size, vm::page_readable) ? SYS_MEMORY_PAGE_FAULT_CAUSE_READ_ONLY : SYS_MEMORY_PAGE_FAULT_CAUSE_NON_MAPPED;
+
+					LOG_ERROR(MEMORY, "Page_fault %s location 0x%x because of %s memory", is_writing ? "writing" : "reading",
+						addr, data3 == SYS_MEMORY_PAGE_FAULT_CAUSE_READ_ONLY ? "writing read-only" : "using unmapped");
+
+					error_code sending_error = sys_event_port_send(entry.port_id, data1, data2, data3);
+					
+					// If we fail due to being busy, wait a bit and try again.
+					while (sending_error == CELL_EBUSY)
+					{
+						lv2_obj::sleep(*cpu, 1000);
+						thread_ctrl::wait_for(1000);
+						sending_error = sys_event_port_send(entry.port_id, data1, data2, data3);
+					}
+					
+					if (sending_error)
+					{
+						fmt::throw_exception("Unknown error %x while trying to pass page fault.", sending_error.value);
+					}
+
+					lv2_obj::sleep(*cpu);
+					thread_ctrl::wait();
+					return true;
+				}
+			}
+		}
+
+		LOG_FATAL(MEMORY, "Access violation %s location 0x%x", is_writing ? "writing" : "reading", addr);
+		cpu->state += cpu_flag::dbg_pause;
+		cpu->check_state();
+	}
+
+	return true;
 }
+
+#ifdef __linux__
+extern "C" struct dwarf_eh_bases
+{
+	void* tbase;
+	void* dbase;
+	void* func;
+};
+
+extern "C" struct fde* _Unwind_Find_FDE(void* pc, struct dwarf_eh_bases* bases);
+#endif
 
 // Detect leaf function
 static bool is_leaf_function(u64 rip)
@@ -1604,49 +1330,54 @@ static bool is_leaf_function(u64 rip)
 
 	// No unwind info implies leaf function
 	return true;
+#elif __linux__
+	struct dwarf_eh_bases bases;
+
+	if (struct fde* f = _Unwind_Find_FDE(reinterpret_cast<void*>(rip), &bases))
+	{
+		const auto words = (const u32*)f;
+
+		if (words[0] < 0x14)
+		{
+			return true;
+		}
+
+		if (words[0] == 0x14 && !words[3] && !words[4])
+		{
+			return true;
+		}
+
+		// TODO
+		return false;
+	}
+
+	// No unwind info implies leaf function
+	return true;
 #else
-	// TODO
+	// Unsupported
 	return false;
 #endif
 }
-
-static thread_local u64 s_tls_ret_pos = 0;
-static thread_local u64 s_tls_ret_addr = 0;
-
-[[noreturn]] static void throw_access_violation(const char* cause, u64 addr)
-{
-	if (s_tls_ret_pos) *(u64*)s_tls_ret_pos = s_tls_ret_addr; // Fix stack
-	vm::throw_access_violation(addr, cause);
-	std::abort();
-}
-
-// Modify context in order to convert hardware exception to C++ exception
-static void prepare_throw_access_violation(x64_context* context, const char* cause, u32 address)
-{
-	// Set throw_access_violation() call args (old register values are lost)
-	ARG1(context) = (u64)cause;
-	ARG2(context) = address;
-
-	// Push the exception address as a "return" address (throw_access_violation() shall not return)
-	s_tls_ret_addr = RIP(context);
-	s_tls_ret_pos = is_leaf_function(s_tls_ret_addr) ? 0 : RSP(context) -= sizeof(u64);
-	RIP(context) = (u64)std::addressof(throw_access_violation);
-}
-
-static void _handle_interrupt(x64_context* ctx);
 
 #ifdef _WIN32
 
 static LONG exception_handler(PEXCEPTION_POINTERS pExp)
 {
-	const u64 addr64 = pExp->ExceptionRecord->ExceptionInformation[1] - (u64)vm::base(0);
+	const u64 addr64 = pExp->ExceptionRecord->ExceptionInformation[1] - (u64)vm::g_base_addr;
+	const u64 exec64 = pExp->ExceptionRecord->ExceptionInformation[1] - (u64)vm::g_exec_addr;
 	const bool is_writing = pExp->ExceptionRecord->ExceptionInformation[0] != 0;
 
 	if (pExp->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && addr64 < 0x100000000ull)
 	{
-		vm::g_tls_fault_count++;
-
 		if (thread_ctrl::get_current() && handle_access_violation((u32)addr64, is_writing, pExp->ContextRecord))
+		{
+			return EXCEPTION_CONTINUE_EXECUTION;
+		}
+	}
+
+	if (pExp->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && exec64 < 0x100000000ull)
+	{
+		if (thread_ctrl::get_current() && handle_access_violation((u32)exec64, is_writing, pExp->ContextRecord))
 		{
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
@@ -1661,16 +1392,7 @@ static LONG exception_filter(PEXCEPTION_POINTERS pExp)
 
 	if (pExp->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
 	{
-		const u64 addr64 = pExp->ExceptionRecord->ExceptionInformation[1] - (u64)vm::base(0);
 		const auto cause = pExp->ExceptionRecord->ExceptionInformation[0] != 0 ? "writing" : "reading";
-
-		if (!(vm::g_tls_fault_count & (1ull << 63)) && addr64 < 0x100000000ull)
-		{
-			vm::g_tls_fault_count |= (1ull << 63);
-			// Setup throw_access_violation() call on the context
-			prepare_throw_access_violation(pExp->ContextRecord, cause, (u32)addr64);
-			return EXCEPTION_CONTINUE_EXECUTION;
-		}
 
 		msg += fmt::format("Segfault %s location %p at %p.\n", cause, pExp->ExceptionRecord->ExceptionInformation[1], pExp->ExceptionRecord->ExceptionAddress);
 	}
@@ -1737,13 +1459,6 @@ static LONG exception_filter(PEXCEPTION_POINTERS pExp)
 
 	msg += fmt::format("RPCS3 image base: %p.\n", GetModuleHandle(NULL));
 
-	if (pExp->ExceptionRecord->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION)
-	{
-		msg += "\n"
-			"Illegal instruction exception occured.\n"
-			"Note that your CPU must support SSSE3 extension.\n";
-	}
-
 	// TODO: print registers and the callstack
 
 	// Report fatal error
@@ -1756,13 +1471,11 @@ const bool s_exception_handler_set = []() -> bool
 	if (!AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER)exception_handler))
 	{
 		report_fatal_error("AddVectoredExceptionHandler() failed.");
-		std::abort();
 	}
 
 	if (!SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)exception_filter))
 	{
 		report_fatal_error("SetUnhandledExceptionFilter() failed.");
-		std::abort();
 	}
 
 	return true;
@@ -1774,37 +1487,41 @@ static void signal_handler(int sig, siginfo_t* info, void* uct)
 {
 	x64_context* context = (ucontext_t*)uct;
 
-	if (sig == SIGUSR1)
-	{
-		return _handle_interrupt(context);
-	}
-
 #ifdef __APPLE__
 	const bool is_writing = context->uc_mcontext->__es.__err & 0x2;
+#elif defined(__DragonFly__) || defined(__FreeBSD__)
+	const bool is_writing = context->uc_mcontext.mc_err & 0x2;
+#elif defined(__OpenBSD__)
+	const bool is_writing = context->sc_err & 0x2;
+#elif defined(__NetBSD__)
+	const bool is_writing = context->uc_mcontext.__gregs[_REG_ERR] & 0x2;
 #else
 	const bool is_writing = context->uc_mcontext.gregs[REG_ERR] & 0x2;
 #endif
 
-	const u64 addr64 = (u64)info->si_addr - (u64)vm::base(0);
+	const u64 addr64 = (u64)info->si_addr - (u64)vm::g_base_addr;
+	const u64 exec64 = (u64)info->si_addr - (u64)vm::g_exec_addr;
 	const auto cause = is_writing ? "writing" : "reading";
 
 	if (addr64 < 0x100000000ull)
 	{
-		vm::g_tls_fault_count++;
-
 		// Try to process access violation
-		if (!thread_ctrl::get_current() || !handle_access_violation((u32)addr64, is_writing, context))
+		if (thread_ctrl::get_current() && handle_access_violation((u32)addr64, is_writing, context))
 		{
-			// Setup throw_access_violation() call on the context
-			prepare_throw_access_violation(context, cause, (u32)addr64);
+			return;
 		}
 	}
-	else
+
+	if (exec64 < 0x100000000ull)
 	{
-		// TODO (debugger interaction)
-		report_fatal_error(fmt::format("Segfault %s location %p at %p.", cause, info->si_addr, RIP(context)));
-		std::abort();
+		if (thread_ctrl::get_current() && handle_access_violation((u32)exec64, is_writing, context))
+		{
+			return;
+		}
 	}
+
+	// TODO (debugger interaction)
+	report_fatal_error(fmt::format("Segfault %s location %p at %p.", cause, info->si_addr, RIP(context)));
 }
 
 const bool s_exception_handler_set = []() -> bool
@@ -1820,127 +1537,72 @@ const bool s_exception_handler_set = []() -> bool
 		std::abort();
 	}
 
-	sa.sa_sigaction = signal_handler;
-
-	if (::sigaction(SIGUSR1, &sa, NULL) == -1)
-	{
-		std::printf("sigaction(SIGUSR1) failed (0x%x).", errno);
-		std::abort();
-	}
-
 	return true;
 }();
 
 #endif
-
-const bool s_self_test = []() -> bool
-{
-	// Find ret instruction
-	if ((*(u8*)throw_access_violation & 0xF6) == 0xC2)
-	{
-		std::abort();
-	}
-
-	return true;
-}();
-
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <exception>
-#include <chrono>
-
-thread_local DECLARE(thread_ctrl::g_tls_this_thread) = nullptr;
-
-struct thread_ctrl::internal
-{
-	std::mutex mutex;
-	std::condition_variable cond;
-	std::condition_variable jcv; // Allows simultaneous joining
-	std::condition_variable icv;
-
-	task_stack atexit;
-
-	std::exception_ptr exception; // Stored exception
-
-	std::chrono::high_resolution_clock::time_point time_limit;
-
-#ifdef _WIN32
-	DWORD thread_id = 0;
-#endif
-
-	x64_context _context{};
-	x64_context* const thread_ctx = &this->_context;
-
-	atomic_t<void(*)()> interrupt{}; // Interrupt function
-};
-
-thread_local thread_ctrl::internal* g_tls_internal = nullptr;
-
-extern std::condition_variable& get_current_thread_cv()
-{
-	return g_tls_internal->cond;
-}
 
 // TODO
 extern atomic_t<u32> g_thread_count(0);
 
+thread_local DECLARE(thread_ctrl::g_tls_this_thread) = nullptr;
+
 extern thread_local std::string(*g_tls_log_prefix)();
+
+DECLARE(thread_ctrl::g_native_core_layout) { native_core_arrangement::undefined };
 
 void thread_ctrl::start(const std::shared_ptr<thread_ctrl>& ctrl, task_stack task)
 {
-	reinterpret_cast<std::thread&>(ctrl->m_thread) = std::thread([ctrl, task = std::move(task)]
+#ifdef _WIN32
+	using thread_result = uint;
+	using thread_type = thread_result(__stdcall*)(void* arg);
+#else
+	using thread_result = void*;
+	using thread_type = thread_result(*)(void* arg);
+#endif
+
+	// Thread entry point
+	const thread_type entry = [](void* arg) -> thread_result
 	{
+		// Recover shared_ptr from short-circuited thread_ctrl object pointer
+		const std::shared_ptr<thread_ctrl> ctrl = static_cast<thread_ctrl*>(arg)->m_self;
+
 		try
 		{
 			ctrl->initialize();
-			task.exec();
+			task_stack{std::move(ctrl->m_task)}.invoke();
 		}
 		catch (...)
 		{
-			ctrl->m_data->exception = std::current_exception();
+			// Capture exception
+			ctrl->finalize(std::current_exception());
+			return 0;
 		}
 
-		ctrl->finalize();
-	});
-}
+		ctrl->finalize(nullptr);
+		return 0;
+	};
 
-void thread_ctrl::wait_start(u64 timeout)
-{
-	m_data->time_limit = std::chrono::high_resolution_clock::now() + std::chrono::microseconds(timeout);
-}
+	ctrl->m_self = ctrl;
+	ctrl->m_task = std::move(task);
 
-bool thread_ctrl::wait_wait(u64 timeout)
-{
-	std::unique_lock<std::mutex> lock(m_data->mutex, std::adopt_lock);
+	// TODO: implement simple thread pool
+#ifdef _WIN32
+	std::uintptr_t thread = _beginthreadex(nullptr, 0, entry, ctrl.get(), 0, nullptr);
+	verify("thread_ctrl::start" HERE), thread != 0;
+#else
+	pthread_t thread;
+	verify("thread_ctrl::start" HERE), pthread_create(&thread, nullptr, entry, ctrl.get()) == 0;
+#endif
 
-	if (timeout && m_data->cond.wait_until(lock, m_data->time_limit) == std::cv_status::timeout)
-	{
-		lock.release();
-		return false;
-	}
-
-	m_data->cond.wait(lock);
-	lock.release();
-	return true;
-}
-
-void thread_ctrl::test()
-{
-	if (m_data && m_data->exception)
-	{
-		std::rethrow_exception(m_data->exception);
-	}
+	// TODO: this is unsafe and must be duplicated in thread_ctrl::initialize
+	ctrl->m_thread = (uintptr_t)thread;
 }
 
 void thread_ctrl::initialize()
 {
 	// Initialize TLS variable
 	g_tls_this_thread = this;
-	g_tls_internal = this->m_data;
-#ifdef _WIN32
-	m_data->thread_id = GetCurrentThreadId();
-#endif
 
 	g_tls_log_prefix = []
 	{
@@ -1949,8 +1611,7 @@ void thread_ctrl::initialize()
 
 	++g_thread_count;
 
-#if defined(_MSC_VER)
-
+#ifdef _MSC_VER
 	struct THREADNAME_INFO
 	{
 		DWORD dwType;
@@ -1976,296 +1637,375 @@ void thread_ctrl::initialize()
 		{
 		}
 	}
-
 #endif
 }
 
-void thread_ctrl::finalize() noexcept
+void thread_ctrl::finalize(std::exception_ptr eptr) noexcept
 {
-	// Disable and discard possible interrupts
-	interrupt_disable();
-	test_interrupt();
+	// Run atexit functions
+	m_task.invoke();
+	m_task.reset();
 
-	// TODO
-	vm::reservation_free();
+#ifdef _WIN32
+	ULONG64 cycles{};
+	QueryThreadCycleTime(GetCurrentThread(), &cycles);
+	FILETIME ctime, etime, ktime, utime;
+	GetThreadTimes(GetCurrentThread(), &ctime, &etime, &ktime, &utime);
+	const u64 time = ((ktime.dwLowDateTime | (u64)ktime.dwHighDateTime << 32) + (utime.dwLowDateTime | (u64)utime.dwHighDateTime << 32)) * 100ull;
+#elif defined(RUSAGE_THREAD)
+	const u64 cycles = 0; // Not supported
+	struct ::rusage stats{};
+	::getrusage(RUSAGE_THREAD, &stats);
+	const u64 time = (stats.ru_utime.tv_sec + stats.ru_stime.tv_sec) * 1000000000ull + (stats.ru_utime.tv_usec + stats.ru_stime.tv_usec) * 1000ull;
+#else
+	const u64 cycles = 0;
+	const u64 time = 0;
+#endif
 
-	// Call atexit functions
-	if (m_data) m_data->atexit.exec();
+	g_tls_log_prefix = []
+	{
+		return g_tls_this_thread->m_name;
+	};
+
+	LOG_NOTICE(GENERAL, "Thread time: %fs (%fGc); Faults: %u [rsx:%u, spu:%u];",
+		time / 1000000000.,
+		cycles / 1000000000.,
+		g_tls_fault_all,
+		g_tls_fault_rsx,
+		g_tls_fault_spu);
 
 	--g_thread_count;
 
-#ifdef _WIN32
-	ULONG64 time;
-	QueryThreadCycleTime(GetCurrentThread(), &time);
-	LOG_NOTICE(GENERAL, "Thread time: %f Gc", time / 1000000000.);
-#endif
+	// Untangle circular reference, set exception
+	semaphore_lock{m_mutex}, m_self.reset(), m_exception = eptr;
+
+	// Signal joining waiters
+	m_jcv.notify_all();
 }
 
-void thread_ctrl::push_atexit(task_stack task)
+void thread_ctrl::_push(task_stack task)
 {
-	m_data->atexit.push(std::move(task));
+	g_tls_this_thread->m_task.push(std::move(task));
+}
+
+bool thread_ctrl::_wait_for(u64 usec)
+{
+	auto _this = g_tls_this_thread;
+
+	struct half_lock
+	{
+		semaphore<>& ref;
+
+		void lock()
+		{
+			// Used to avoid additional lock + unlock
+		}
+
+		void unlock()
+		{
+			ref.post();
+		}
+	}
+	_lock{_this->m_mutex};
+	
+	do
+	{
+		// Mutex is unlocked at the start and after the waiting
+		if (u32 sig = _this->m_signal.load())
+		{
+			thread_ctrl::test();
+
+			if (sig & 1)
+			{
+				_this->m_signal &= ~1;
+				return true;
+			}
+		}
+
+		if (usec == 0)
+		{
+			// No timeout: return immediately
+			return false;
+		}
+
+		// Lock (semaphore)
+		_this->m_mutex.wait();
+
+		// Double-check the value
+		if (u32 sig = _this->m_signal.load())
+		{
+			if (sig & 2 && _this->m_exception)
+			{
+				_this->_throw();
+			}
+
+			if (sig & 1)
+			{
+				_this->m_signal &= ~1;
+				_this->m_mutex.post();
+				return true;
+			}
+		}
+	}
+	while (_this->m_cond.wait(_lock, std::exchange(usec, usec > cond_variable::max_timeout ? -1 : 0)));
+
+	// Timeout
+	return false;
+}
+
+[[noreturn]] void thread_ctrl::_throw()
+{
+	std::exception_ptr ex = std::exchange(m_exception, std::exception_ptr{});
+	m_signal &= ~3;
+	m_mutex.post();
+	std::rethrow_exception(std::move(ex));
+}
+
+void thread_ctrl::_notify(cond_variable thread_ctrl::* ptr)
+{
+	// Optimized lock + unlock
+	if (!m_mutex.get())
+	{
+		m_mutex.wait();
+		m_mutex.post();
+	}
+
+	(this->*ptr).notify_one();
 }
 
 thread_ctrl::thread_ctrl(std::string&& name)
 	: m_name(std::move(name))
 {
-	CHECK_STORAGE(std::thread, m_thread);
-
-#pragma push_macro("new")
-#undef new
-	new (&m_thread) std::thread;
-#pragma pop_macro("new")
-
-	initialize_once();
 }
 
 thread_ctrl::~thread_ctrl()
 {
-	if (reinterpret_cast<std::thread&>(m_thread).joinable())
+	if (m_thread)
 	{
-		reinterpret_cast<std::thread&>(m_thread).detach();
+#ifdef _WIN32
+		CloseHandle((HANDLE)m_thread.raw());
+#else
+		pthread_detach((pthread_t)m_thread.raw());
+#endif
 	}
-
-	delete m_data;
-
-	reinterpret_cast<std::thread&>(m_thread).~thread();
 }
 
-void thread_ctrl::initialize_once()
+std::exception_ptr thread_ctrl::get_exception() const
 {
-	if (UNLIKELY(!m_data))
-	{
-		auto ptr = new thread_ctrl::internal;
+	semaphore_lock lock(m_mutex);
+	return m_exception;
+}
 
-		if (!m_data.compare_and_swap_test(nullptr, ptr))
-		{
-			delete ptr;
-		}
+void thread_ctrl::set_exception(std::exception_ptr ptr)
+{
+	semaphore_lock lock(m_mutex);
+	m_exception = ptr;
+
+	if (m_exception)
+	{
+		m_signal |= 2;
+		m_cond.notify_one();
+	}
+	else
+	{
+		m_signal &= ~2;
 	}
 }
 
 void thread_ctrl::join()
 {
-	// Increase contention counter
-	const u32 _j = m_joining++;
+#ifdef _WIN32
+	//verify("thread_ctrl::join" HERE), WaitForSingleObjectEx((HANDLE)m_thread.load(), -1, false) == WAIT_OBJECT_0;
+#endif
 
-	if (LIKELY(_j >= 0x80000000))
-	{
-		// Already joined (signal condition)
-		m_joining = 0x80000000;
-	}
-	else if (LIKELY(_j == 0))
-	{
-		// Winner joins the thread
-		reinterpret_cast<std::thread&>(m_thread).join();
+	semaphore_lock lock(m_mutex);
 
-		// Notify others if necessary
-		if (UNLIKELY(m_joining.exchange(0x80000000) != 1))
-		{
-			// Serialize for reliable notification
-			m_data->mutex.lock();
-			m_data->mutex.unlock();
-			m_data->jcv.notify_all();
-		}
-	}
-	else
+	while (m_self)
 	{
-		// Hard way
-		std::unique_lock<std::mutex> lock(m_data->mutex);
-		m_data->jcv.wait(lock, [&] { return m_joining >= 0x80000000; });
+		m_jcv.wait(lock);
 	}
 
-	if (UNLIKELY(m_data && m_data->exception && !std::uncaught_exception()))
+	if (UNLIKELY(m_exception && !std::uncaught_exception()))
 	{
-		std::rethrow_exception(m_data->exception);
+		std::rethrow_exception(m_exception);
 	}
-}
-
-void thread_ctrl::lock()
-{
-	m_data->mutex.lock();
-}
-
-void thread_ctrl::unlock()
-{
-	m_data->mutex.unlock();
-}
-
-void thread_ctrl::lock_notify()
-{
-	if (UNLIKELY(g_tls_this_thread == this))
-	{
-		return;
-	}
-
-	// Serialize for reliable notification, condition is assumed to be changed externally
-	m_data->mutex.lock();
-	m_data->mutex.unlock();
-	m_data->cond.notify_one();
 }
 
 void thread_ctrl::notify()
 {
-	m_data->cond.notify_one();
-}
-
-void thread_ctrl::set_exception(std::exception_ptr e)
-{
-	m_data->exception = e;
-}
-
-static void _handle_interrupt(x64_context* ctx)
-{
-	// Copy context for further use (TODO: is it safe on all platforms?)
-	g_tls_internal->_context = *ctx;
-	thread_ctrl::handle_interrupt();
-}
-
-static thread_local void(*s_tls_handler)() = nullptr;
-
-[[noreturn]] static void execute_interrupt_handler()
-{
-	// Fix stack for throwing
-	if (s_tls_ret_pos) s_tls_ret_addr = std::exchange(*(u64*)s_tls_ret_pos, s_tls_ret_addr);
-
-	// Run either throwing or returning interrupt handler
-	s_tls_handler();
-
-	// Restore context in the case of return
-	const auto ctx = g_tls_internal->thread_ctx;
-
-	if (s_tls_ret_pos)
+	if (!(m_signal & 1))
 	{
-		RIP(ctx) = std::exchange(*(u64*)s_tls_ret_pos, s_tls_ret_addr);
-		RSP(ctx) += sizeof(u64);
+		m_signal |= 1;
+		_notify(&thread_ctrl::m_cond);
 	}
-	else
-	{
-		RIP(ctx) = s_tls_ret_addr;
-	}
-
-#ifdef _WIN32
-	RtlRestoreContext(ctx, nullptr);
-#else
-	::setcontext(ctx);
-#endif
 }
 
-void thread_ctrl::handle_interrupt()
+void thread_ctrl::test()
 {
 	const auto _this = g_tls_this_thread;
-	const auto ctx = g_tls_internal->thread_ctx;
 
-	if (_this->m_guard & 0x80000000)
+	if (_this->m_signal & 2)
 	{
-		// Discard interrupt if interrupts are disabled
-		if (g_tls_internal->interrupt.exchange(nullptr))
-		{
-			_this->lock();
-			_this->unlock();
-			g_tls_internal->icv.notify_one();
-		}
-	}
-	else if (_this->m_guard == 0)
-	{
-		// Set interrupt immediately if no guard set
-		if (const auto handler = g_tls_internal->interrupt.exchange(nullptr))
-		{
-			_this->lock();
-			_this->unlock();
-			g_tls_internal->icv.notify_one();
+		_this->m_mutex.wait();
 
-#ifdef _WIN32
-			// Install function call
-			s_tls_ret_addr = RIP(ctx);
-			s_tls_ret_pos = is_leaf_function(s_tls_ret_addr) ? 0 : RSP(ctx) -= sizeof(u64);
-			s_tls_handler = handler;
-			RIP(ctx) = (u64)execute_interrupt_handler;
-#else
-			// Call handler directly (TODO: install function call preserving red zone)
-			return handler();
-#endif
+		if (_this->m_exception)
+		{
+			_this->_throw();
 		}
+
+		_this->m_mutex.post();
 	}
-	else
-	{
-		// Set delayed interrupt otherwise
-		_this->m_guard |= 0x40000000;
-	}
-	
-#ifdef _WIN32
-	RtlRestoreContext(ctx, nullptr);
-#endif
 }
 
-void thread_ctrl::interrupt(void(*handler)())
+void thread_ctrl::detect_cpu_layout()
 {
-	verify(HERE), this != g_tls_this_thread; // TODO: self-interrupt
-	verify(HERE), m_data->interrupt.compare_and_swap_test(nullptr, handler); // TODO: multiple interrupts
-
-#ifdef _WIN32
-	const auto ctx = m_data->thread_ctx;
-
-	const HANDLE nt = OpenThread(THREAD_ALL_ACCESS, FALSE, m_data->thread_id);
-	verify(HERE), nt;
-	verify(HERE), SuspendThread(nt) != -1;
-
-	ctx->ContextFlags = CONTEXT_FULL;
-	verify(HERE), GetThreadContext(nt, ctx);
-
-	ctx->ContextFlags = CONTEXT_FULL;
-	const u64 _rip = RIP(ctx);
-	RIP(ctx) = (u64)std::addressof(thread_ctrl::handle_interrupt);
-	verify(HERE), SetThreadContext(nt, ctx);
-
-	RIP(ctx) = _rip;
-	verify(HERE), ResumeThread(nt) != -1;
-	CloseHandle(nt);
-#else
-	pthread_kill(reinterpret_cast<std::thread&>(m_thread).native_handle(), SIGUSR1);
-#endif
-
-	std::unique_lock<std::mutex> lock(m_data->mutex, std::adopt_lock);
-
-	while (m_data->interrupt)
-	{
-		m_data->icv.wait(lock);
-	}
-
-	lock.release();
-}
-
-void thread_ctrl::test_interrupt()
-{
-	if (m_guard & 0x80000000)
-	{
-		if (m_data->interrupt.exchange(nullptr))
-		{
-			lock(), unlock(), m_data->icv.notify_one();
-		}
-		
+	if (!g_native_core_layout.compare_and_swap_test(native_core_arrangement::undefined, native_core_arrangement::generic))
 		return;
-	}
 
-	if (m_guard == 0x40000000 && !std::uncaught_exception())
+	const auto system_id = utils::get_system_info();
+	if (system_id.find("Ryzen") != std::string::npos)
 	{
-		m_guard = 0;
+		g_native_core_layout.store(native_core_arrangement::amd_ccx);
+	}
+	else if (system_id.find("i3") != std::string::npos || system_id.find("i7") != std::string::npos)
+	{
+		g_native_core_layout.store(native_core_arrangement::intel_ht);
+	}
+}
 
-		// Execute delayed interrupt handler
-		if (const auto handler = m_data->interrupt.exchange(nullptr))
+u16 thread_ctrl::get_affinity_mask(thread_class group)
+{
+	detect_cpu_layout();
+
+	if (const auto thread_count = std::thread::hardware_concurrency())
+	{
+		const u16 all_cores_mask = thread_count < 16 ? (u16)(~(UINT16_MAX << thread_count)): UINT16_MAX;
+
+		switch (g_native_core_layout)
 		{
-			lock(), unlock(), m_data->icv.notify_one();
+		default:
+		case native_core_arrangement::generic:
+		{
+			return all_cores_mask;
+		}
+		case native_core_arrangement::amd_ccx:
+		{
+			u16 spu_mask, ppu_mask, rsx_mask;
+			if (thread_count >= 16)
+			{
+				// Threadripper, R7
+				// Assign threads 8-16
+				// It appears some windows code is bound to lower core addresses, binding 8-16 is alot faster than 0-7
+				ppu_mask = spu_mask = 0b1111111100000000;
+				rsx_mask = all_cores_mask;
+			}
+			else if (thread_count == 12)
+			{
+				// 1600/2600 (x)
+				ppu_mask = spu_mask = 0b111111000000;
+				rsx_mask = all_cores_mask;
+			}
+			else
+			{
+				// R5 & R3 don't seem to improve performance no matter how these are shuffled
+				ppu_mask = spu_mask = rsx_mask = 0b11111111 & all_cores_mask;
+			}
 
-			return handler();
+			switch (group)
+			{
+			default:
+			case thread_class::general:
+				return all_cores_mask;
+			case thread_class::rsx:
+				return rsx_mask;
+			case thread_class::ppu:
+				return ppu_mask;
+			case thread_class::spu:
+				return spu_mask;
+			}
+		}
+		case native_core_arrangement::intel_ht:
+		{
+			if (thread_count <= 4)
+			{
+				//i3 or worse
+				switch (group)
+				{
+				case thread_class::rsx:
+				case thread_class::ppu:
+					return (0b0101 & all_cores_mask);
+				case thread_class::spu:
+					return (0b1010 & all_cores_mask);
+				case thread_class::general:
+					return all_cores_mask;
+				}
+			}
+
+			return all_cores_mask;
+		}
 		}
 	}
+
+	return UINT16_MAX;
 }
 
-void thread_ctrl::sleep(u64 useconds)
+void thread_ctrl::set_native_priority(int priority)
 {
-	std::this_thread::sleep_for(std::chrono::microseconds(useconds));
+#ifdef _WIN32
+	HANDLE _this_thread = GetCurrentThread();
+	INT native_priority = THREAD_PRIORITY_NORMAL;
+
+	if (priority > 0)
+		native_priority = THREAD_PRIORITY_ABOVE_NORMAL;
+	if (priority < 0)
+		native_priority = THREAD_PRIORITY_BELOW_NORMAL;
+
+	if (!SetThreadPriority(_this_thread, native_priority))
+	{
+		LOG_ERROR(GENERAL, "SetThreadPriority() failed: 0x%x", GetLastError());
+	}
+#else
+	int policy;
+	struct sched_param param;
+
+	pthread_getschedparam(pthread_self(), &policy, &param);
+
+	if (priority > 0)
+		param.sched_priority = sched_get_priority_max(policy);
+	if (priority < 0)
+		param.sched_priority = sched_get_priority_min(policy);
+
+	if (int err = pthread_setschedparam(pthread_self(), policy, &param))
+	{
+		LOG_ERROR(GENERAL, "pthraed_setschedparam() failed: %d", err);
+	}
+#endif
 }
 
+void thread_ctrl::set_thread_affinity_mask(u16 mask)
+{
+#ifdef _WIN32
+	HANDLE _this_thread = GetCurrentThread();
+	SetThreadAffinityMask(_this_thread, (DWORD_PTR)mask);
+#elif __APPLE__
+	thread_affinity_policy_data_t policy = { static_cast<integer_t>(mask) };
+	thread_port_t mach_thread = pthread_mach_thread_np(pthread_self());
+	thread_policy_set(mach_thread, THREAD_AFFINITY_POLICY, (thread_policy_t)&policy, 1);
+#elif defined(__linux__) || defined(__DragonFly__) || defined(__FreeBSD__)
+	cpu_set_t cs;
+	CPU_ZERO(&cs);
+
+	for (u32 core = 0; core < 16u; ++core)
+	{
+		if ((u32)mask & (1u << core))
+		{
+			CPU_SET(core, &cs);
+		}
+	}
+
+	pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cs);
+#endif
+}
 
 named_thread::named_thread()
 {
@@ -2291,6 +2031,7 @@ void named_thread::start_thread(const std::shared_ptr<void>& _this)
 		try
 		{
 			LOG_TRACE(GENERAL, "Thread started");
+			on_spawn();
 			on_task();
 			LOG_TRACE(GENERAL, "Thread ended");
 		}
@@ -2299,11 +2040,11 @@ void named_thread::start_thread(const std::shared_ptr<void>& _this)
 			LOG_FATAL(GENERAL, "%s thrown: %s", typeid(e).name(), e.what());
 			Emu.Pause();
 		}
-		catch (EmulationStopped)
-		{
-			LOG_NOTICE(GENERAL, "Thread aborted");
-		}
 
 		on_exit();
 	});
+}
+
+task_stack::task_base::~task_base()
+{
 }

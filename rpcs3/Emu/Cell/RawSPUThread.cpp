@@ -7,7 +7,7 @@
 #include "Emu/Cell/RawSPUThread.h"
 
 // Originally, SPU MFC registers are accessed externally in a concurrent manner (don't mix with channels, SPU MFC channels are isolated)
-thread_local spu_mfc_arg_t raw_spu_mfc[8] = {};
+thread_local spu_mfc_cmd g_tls_mfc[8] = {};
 
 void RawSPUThread::cpu_task()
 {
@@ -21,7 +21,7 @@ void RawSPUThread::cpu_task()
 	SPUThread::cpu_task();
 
 	// save next PC and current SPU Interrupt status
-	npc = pc | ((ch_event_stat & SPU_EVENT_INTR_ENABLED) != 0);
+	npc = pc | (interrupts_enabled);
 }
 
 void RawSPUThread::on_init(const std::shared_ptr<void>& _this)
@@ -32,7 +32,7 @@ void RawSPUThread::on_init(const std::shared_ptr<void>& _this)
 		const_cast<u32&>(index) = id;
 		const_cast<u32&>(offset) = verify(HERE, vm::falloc(RAW_SPU_BASE_ADDR + RAW_SPU_OFFSET * index, 0x40000));
 
-		SPUThread::on_init(_this);
+		cpu_thread::on_init(_this);
 	}
 }
 
@@ -49,13 +49,14 @@ bool RawSPUThread::read_reg(const u32 addr, u32& value)
 	{
 	case MFC_CMDStatus_offs:
 	{
-		value = MFC_PPU_DMA_CMD_ENQUEUE_SUCCESSFUL;
+		value = g_tls_mfc[index].cmd;
 		return true;
 	}
 
 	case MFC_QStatus_offs:
 	{
-		value = MFC_PROXY_COMMAND_QUEUE_EMPTY_FLAG | MFC_PPU_MAX_QUEUE_SPACE;
+		const auto size = mfc_proxy.size();
+		value = (size ? 0 : MFC_PROXY_COMMAND_QUEUE_EMPTY_FLAG) | (8 - size);
 		return true;
 	}
 
@@ -74,6 +75,25 @@ bool RawSPUThread::read_reg(const u32 addr, u32& value)
 	case SPU_Status_offs:
 	{
 		value = status;
+		return true;
+	}
+
+	case Prxy_TagStatus_offs:
+	{
+		value = mfc_proxy.size() ? 0 : +mfc_prxy_mask;
+		return true;
+	}
+
+	case SPU_NPC_offs:
+	{
+		//npc = pc | ((ch_event_stat & SPU_EVENT_INTR_ENABLED) != 0);
+		value = npc;
+		return true;
+	}
+
+	case SPU_RunCntl_offs:
+	{
+		value = run_ctrl;
 		return true;
 	}
 	}
@@ -103,37 +123,35 @@ bool RawSPUThread::write_reg(const u32 addr, const u32 value)
 			break;
 		}
 
-		raw_spu_mfc[index].lsa = value;
+		g_tls_mfc[index].lsa = value;
 		return true;
 	}
 
 	case MFC_EAH_offs:
 	{
-		raw_spu_mfc[index].eah = value;
+		g_tls_mfc[index].eah = value;
 		return true;
 	}
 
 	case MFC_EAL_offs:
 	{
-		raw_spu_mfc[index].eal = value;
+		g_tls_mfc[index].eal = value;
 		return true;
 	}
 
 	case MFC_Size_Tag_offs:
 	{
-		if (value >> 16 > 16 * 1024 || (u16)value >= 32)
-		{
-			break;
-		}
-
-		raw_spu_mfc[index].size_tag = value;
+		g_tls_mfc[index].tag = value & 0x1f;
+		g_tls_mfc[index].size = (value >> 16) & 0x7fff;
 		return true;
 	}
 
 	case MFC_Class_CMD_offs:
 	{
-		do_dma_transfer(value & ~MFC_START_MASK, raw_spu_mfc[index]);
-		raw_spu_mfc[index] = {}; // clear non-persistent data
+		g_tls_mfc[index].cmd = MFC(value & 0xff);
+		do_dma_transfer(g_tls_mfc[index]);
+		g_tls_mfc[index] = {};
+		g_tls_mfc[index].cmd = MFC(MFC_PPU_DMA_CMD_ENQUEUE_SUCCESSFUL);
 
 		if (value & MFC_START_MASK)
 		{
@@ -145,6 +163,7 @@ bool RawSPUThread::write_reg(const u32 addr, const u32 value)
 		
 	case Prxy_QueryType_offs:
 	{
+		// TODO
 		// 0 - no query requested; cancel previous request
 		// 1 - set (interrupt) status upon completion of any enabled tag groups
 		// 2 - set (interrupt) status upon completion of all enabled tag groups
@@ -164,6 +183,7 @@ bool RawSPUThread::write_reg(const u32 addr, const u32 value)
 
 	case Prxy_QueryMask_offs:
 	{
+		mfc_prxy_mask = value;
 		return true;
 	}
 
@@ -235,4 +255,6 @@ void spu_load_exec(const spu_exec_object& elf)
 
 	spu->cpu_init();
 	spu->npc = elf.header.e_entry;
+
+	fxm::get_always<mfc_thread>()->add_spu(std::move(spu));
 }

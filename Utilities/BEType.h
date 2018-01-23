@@ -301,6 +301,16 @@ union alignas(16) v128
 	}
 };
 
+template <typename T, std::size_t N, std::size_t M>
+struct offset32_array<v128::masked_array_t<T, N, M>>
+{
+	template <typename Arg>
+	static inline u32 index32(const Arg& arg)
+	{
+		return SIZE_32(T) * (static_cast<u32>(arg) ^ static_cast<u32>(M));
+	}
+};
+
 inline v128 operator|(const v128& left, const v128& right)
 {
 	return v128::fromV(_mm_or_si128(left.vi, right.vi));
@@ -460,7 +470,7 @@ struct se_storage<T, 16, 16>
 
 	static inline v128 swap(const v128& src)
 	{
-		return v128::fromV(_mm_shuffle_epi8(src.vi, _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)));
+		return v128::from64(se_storage<u64>::swap(src._u64[1]), se_storage<u64>::swap(src._u64[0]));
 	}
 
 	static inline v128 to(const T& src)

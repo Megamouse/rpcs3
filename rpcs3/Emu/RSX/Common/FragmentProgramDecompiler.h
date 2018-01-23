@@ -19,6 +19,85 @@
  */
 class FragmentProgramDecompiler
 {
+	struct temp_register
+	{
+		bool aliased_r0 = false;
+		bool aliased_h0 = false;
+		bool aliased_h1 = false;
+		bool last_write_half = false;
+
+		u32 real_index = UINT32_MAX;
+
+		void tag(u32 index, bool half_register)
+		{
+			if (half_register)
+			{
+				last_write_half = true;
+
+				if (index & 1)
+					aliased_h1 = true;
+				else
+					aliased_h0 = true;
+			}
+			else
+			{
+				aliased_r0 = true;
+				last_write_half = false;
+			}
+
+			if (real_index == UINT32_MAX)
+			{
+				if (half_register)
+					real_index = index >> 1;
+				else
+					real_index = index;
+			}
+		}
+
+		bool requires_gather(bool xy, bool zw) const
+		{
+			//Data fetched from the single precision register requires merging of the two half registers
+			//TODO: Check individual swizzle channels
+			if ((aliased_h0 && xy) || (aliased_h1 && zw))
+				return last_write_half;
+
+			return false;
+		}
+
+		bool requires_split(u32 /*index*/) const
+		{
+			//Data fetched from any of the two half registers requires sync with the full register
+			if (!last_write_half && aliased_r0)
+			{
+				//r0 has been written to
+				//TODO: Check for specific elements in real32 register
+				return true;
+			}
+
+			return false;
+		}
+
+		std::string gather_r()
+		{
+			std::string h0 = "h" + std::to_string(real_index << 1);
+			std::string h1 = "h" + std::to_string(real_index << 1 | 1);
+			std::string reg = "r" + std::to_string(real_index);
+			std::string ret = "//Invalid gather";
+
+			if (aliased_h0 && aliased_h1)
+				ret = reg + " = gather(" + h0 + ", " + h1 + ");";
+			else if (aliased_h0)
+				ret = reg + ".xy = gather(" + h0 + ");";
+			else if (aliased_h1)
+				ret = reg + ".zw = gather(" + h1 + ");";
+
+			last_write_half = false;
+			aliased_h0 = false;
+			aliased_h1 = false;
+			return ret;
+		}
+	};
+
 	OPDEST dst;
 	SRC0 src0;
 	SRC1 src1;
@@ -35,6 +114,8 @@ class FragmentProgramDecompiler
 	std::vector<u32> m_end_offsets;
 	std::vector<u32> m_else_offsets;
 
+	std::array<temp_register, 24> temp_registers;
+
 	std::string GetMask();
 
 	void SetDst(std::string code, bool append_mask = true);
@@ -44,9 +125,30 @@ class FragmentProgramDecompiler
 	std::string AddCond();
 	std::string AddConst();
 	std::string AddTex();
-	std::string Format(const std::string& code);
+	void AddFlowOp(std::string code);
+	std::string Format(const std::string& code, bool ignore_redirects = false);
+
+	//Technically a temporary workaround until we know what type3 is
+	std::string AddType3();
+
+	//Support the transform-2d temp result for use with TEXBEM
+	std::string AddX2d();
+
+	//Prevent division by zero by catching denormals
+	//Simpler variant where input and output are expected to be positive
+	std::string NotZero(const std::string& code);
+	std::string NotZeroPositive(const std::string& code);
+	
+	//Prevents operations from overflowing the desired range (tested with fp_dynamic3 autotest sample, DS2 for src1.input_prec_mod)
+	std::string ClampValue(const std::string& code, u32 precision);
+
+	/**
+	* Returns true if the dst set is not a vector (i.e only a single component)
+	*/
+	bool DstExpectsSca();
 
 	void AddCodeCond(const std::string& dst, const std::string& src);
+	std::string GetRawCond();
 	std::string GetCond();
 	template<typename T> std::string GetSRC(T src);
 	std::string BuildCode();
@@ -75,7 +177,11 @@ class FragmentProgramDecompiler
 	bool handle_tex_srb(u32 opcode);
 protected:
 	const RSXFragmentProgram &m_prog;
-	u32 m_ctrl;
+	u32 m_ctrl = 0;
+	
+	u32 m_2d_sampled_textures = 0;        //Mask of textures sampled as texture2D (conflicts with samplerShadow fetch)
+	u32 m_shadow_sampled_textures = 0;    //Mask of textures sampled as boolean shadow comparisons
+	
 	/** returns the type name of float vectors.
 	 */
 	virtual std::string getFloatTypeName(size_t elementCount) = 0;
@@ -104,6 +210,9 @@ protected:
 	/** insert declaration of shader constants.
 	*/
 	virtual void insertConstants(std::stringstream &OS) = 0;
+	/** insert helper functin definitions.
+	*/
+	virtual void insertGlobalFunctions(std::stringstream &OS) = 0;
 	/** insert beginning of main (signature, temporary declaration...)
 	*/
 	virtual void insertMainStart(std::stringstream &OS) = 0;

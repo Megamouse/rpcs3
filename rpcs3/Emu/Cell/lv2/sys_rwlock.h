@@ -17,35 +17,43 @@ struct sys_rwlock_attribute_t
 	};
 };
 
-struct lv2_rwlock_t
+struct lv2_rwlock final : lv2_obj
 {
-	const u64 name;
+	static const u32 id_base = 0x88000000;
+
 	const u32 protocol;
+	const u32 shared;
+	const u64 key;
+	const u64 name;
+	const s32 flags;
 
-	atomic_t<u32> readers{ 0 }; // reader lock count
-	std::shared_ptr<cpu_thread> writer; // writer lock owner
+	semaphore<> mutex;
+	atomic_t<s64> owner{0};
+	std::deque<cpu_thread*> rq;
+	std::deque<cpu_thread*> wq;
 
-	sleep_queue<cpu_thread> rsq; // threads trying to acquire readed lock
-	sleep_queue<cpu_thread> wsq; // threads trying to acquire writer lock
-
-	lv2_rwlock_t(u32 protocol, u64 name)
+	lv2_rwlock(u32 protocol, u32 shared, u64 key, s32 flags, u64 name)
 		: protocol(protocol)
+		, shared(shared)
+		, key(key)
+		, flags(flags)
 		, name(name)
 	{
 	}
-
-	void notify_all(lv2_lock_t);
 };
 
 // Aux
 class ppu_thread;
 
-// SysCalls
-s32 sys_rwlock_create(vm::ptr<u32> rw_lock_id, vm::ptr<sys_rwlock_attribute_t> attr);
-s32 sys_rwlock_destroy(u32 rw_lock_id);
-s32 sys_rwlock_rlock(ppu_thread& ppu, u32 rw_lock_id, u64 timeout);
-s32 sys_rwlock_tryrlock(u32 rw_lock_id);
-s32 sys_rwlock_runlock(u32 rw_lock_id);
-s32 sys_rwlock_wlock(ppu_thread& ppu, u32 rw_lock_id, u64 timeout);
-s32 sys_rwlock_trywlock(ppu_thread& ppu, u32 rw_lock_id);
-s32 sys_rwlock_wunlock(ppu_thread& ppu, u32 rw_lock_id);
+// Syscalls
+
+error_code sys_rwlock_create(vm::ps3::ptr<u32> rw_lock_id, vm::ps3::ptr<sys_rwlock_attribute_t> attr);
+error_code sys_rwlock_destroy(u32 rw_lock_id);
+error_code sys_rwlock_rlock(ppu_thread& ppu, u32 rw_lock_id, u64 timeout);
+error_code sys_rwlock_tryrlock(u32 rw_lock_id);
+error_code sys_rwlock_runlock(ppu_thread& ppu, u32 rw_lock_id);
+error_code sys_rwlock_wlock(ppu_thread& ppu, u32 rw_lock_id, u64 timeout);
+error_code sys_rwlock_trywlock(ppu_thread& ppu, u32 rw_lock_id);
+error_code sys_rwlock_wunlock(ppu_thread& ppu, u32 rw_lock_id);
+
+constexpr auto _sys_rwlock_trywlock = sys_rwlock_trywlock;

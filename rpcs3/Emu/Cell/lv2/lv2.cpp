@@ -1,10 +1,9 @@
 #include "stdafx.h"
-#include "Utilities/Config.h"
-#include "Utilities/AutoPause.h"
 #include "Emu/System.h"
 
 #include "Emu/Cell/PPUFunction.h"
 #include "Emu/Cell/ErrorCodes.h"
+#include "Emu/Cell/MFC.h"
 #include "sys_sync.h"
 #include "sys_lwmutex.h"
 #include "sys_lwcond.h"
@@ -15,6 +14,7 @@
 #include "sys_interrupt.h"
 #include "sys_memory.h"
 #include "sys_mmapper.h"
+#include "sys_net.h"
 #include "sys_ppu_thread.h"
 #include "sys_process.h"
 #include "sys_prx.h"
@@ -26,44 +26,37 @@
 #include "sys_timer.h"
 #include "sys_trace.h"
 #include "sys_tty.h"
+#include "sys_usbd.h"
 #include "sys_vm.h"
 #include "sys_fs.h"
 #include "sys_dbg.h"
-
-LOG_CHANNEL(sys_cond);
-LOG_CHANNEL(sys_dbg);
-LOG_CHANNEL(sys_event);
-LOG_CHANNEL(sys_event_flag);
-LOG_CHANNEL(sys_fs);
-LOG_CHANNEL(sys_interrupt);
-LOG_CHANNEL(sys_lwcond);
-LOG_CHANNEL(sys_lwmutex);
-LOG_CHANNEL(sys_memory);
-LOG_CHANNEL(sys_mmapper);
-LOG_CHANNEL(sys_mutex);
-LOG_CHANNEL(sys_ppu_thread);
-LOG_CHANNEL(sys_process);
-LOG_CHANNEL(sys_prx);
-LOG_CHANNEL(sys_rsx);
-LOG_CHANNEL(sys_rwlock);
-LOG_CHANNEL(sys_semaphore);
-LOG_CHANNEL(sys_spu);
-LOG_CHANNEL(sys_time);
-LOG_CHANNEL(sys_timer);
-LOG_CHANNEL(sys_trace);
-LOG_CHANNEL(sys_tty);
-LOG_CHANNEL(sys_vm);
+#include "sys_gamepad.h"
+#include "sys_ss.h"
 
 extern std::string ppu_get_syscall_name(u64 code);
 
-static constexpr ppu_function_t null_func = nullptr;
+template <>
+void fmt_class_string<ppu_syscall_code>::format(std::string& out, u64 arg)
+{
+	out += ppu_get_syscall_name(arg);
+}
+
+static bool null_func(ppu_thread& ppu)
+{
+	LOG_TODO(HLE, "Unimplemented syscall %s -> CELL_OK", ppu_syscall_code(ppu.gpr[11]));
+	ppu.gpr[3] = 0;
+	ppu.cia += 4;
+	return false;
+}
+
+std::array<ppu_function_t, 1024> g_ppu_syscall_table{};
 
 // UNS = Unused
 // ROOT = Root
 // DBG = Debug
 // PM = Product Mode
 // AuthID = Authentication ID
-std::array<ppu_function_t, 1024> g_ppu_syscall_table
+const std::array<ppu_function_t, 1024> s_ppu_syscall_table
 {
 	null_func,
 	BIND_FUNC(sys_process_getpid),                          //1   (0x001)
@@ -79,22 +72,22 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_process_is_spu_lock_line_reservation_address), //14  (0x00E)
 
 	null_func, null_func, null_func,                        //15-17  UNS
-	
+
 	BIND_FUNC(sys_process_getppid),                         //18  (0x012)
 	BIND_FUNC(sys_process_kill),                            //19  (0x013)
 	null_func,                                              //20  (0x014)  UNS
 	null_func,//BIND_FUNC(_sys_process_spawn),              //21  (0x015)  DBG
-	null_func,//BIND_FUNC(sys_process_exit),                //22  (0x016)
+	BIND_FUNC(_sys_process_exit),                           //22  (0x016)
 	BIND_FUNC(sys_process_wait_for_child2),                 //23  (0x017)  DBG
 	null_func,//BIND_FUNC(),                                //24  (0x018)  DBG
 	BIND_FUNC(sys_process_get_sdk_version),                 //25  (0x019)
-	null_func,//BIND_FUNC(_sys_process_exit),               //26  (0x01A)
+	BIND_FUNC(_sys_process_exit2),                          //26  (0x01A)
 	null_func,//BIND_FUNC(),                                //27  (0x01B)  DBG
 	null_func,//BIND_FUNC(_sys_process_get_number_of_object)//28  (0x01C)  ROOT
 	BIND_FUNC(sys_process_get_id),                          //29  (0x01D)  ROOT
 	BIND_FUNC(_sys_process_get_paramsfo),                   //30  (0x01E)
 	null_func,//BIND_FUNC(sys_process_get_ppu_guid),        //31  (0x01F)
-	
+
 	null_func, null_func, null_func, null_func, null_func, null_func, null_func, null_func, null_func, //32-40  UNS
 
 	BIND_FUNC(_sys_ppu_thread_exit),                        //41  (0x029)
@@ -113,8 +106,8 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_ppu_...),                     //54  (0x036)  ROOT
 	null_func,//BIND_FUNC(sys_ppu_...),                     //55  (0x037)  ROOT
 	BIND_FUNC(sys_ppu_thread_rename),                       //56  (0x038)
-	null_func,//BIND_FUNC(sys_ppu_thread_recover_page_fault)//57  (0x039)
-	null_func,//BIND_FUNC(sys_ppu_thread_get_page_fault_context),//58 (0x03A)
+	BIND_FUNC(sys_ppu_thread_recover_page_fault),           //57  (0x039)
+	BIND_FUNC(sys_ppu_thread_get_page_fault_context),       //58  (0x03A)
 	null_func,                                              //59  (0x03B)  UNS
 	BIND_FUNC(sys_trace_create),                            //60  (0x03C)
 	BIND_FUNC(sys_trace_start),                             //61  (0x03D)
@@ -196,7 +189,7 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_event_port_disconnect),                   //137 (0x089)
 	BIND_FUNC(sys_event_port_send),                         //138 (0x08A)
 	BIND_FUNC(sys_event_flag_get),                          //139 (0x08B)
-	null_func,//BIND_FUNC(sys_event_port_connect_ipc)       //140 (0x08C)
+	BIND_FUNC(sys_event_port_connect_ipc),                  //140 (0x08C)
 	BIND_FUNC(sys_timer_usleep),                            //141 (0x08D)
 	BIND_FUNC(sys_timer_sleep),                             //142 (0x08E)
 	null_func,//BIND_FUNC(sys_time_set_timezone)            //143 (0x08F)  ROOT
@@ -204,18 +197,18 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_time_get_current_time),                   //145 (0x091)
 	null_func,//BIND_FUNC(sys_time_get_system_time),        //146 (0x092)  ROOT
 	BIND_FUNC(sys_time_get_timebase_frequency),             //147 (0x093)
-	null_func,//BIND_FUNC(_sys_rwlock_trywlock)             //148 (0x094)
+	BIND_FUNC(_sys_rwlock_trywlock),                        //148 (0x094)
 	null_func,                                              //149 (0x095)  UNS
 	BIND_FUNC(sys_raw_spu_create_interrupt_tag),            //150 (0x096)
 	BIND_FUNC(sys_raw_spu_set_int_mask),                    //151 (0x097)
 	BIND_FUNC(sys_raw_spu_get_int_mask),                    //152 (0x098)
 	BIND_FUNC(sys_raw_spu_set_int_stat),                    //153 (0x099)
 	BIND_FUNC(sys_raw_spu_get_int_stat),                    //154 (0x09A)
-	null_func,//BIND_FUNC(sys_spu_image_get_information?)   //155 (0x09B)
+	BIND_FUNC(_sys_spu_image_get_information),              //155 (0x09B)
 	BIND_FUNC(sys_spu_image_open),                          //156 (0x09C)
-	null_func,//BIND_FUNC(sys_spu_image_import)             //157 (0x09D)
-	null_func,//BIND_FUNC(sys_spu_image_close)              //158 (0x09E)
-	null_func,//BIND_FUNC(sys_raw_spu_load)                 //159 (0x09F)
+	BIND_FUNC(_sys_spu_image_import),                       //157 (0x09D)
+	BIND_FUNC(_sys_spu_image_close),                        //158 (0x09E)
+	BIND_FUNC(_sys_spu_image_get_segments),                 //159 (0x09F)
 	BIND_FUNC(sys_raw_spu_create),                          //160 (0x0A0)
 	BIND_FUNC(sys_raw_spu_destroy),                         //161 (0x0A1)
 	null_func,                                              //162 (0x0A2)  UNS
@@ -235,8 +228,8 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_spu_thread_group_yield),                  //176 (0x0B0)
 	BIND_FUNC(sys_spu_thread_group_terminate),              //177 (0x0B1)
 	BIND_FUNC(sys_spu_thread_group_join),                   //178 (0x0B2)
-	null_func,//BIND_FUNC(sys_spu_thread_group_set_priority)//179 (0x0B3)
-	null_func,//BIND_FUNC(sys_spu_thread_group_get_priority)//180 (0x0B4)
+	BIND_FUNC(sys_spu_thread_group_set_priority),           //179 (0x0B3)
+	BIND_FUNC(sys_spu_thread_group_get_priority),           //180 (0x0B4)
 	BIND_FUNC(sys_spu_thread_write_ls),                     //181 (0x0B5)
 	BIND_FUNC(sys_spu_thread_read_ls),                      //182 (0x0B6)
 	null_func,                                              //183 (0x0B7)  UNS
@@ -299,7 +292,7 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func, null_func, null_func, null_func, null_func,  //255-259  UNS
 
 	null_func,//BIND_FUNC(sys_spu_image_open_by_fd)         //260 (0x104)
-	
+
 	null_func, null_func, null_func, null_func,             //264  UNS
 	null_func, null_func, null_func, null_func, null_func,  //269  UNS
 	null_func, null_func, null_func, null_func, null_func,  //274  UNS
@@ -322,10 +315,10 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_vm_sync),                                 //310 (0x136)
 	BIND_FUNC(sys_vm_test),                                 //311 (0x137)
 	BIND_FUNC(sys_vm_get_statistics),                       //312 (0x138)
-	null_func,//BIND_FUNC(sys_vm_memory_map (different))    //313 (0x139)
+	BIND_FUNC(sys_vm_memory_map_different),				    //313 (0x139) //BIND_FUNC(sys_vm_memory_map (different))
 	null_func,//BIND_FUNC(sys_...)                          //314 (0x13A)
 	null_func,//BIND_FUNC(sys_...)                          //315 (0x13B)
-	
+
 	null_func, null_func, null_func, null_func, null_func, null_func, null_func, null_func, //316-323  UNS
 
 	BIND_FUNC(sys_memory_container_create),                 //324 (0x144)  DBG
@@ -440,13 +433,13 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_overlay_get_module_dbg_info)  //458 (0x1CA)
 	null_func,                                              //459 (0x1CB)  UNS
 	null_func,//BIND_FUNC(sys_prx_dbg_get_module_id_list)   //460 (0x1CC)  ROOT
-	null_func,//BIND_FUNC(sys_prx_get_module_id_by_address) //461 (0x1CD)
+	BIND_FUNC(_sys_prx_get_module_id_by_address),           //461 (0x1CD)
 	null_func,                                              //462 (0x1CE)  UNS
-	null_func,//BIND_FUNC(sys_prx_load_module_by_fd)        //463 (0x1CF)
-	null_func,//BIND_FUNC(sys_prx_load_module_on_memcontainer_by_fd) //464 (0x1D0)
-	BIND_FUNC(sys_prx_load_module_list),         //465 (0x1D1)
-	null_func,//BIND_FUNC(sys_prx_load_module_list_on_memcontainer) //466 (0x1D2)
-	null_func,//BIND_FUNC(sys_prx_get_ppu_guid)             //467 (0x1D3)
+	BIND_FUNC(_sys_prx_load_module_by_fd),                  //463 (0x1CF)
+	BIND_FUNC(_sys_prx_load_module_on_memcontainer_by_fd),  //464 (0x1D0)
+	BIND_FUNC(_sys_prx_load_module_list),                   //465 (0x1D1)
+	BIND_FUNC(_sys_prx_load_module_list_on_memcontainer),   //466 (0x1D2)
+	BIND_FUNC(sys_prx_get_ppu_guid),                        //467 (0x1D3)
 	null_func,//BIND_FUNC(sys_...)                          //468 (0x1D4)  ROOT
 	null_func,                                              //469 (0x1D5)  UNS
 	null_func,//BIND_FUNC(sys_...)                          //470 (0x1D6)  ROOT
@@ -456,29 +449,29 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_...)                          //474 (0x1DA)
 	null_func,//BIND_FUNC(sys_...)                          //475 (0x1DB)  ROOT
 	null_func,//BIND_FUNC(sys_...)                          //476 (0x1DC)  ROOT
-	
+
 	null_func, null_func, null_func,                        //477-479  UNS
 
-	BIND_FUNC(sys_prx_load_module),                         //480 (0x1E0)
-	BIND_FUNC(sys_prx_start_module),                        //481 (0x1E1)
-	BIND_FUNC(sys_prx_stop_module),                         //482 (0x1E2)
-	BIND_FUNC(sys_prx_unload_module),                       //483 (0x1E3)
-	BIND_FUNC(sys_prx_register_module),                     //484 (0x1E4)
-	BIND_FUNC(sys_prx_query_module),                        //485 (0x1E5)
-	BIND_FUNC(sys_prx_register_library),                    //486 (0x1E6)
-	BIND_FUNC(sys_prx_unregister_library),                  //487 (0x1E7)
-	BIND_FUNC(sys_prx_link_library),                        //488 (0x1E8)
-	BIND_FUNC(sys_prx_unlink_library),                      //489 (0x1E9)
-	BIND_FUNC(sys_prx_query_library),                       //490 (0x1EA)
+	BIND_FUNC(_sys_prx_load_module),                        //480 (0x1E0)
+	BIND_FUNC(_sys_prx_start_module),                       //481 (0x1E1)
+	BIND_FUNC(_sys_prx_stop_module),                        //482 (0x1E2)
+	BIND_FUNC(_sys_prx_unload_module),                      //483 (0x1E3)
+	BIND_FUNC(_sys_prx_register_module),                    //484 (0x1E4)
+	BIND_FUNC(_sys_prx_query_module),                       //485 (0x1E5)
+	BIND_FUNC(_sys_prx_register_library),                   //486 (0x1E6)
+	BIND_FUNC(_sys_prx_unregister_library),                 //487 (0x1E7)
+	BIND_FUNC(_sys_prx_link_library),                       //488 (0x1E8)
+	BIND_FUNC(_sys_prx_unlink_library),                     //489 (0x1E9)
+	BIND_FUNC(_sys_prx_query_library),                      //490 (0x1EA)
 	null_func,                                              //491 (0x1EB)  UNS
 	null_func,//BIND_FUNC(sys_...)                          //492 (0x1EC)  DBG
 	null_func,//BIND_FUNC(sys_prx_dbg_get_module_info)      //493 (0x1ED)  DBG
-	null_func,//BIND_FUNC(sys_prx_get_module_list),         //494 (0x1EE)
-	null_func,//BIND_FUNC(sys_prx_get_module_info),         //495 (0x1EF)
-	null_func,//BIND_FUNC(sys_prx_get_module_id_by_name),   //496 (0x1F0)
-	null_func,//BIND_FUNC(sys_prx_load_module_on_memcontainer),//497 (0x1F1)
-	BIND_FUNC(sys_prx_start),                               //498 (0x1F2)
-	BIND_FUNC(sys_prx_stop),                                //499 (0x1F3)
+	BIND_FUNC(_sys_prx_get_module_list),                    //494 (0x1EE)
+	BIND_FUNC(_sys_prx_get_module_info),                    //495 (0x1EF)
+	BIND_FUNC(_sys_prx_get_module_id_by_name),              //496 (0x1F0)
+	BIND_FUNC(_sys_prx_load_module_on_memcontainer),        //497 (0x1F1)
+	BIND_FUNC(_sys_prx_start),                              //498 (0x1F2)
+	BIND_FUNC(_sys_prx_stop),                               //499 (0x1F3)
 	null_func,//BIND_FUNC(sys_hid_manager_open)             //500 (0x1F4)
 	null_func,//BIND_FUNC(sys_hid_manager_close)            //501 (0x1F5)
 	null_func,//BIND_FUNC(sys_hid_manager_read)             //502 (0x1F6)  ROOT
@@ -509,36 +502,36 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,                                              //527 (0x20F)  UNS
 	null_func,                                              //528 (0x210)  UNS
 	null_func,                                              //529 (0x211)  UNS
-	null_func,//BIND_FUNC(sys_usbd_initialize)              //530 (0x212)
-	null_func,//BIND_FUNC(sys_usbd_finalize)                //531 (0x213)
-	null_func,//BIND_FUNC(sys_usbd_get_device_list)         //532 (0x214)
-	null_func,//BIND_FUNC(sys_usbd_get_descriptor_size)     //533 (0x215)
-	null_func,//BIND_FUNC(sys_usbd_get_descriptor)          //534 (0x216)
-	null_func,//BIND_FUNC(sys_usbd_register_ldd)            //535 (0x217)
-	null_func,//BIND_FUNC(sys_usbd_unregister_ldd)          //536 (0x218)
-	null_func,//BIND_FUNC(sys_usbd_open_pipe)               //537 (0x219)
-	null_func,//BIND_FUNC(sys_usbd_open_default_pipe)       //538 (0x21A)
-	null_func,//BIND_FUNC(sys_usbd_close_pipe)              //539 (0x21B)
-	null_func,//BIND_FUNC(sys_usbd_receive_event)           //540 (0x21C)
-	null_func,//BIND_FUNC(sys_usbd_detect_event)            //541 (0x21D)
-	null_func,//BIND_FUNC(sys_usbd_attach)                  //542 (0x21E)
-	null_func,//BIND_FUNC(sys_usbd_transfer_data)           //543 (0x21F)
-	null_func,//BIND_FUNC(sys_usbd_isochronous_transfer_data) //544 (0x220)
-	null_func,//BIND_FUNC(sys_usbd_get_transfer_status)     //545 (0x221)
-	null_func,//BIND_FUNC(sys_usbd_get_isochronous_transfer_status) //546 (0x222)
-	null_func,//BIND_FUNC(sys_usbd_get_device_location)     //547 (0x223)
-	null_func,//BIND_FUNC(sys_usbd_send_event)              //548 (0x224)
+	BIND_FUNC(sys_usbd_initialize),                         //530 (0x212)
+	BIND_FUNC(sys_usbd_finalize),                           //531 (0x213)
+	BIND_FUNC(sys_usbd_get_device_list),                    //532 (0x214)
+	BIND_FUNC(sys_usbd_get_descriptor_size),                //533 (0x215)
+	BIND_FUNC(sys_usbd_get_descriptor),                     //534 (0x216)
+	BIND_FUNC(sys_usbd_register_ldd),                       //535 (0x217)
+	BIND_FUNC(sys_usbd_unregister_ldd),                     //536 (0x218)
+	BIND_FUNC(sys_usbd_open_pipe),                          //537 (0x219)
+	BIND_FUNC(sys_usbd_open_default_pipe),                  //538 (0x21A)
+	BIND_FUNC(sys_usbd_close_pipe),                         //539 (0x21B)
+	BIND_FUNC(sys_usbd_receive_event),                      //540 (0x21C)
+	BIND_FUNC(sys_usbd_detect_event),                       //541 (0x21D)
+	BIND_FUNC(sys_usbd_attach),                             //542 (0x21E)
+	BIND_FUNC(sys_usbd_transfer_data),                      //543 (0x21F)
+	BIND_FUNC(sys_usbd_isochronous_transfer_data),          //544 (0x220)
+	BIND_FUNC(sys_usbd_get_transfer_status),                //545 (0x221)
+	BIND_FUNC(sys_usbd_get_isochronous_transfer_status),    //546 (0x222)
+	BIND_FUNC(sys_usbd_get_device_location),                //547 (0x223)
+	BIND_FUNC(sys_usbd_send_event),                         //548 (0x224)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //549 (0x225)
-	null_func,//BIND_FUNC(sys_usbd_allocate_memory)         //550 (0x226)
-	null_func,//BIND_FUNC(sys_usbd_free_memory)             //551 (0x227)
+	BIND_FUNC(sys_usbd_allocate_memory),                    //550 (0x226)
+	BIND_FUNC(sys_usbd_free_memory),                        //551 (0x227)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //552 (0x228)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //553 (0x229)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //554 (0x22A)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //555 (0x22B)
-	null_func,//BIND_FUNC(sys_usbd_get_device_speed)        //556 (0x22C)
+	BIND_FUNC(sys_usbd_get_device_speed),                   //556 (0x22C)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //557 (0x22D)
 	null_func,//BIND_FUNC(sys_ubsd_...)                     //558 (0x22E)
-	null_func,//BIND_FUNC(sys_usbd_register_extra_ldd)      //559 (0x22F)
+	BIND_FUNC(sys_usbd_register_extra_ldd),                 //559 (0x22F)
 	null_func,//BIND_FUNC(sys_...)                          //560 (0x230)  ROOT
 	null_func,//BIND_FUNC(sys_...)                          //561 (0x231)  ROOT
 	null_func,//BIND_FUNC(sys_...)                          //562 (0x232)  ROOT
@@ -600,7 +593,7 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_storage_set_region_acl)       //618 (0x26A)
 	null_func,//BIND_FUNC(sys_storage_async_send_device_command) //619 (0x26B)
 	null_func,//BIND_FUNC(sys_...)                          //620 (0x26C)  ROOT
-	null_func,//BIND_FUNC(sys_gamepad_ycon_if)              //621 (0x26D)
+	BIND_FUNC(sys_gamepad_ycon_if),              //621 (0x26D)
 	null_func,//BIND_FUNC(sys_storage_get_region_offset)    //622 (0x26E)
 	null_func,//BIND_FUNC(sys_storage_set_emulated_speed)   //623 (0x26F)
 	null_func,//BIND_FUNC(sys_io_buffer_create)             //624 (0x270)
@@ -631,7 +624,7 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_rsxaudio_close_connection)    //655 (0x28F)
 	null_func,//BIND_FUNC(sys_rsxaudio_prepare_process)     //656 (0x290)
 	null_func,//BIND_FUNC(sys_rsxaudio_start_process)       //657 (0x291)
-	null_func,//BIND_FUNC(sys_rsxaudio_)                    //658 (0x292)
+	null_func,//BIND_FUNC(sys_rsxaudio_stop_process)        //658 (0x292)
 	null_func,//BIND_FUNC(sys_rsxaudio_)                    //659 (0x293)
 
 	null_func, null_func, null_func, null_func, null_func,  //664  UNS
@@ -671,33 +664,33 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	null_func,//BIND_FUNC(sys_...)                          //697 (0x2B9)  UNS
 	null_func,//BIND_FUNC(sys_...)                          //698 (0x2BA)  UNS
 	null_func,//BIND_FUNC(sys_bdemu_send_command)           //699 (0x2BB)
-	null_func,//BIND_FUNC(sys_net_bnet_accept)              //700 (0x2BC)
-	null_func,//BIND_FUNC(sys_net_bnet_bind)                //701 (0x2BD)
-	null_func,//BIND_FUNC(sys_net_bnet_connect)             //702 (0x2BE)
-	null_func,//BIND_FUNC(sys_net_bnet_getpeername)         //703 (0x2BF)
-	null_func,//BIND_FUNC(sys_net_bnet_getsockname)         //704 (0x2C0)
-	null_func,//BIND_FUNC(sys_net_bnet_getsockopt)          //705 (0x2C1)
-	null_func,//BIND_FUNC(sys_net_bnet_listen)              //706 (0x2C2)
-	null_func,//BIND_FUNC(sys_net_bnet_recvfrom)            //707 (0x2C3)
-	null_func,//BIND_FUNC(sys_net_bnet_recvmsg)             //708 (0x2C4)
-	null_func,//BIND_FUNC(sys_net_bnet_sendmsg)             //709 (0x2C5)
-	null_func,//BIND_FUNC(sys_net_bnet_sendto)              //710 (0x2C6)
-	null_func,//BIND_FUNC(sys_net_bnet_setsockop)           //711 (0x2C7)
-	null_func,//BIND_FUNC(sys_net_bnet_shutdown)            //712 (0x2C8)
-	null_func,//BIND_FUNC(sys_net_bnet_socket)              //713 (0x2C9)
-	null_func,//BIND_FUNC(sys_net_bnet_close)               //714 (0x2CA)
-	null_func,//BIND_FUNC(sys_net_bnet_poll)                //715 (0x2CB)
-	null_func,//BIND_FUNC(sys_net_bnet_select)              //716 (0x2CC)
-	null_func,//BIND_FUNC(sys_net_open_dump)                //717 (0x2CD)
-	null_func,//BIND_FUNC(sys_net_read_dump)                //718 (0x2CE)
-	null_func,//BIND_FUNC(sys_net_close_dump)               //719 (0x2CF)
-	null_func,//BIND_FUNC(sys_net_write_dump)               //720 (0x2D0)
-	null_func,//BIND_FUNC(sys_net_abort)                    //721 (0x2D1)
-	null_func,//BIND_FUNC(sys_net_infoctl)                  //722 (0x2D2)
-	null_func,//BIND_FUNC(sys_net_control)                  //723 (0x2D3)
-	null_func,//BIND_FUNC(sys_net_bnet_ioctl)               //724 (0x2D4)
-	null_func,//BIND_FUNC(sys_net_bnet_sysctl)              //725 (0x2D5)
-	null_func,//BIND_FUNC(sys_net_eurus_post_command)       //726 (0x2D6)
+	BIND_FUNC(sys_net_bnet_accept),                         //700 (0x2BC)
+	BIND_FUNC(sys_net_bnet_bind),                           //701 (0x2BD)
+	BIND_FUNC(sys_net_bnet_connect),                        //702 (0x2BE)
+	BIND_FUNC(sys_net_bnet_getpeername),                    //703 (0x2BF)
+	BIND_FUNC(sys_net_bnet_getsockname),                    //704 (0x2C0)
+	BIND_FUNC(sys_net_bnet_getsockopt),                     //705 (0x2C1)
+	BIND_FUNC(sys_net_bnet_listen),                         //706 (0x2C2)
+	BIND_FUNC(sys_net_bnet_recvfrom),                       //707 (0x2C3)
+	BIND_FUNC(sys_net_bnet_recvmsg),                        //708 (0x2C4)
+	BIND_FUNC(sys_net_bnet_sendmsg),                        //709 (0x2C5)
+	BIND_FUNC(sys_net_bnet_sendto),                         //710 (0x2C6)
+	BIND_FUNC(sys_net_bnet_setsockopt),                     //711 (0x2C7)
+	BIND_FUNC(sys_net_bnet_shutdown),                       //712 (0x2C8)
+	BIND_FUNC(sys_net_bnet_socket),                         //713 (0x2C9)
+	BIND_FUNC(sys_net_bnet_close),                          //714 (0x2CA)
+	BIND_FUNC(sys_net_bnet_poll),                           //715 (0x2CB)
+	BIND_FUNC(sys_net_bnet_select),                         //716 (0x2CC)
+	BIND_FUNC(_sys_net_open_dump),                          //717 (0x2CD)
+	BIND_FUNC(_sys_net_read_dump),                          //718 (0x2CE)
+	BIND_FUNC(_sys_net_close_dump),                         //719 (0x2CF)
+	BIND_FUNC(_sys_net_write_dump),                         //720 (0x2D0)
+	BIND_FUNC(sys_net_abort),                               //721 (0x2D1)
+	BIND_FUNC(sys_net_infoctl),                             //722 (0x2D2)
+	BIND_FUNC(sys_net_control),                             //723 (0x2D3)
+	BIND_FUNC(sys_net_bnet_ioctl),                          //724 (0x2D4)
+	BIND_FUNC(sys_net_bnet_sysctl),                         //725 (0x2D5)
+	BIND_FUNC(sys_net_eurus_post_command),                  //726 (0x2D6)
 
 	null_func, null_func, null_func,                        //729  UNS
 	null_func, null_func, null_func, null_func, null_func,  //734  UNS
@@ -725,62 +718,62 @@ std::array<ppu_function_t, 1024> g_ppu_syscall_table
 	BIND_FUNC(sys_fs_closedir),                             //807 (0x327)
 	BIND_FUNC(sys_fs_stat),                                 //808 (0x328)
 	BIND_FUNC(sys_fs_fstat),                                //809 (0x329)
-	null_func,//BIND_FUNC(sys_fs_link),                     //810 (0x32A)
+	BIND_FUNC(sys_fs_link),                                 //810 (0x32A)
 	BIND_FUNC(sys_fs_mkdir),                                //811 (0x32B)
 	BIND_FUNC(sys_fs_rename),                               //812 (0x32C)
 	BIND_FUNC(sys_fs_rmdir),                                //813 (0x32D)
 	BIND_FUNC(sys_fs_unlink),                               //814 (0x32E)
-	null_func,//BIND_FUNC(sys_fs_utime),                    //815 (0x32F)
-	null_func,//BIND_FUNC(sys_fs_access),                   //816 (0x330)
+	BIND_FUNC(sys_fs_utime),                                //815 (0x32F)
+	BIND_FUNC(sys_fs_access),                               //816 (0x330)
 	BIND_FUNC(sys_fs_fcntl),                                //817 (0x331)
 	BIND_FUNC(sys_fs_lseek),                                //818 (0x332)
-	null_func,//BIND_FUNC(sys_fs_fdatasync),                //819 (0x333)
-	null_func,//BIND_FUNC(sys_fs_fsync),                    //820 (0x334)
+	BIND_FUNC(sys_fs_fdatasync),                            //819 (0x333)
+	BIND_FUNC(sys_fs_fsync),                                //820 (0x334)
 	BIND_FUNC(sys_fs_fget_block_size),                      //821 (0x335)
 	BIND_FUNC(sys_fs_get_block_size),                       //822 (0x336)
-	null_func,//BIND_FUNC(sys_fs_acl_read),                 //823 (0x337)
-	null_func,//BIND_FUNC(sys_fs_acl_write),                //824 (0x338)
-	null_func,//BIND_FUNC(sys_fs_lsn_get_cda_size),         //825 (0x339)
-	null_func,//BIND_FUNC(sys_fs_lsn_get_cda),              //826 (0x33A)
-	null_func,//BIND_FUNC(sys_fs_lsn_lock),                 //827 (0x33B)
-	null_func,//BIND_FUNC(sys_fs_lsn_unlock),               //828 (0x33C)
-	null_func,//BIND_FUNC(sys_fs_lsn_read),                 //829 (0x33D)
-	null_func,//BIND_FUNC(sys_fs_lsn_write),                //830 (0x33E)
+	BIND_FUNC(sys_fs_acl_read),                             //823 (0x337)
+	BIND_FUNC(sys_fs_acl_write),                            //824 (0x338)
+	BIND_FUNC(sys_fs_lsn_get_cda_size),                     //825 (0x339)
+	BIND_FUNC(sys_fs_lsn_get_cda),                          //826 (0x33A)
+	BIND_FUNC(sys_fs_lsn_lock),                             //827 (0x33B)
+	BIND_FUNC(sys_fs_lsn_unlock),                           //828 (0x33C)
+	BIND_FUNC(sys_fs_lsn_read),                             //829 (0x33D)
+	BIND_FUNC(sys_fs_lsn_write),                            //830 (0x33E)
 	BIND_FUNC(sys_fs_truncate),                             //831 (0x33F)
 	BIND_FUNC(sys_fs_ftruncate),                            //832 (0x340)
-	null_func,//BIND_FUNC(sys_fs_symbolic_link),            //833 (0x341)
+	BIND_FUNC(sys_fs_symbolic_link),                        //833 (0x341)
 	BIND_FUNC(sys_fs_chmod),                                //834 (0x342)
-	null_func,//BIND_FUNC(sys_fs_chown),                    //835 (0x343)
+	BIND_FUNC(sys_fs_chown),                                //835 (0x343)
 	null_func,//BIND_FUNC(sys_fs_newfs),                    //836 (0x344)
 	null_func,//BIND_FUNC(sys_fs_mount),                    //837 (0x345)
 	null_func,//BIND_FUNC(sys_fs_unmount),                  //838 (0x346)
 	null_func,//BIND_FUNC(sys_fs_sync),                     //839 (0x347)
-	null_func,//BIND_FUNC(sys_fs_disk_free),                //840 (0x348)
+	BIND_FUNC(sys_fs_disk_free),                            //840 (0x348)
 	null_func,//BIND_FUNC(sys_fs_get_mount_info_size),      //841 (0x349)
 	null_func,//BIND_FUNC(sys_fs_get_mount_info),           //842 (0x34A)
 	null_func,//BIND_FUNC(sys_fs_get_fs_info_size),         //843 (0x34B)
 	null_func,//BIND_FUNC(sys_fs_get_fs_info),              //844 (0x34C)
-	null_func,//BIND_FUNC(sys_fs_mapped_allocate),          //845 (0x34D)
-	null_func,//BIND_FUNC(sys_fs_mapped_free),              //846 (0x34E)
-	null_func,//BIND_FUNC(sys_fs_truncate2),                //847 (0x34F)
-	
+	BIND_FUNC(sys_fs_mapped_allocate),                      //845 (0x34D)
+	BIND_FUNC(sys_fs_mapped_free),                          //846 (0x34E)
+	BIND_FUNC(sys_fs_truncate2),                            //847 (0x34F)
+
 	null_func, null_func,                                   //849  UNS
 	null_func, null_func, null_func, null_func, null_func,  //854  UNS
 	null_func, null_func, null_func, null_func, null_func,  //859  UNS
-	
+
 	null_func,//BIND_FUNC(syscall_sys_ss_get_cache_of_analog_sunset_flag), //860 (0x35C)  AUTHID
 	null_func,//BIND_FUNC(syscall_...)                      //861  ROOT
 	null_func,//BIND_FUNC(syscall_...)                      //862  ROOT
 	null_func,//BIND_FUNC(syscall_...)                      //863  ROOT
 	null_func,//BIND_FUNC(syscall_...)                      //864  DBG
-	null_func,//BIND_FUNC(sys_ss_random_number_generator),  //865 (0x361)  ROOT  AUTHID
+	BIND_FUNC(sys_ss_random_number_generator),              //865 (0x361)
 	null_func,//BIND_FUNC(sys_...)                          //866  ROOT
 	null_func,//BIND_FUNC(sys_...)                          //867  ROOT
 	null_func,//BIND_FUNC(sys_...)                          //868  ROOT / DBG  AUTHID
 	null_func,//BIND_FUNC(sys_...)                          //869  ROOT
-	null_func,//BIND_FUNC(sys_ss_get_console_id),           //870 (0x366)
+	BIND_FUNC(sys_ss_get_console_id),                       //870 (0x366)
 	null_func,//BIND_FUNC(sys_ss_access_control_engine),    //871 (0x367)  DBG
-	null_func,//BIND_FUNC(sys_ss_get_open_psid),            //872 (0x368)
+	BIND_FUNC(sys_ss_get_open_psid),                        //872 (0x368)
 	null_func,//BIND_FUNC(sys_ss_get_cache_of_product_mode), //873 (0x369)
 	null_func,//BIND_FUNC(sys_ss_get_cache_of_flash_ext_flag), //874 (0x36A)
 	null_func,//BIND_FUNC(sys_ss_get_boot_device)           //875 (0x36B)
@@ -973,31 +966,30 @@ void fmt_class_string<CellError>::format(std::string& out, u64 arg)
 		STR_CASE(CELL_EOVERFLOW);
 		STR_CASE(CELL_ENOTMOUNTED);
 		STR_CASE(CELL_ENOTSDATA);
+		STR_CASE(CELL_ESDKVER);
+		STR_CASE(CELL_ENOLICDISC);
+		STR_CASE(CELL_ENOLICENT);
 		}
 
 		return unknown;
 	});
 }
 
+extern void ppu_initialize_syscalls()
+{
+	g_ppu_syscall_table = s_ppu_syscall_table;
+}
+
 extern void ppu_execute_syscall(ppu_thread& ppu, u64 code)
 {
 	if (code < g_ppu_syscall_table.size())
 	{
-		// If autopause occures, check_status() will hold the thread till unpaused.
-		if (debug::autopause::pause_syscall(code) && ppu.check_state()) throw cpu_flag::ret;
-
 		if (auto func = g_ppu_syscall_table[code])
 		{
 			func(ppu);
-			LOG_TRACE(PPU, "Syscall '%s' (%llu) finished, r3=0x%llx", ppu_get_syscall_name(code), code, ppu.gpr[3]);
+			LOG_TRACE(PPU, "Syscall '%s' (%llu) finished, r3=0x%llx", ppu_syscall_code(code), code, ppu.gpr[3]);
+			return;
 		}
-		else
-		{
-			LOG_TODO(HLE, "Unimplemented syscall %s -> CELL_OK", ppu_get_syscall_name(code));
-			ppu.gpr[3] = 0;
-		}
-
-		return;
 	}
 
 	fmt::throw_exception("Invalid syscall number (%llu)", code);
@@ -1013,4 +1005,201 @@ extern ppu_function_t ppu_get_syscall(u64 code)
 	return nullptr;
 }
 
-DECLARE(lv2_lock_t::mutex);
+extern u64 get_system_time();
+
+DECLARE(lv2_obj::g_mutex);
+DECLARE(lv2_obj::g_ppu);
+DECLARE(lv2_obj::g_pending);
+DECLARE(lv2_obj::g_waiting);
+
+void lv2_obj::sleep_timeout(named_thread& thread, u64 timeout)
+{
+	semaphore_lock lock(g_mutex);
+
+	const u64 start_time = get_system_time();
+
+	if (auto ppu = dynamic_cast<ppu_thread*>(&thread))
+	{
+		LOG_TRACE(PPU, "sleep() - waiting (%zu)", g_pending.size());
+
+		auto state = ppu->state.fetch_op([&](auto& val)
+		{
+			if (!test(val, cpu_flag::signal))
+			{
+				val += cpu_flag::suspend;
+			}
+		});
+
+		if (test(state, cpu_flag::signal))
+		{
+			LOG_TRACE(PPU, "sleep() failed (signaled)");
+			return;
+		}
+
+		// Find and remove the thread
+		unqueue(g_ppu, ppu);
+		unqueue(g_pending, ppu);
+
+		ppu->start_time = start_time;
+	}
+
+	if (timeout)
+	{
+		const u64 wait_until = start_time + timeout;
+
+		// Register timeout if necessary
+		for (auto it = g_waiting.begin(), end = g_waiting.end(); it != end; it++)
+		{
+			if (it->first > wait_until)
+			{
+				g_waiting.emplace(it, wait_until, &thread);
+				return;
+			}
+		}
+
+		g_waiting.emplace_back(wait_until, &thread);
+	}
+
+	schedule_all();
+}
+
+void lv2_obj::awake(cpu_thread& cpu, u32 prio)
+{
+	// Check thread type
+	if (cpu.id_type() != 1) return;
+
+	semaphore_lock lock(g_mutex);
+
+	if (prio == -4)
+	{
+		// Yield command
+		const u64 start_time = get_system_time();
+
+		for (std::size_t i = 0, pos = -1; i < g_ppu.size(); i++)
+		{
+			if (g_ppu[i] == &cpu)
+			{
+				pos = i;
+				prio = g_ppu[i]->prio;
+			}
+			else if (i == pos + 1 && prio != -4 && g_ppu[i]->prio != prio)
+			{
+				return;
+			}
+		}
+
+		unqueue(g_ppu, &cpu);
+		unqueue(g_pending, &cpu);
+
+		static_cast<ppu_thread&>(cpu).start_time = start_time;
+	}
+
+	if (prio < INT32_MAX && !unqueue(g_ppu, &cpu))
+	{
+		// Priority set
+		return;
+	}
+
+	// Emplace current thread
+	for (std::size_t i = 0; i <= g_ppu.size(); i++)
+	{
+		if (i < g_ppu.size() && g_ppu[i] == &cpu)
+		{
+			LOG_TRACE(PPU, "sleep() - suspended (p=%zu)", g_pending.size());
+			break;
+		}
+
+		// Use priority, also preserve FIFO order
+		if (i == g_ppu.size() || g_ppu[i]->prio > static_cast<ppu_thread&>(cpu).prio)
+		{
+			LOG_TRACE(PPU, "awake(): %s", cpu.id);
+			g_ppu.insert(g_ppu.cbegin() + i, &static_cast<ppu_thread&>(cpu));
+
+			// Unregister timeout if necessary
+			for (auto it = g_waiting.cbegin(), end = g_waiting.cend(); it != end; it++)
+			{
+				if (it->second == &cpu)
+				{
+					g_waiting.erase(it);
+					break;
+				}
+			}
+
+			break;
+		}
+	}
+
+	// Remove pending if necessary
+	if (!g_pending.empty() && cpu.get() == thread_ctrl::get_current())
+	{
+		unqueue(g_pending, &cpu);
+	}
+
+	// Suspend threads if necessary
+	for (std::size_t i = g_cfg.core.ppu_threads; i < g_ppu.size(); i++)
+	{
+		const auto target = g_ppu[i];
+
+		if (!target->state.test_and_set(cpu_flag::suspend))
+		{
+			LOG_TRACE(PPU, "suspend(): %s", target->id);
+			g_pending.emplace_back(target);
+		}
+	}
+
+	schedule_all();
+}
+
+void lv2_obj::cleanup()
+{
+	g_ppu.clear();
+	g_pending.clear();
+	g_waiting.clear();
+}
+
+void lv2_obj::schedule_all()
+{
+	if (g_pending.empty())
+	{
+		// Wake up threads
+		for (std::size_t i = 0, x = std::min<std::size_t>(g_cfg.core.ppu_threads, g_ppu.size()); i < x; i++)
+		{
+			const auto target = g_ppu[i];
+
+			if (test(target->state, cpu_flag::suspend))
+			{
+				LOG_TRACE(PPU, "schedule(): %s", target->id);
+				target->state ^= (cpu_flag::signal + cpu_flag::suspend);
+				target->start_time = 0;
+
+				if (target->get() != thread_ctrl::get_current())
+				{
+					target->notify();
+				}
+			}
+		}
+	}
+
+	// Check registered timeouts
+	while (!g_waiting.empty())
+	{
+		auto& pair = g_waiting.front();
+
+		if (pair.first <= get_system_time())
+		{
+			pair.second->notify();
+			g_waiting.pop_front();
+		}
+		else
+		{
+			// The list is sorted so assume no more timeouts
+			break;
+		}
+	}
+}
+
+void ppu_thread::cpu_sleep()
+{
+	vm::temporary_unlock(*this);
+	lv2_obj::awake(*this);
+}

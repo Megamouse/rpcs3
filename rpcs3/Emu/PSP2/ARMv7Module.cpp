@@ -1,5 +1,4 @@
 #include "stdafx.h"
-#include "Utilities/Config.h"
 #include "Loader/ELF.h"
 #include "Emu/Memory/Memory.h"
 #include "Emu/System.h"
@@ -10,67 +9,6 @@
 #include "ARMv7Function.h"
 #include "ARMv7Module.h"
 #include "Modules/sceLibKernel.h"
-
-LOG_CHANNEL(sceAppMgr);
-LOG_CHANNEL(sceAppUtil);
-LOG_CHANNEL(sceAudio);
-LOG_CHANNEL(sceAudiodec);
-LOG_CHANNEL(sceAudioenc);
-LOG_CHANNEL(sceAudioIn);
-LOG_CHANNEL(sceCamera);
-LOG_CHANNEL(sceCodecEngine);
-LOG_CHANNEL(sceCommonDialog);
-LOG_CHANNEL(sceCtrl);
-LOG_CHANNEL(sceDbg);
-LOG_CHANNEL(sceDeci4p);
-LOG_CHANNEL(sceDeflt);
-LOG_CHANNEL(sceDisplay);
-LOG_CHANNEL(sceFiber);
-LOG_CHANNEL(sceFios);
-LOG_CHANNEL(sceFpu);
-LOG_CHANNEL(sceGxm);
-LOG_CHANNEL(sceHttp);
-LOG_CHANNEL(sceIme);
-LOG_CHANNEL(sceJpeg);
-LOG_CHANNEL(sceJpegEnc);
-LOG_CHANNEL(sceLibc);
-LOG_CHANNEL(sceLibKernel);
-LOG_CHANNEL(sceLibm);
-LOG_CHANNEL(sceLibstdcxx);
-LOG_CHANNEL(sceLibXml);
-LOG_CHANNEL(sceLiveArea);
-LOG_CHANNEL(sceLocation);
-LOG_CHANNEL(sceMd5);
-LOG_CHANNEL(sceMotion);
-LOG_CHANNEL(sceMt19937);
-LOG_CHANNEL(sceNet);
-LOG_CHANNEL(sceNetCtl);
-LOG_CHANNEL(sceNgs);
-LOG_CHANNEL(sceNpBasic);
-LOG_CHANNEL(sceNpCommon);
-LOG_CHANNEL(sceNpManager);
-LOG_CHANNEL(sceNpMatching);
-LOG_CHANNEL(sceNpScore);
-LOG_CHANNEL(sceNpUtility);
-LOG_CHANNEL(scePerf);
-LOG_CHANNEL(scePgf);
-LOG_CHANNEL(scePhotoExport);
-LOG_CHANNEL(sceRazorCapture);
-LOG_CHANNEL(sceRtc);
-LOG_CHANNEL(sceSas);
-LOG_CHANNEL(sceScreenShot);
-LOG_CHANNEL(sceSfmt);
-LOG_CHANNEL(sceSha);
-LOG_CHANNEL(sceSqlite);
-LOG_CHANNEL(sceSsl);
-LOG_CHANNEL(sceSulpha);
-LOG_CHANNEL(sceSysmodule);
-LOG_CHANNEL(sceSystemGesture);
-LOG_CHANNEL(sceTouch);
-LOG_CHANNEL(sceUlt);
-LOG_CHANNEL(sceVideodec);
-LOG_CHANNEL(sceVoice);
-LOG_CHANNEL(sceVoiceQoS);
 
 extern std::string arm_get_function_name(const std::string& module, u32 fnid);
 extern std::string arm_get_variable_name(const std::string& module, u32 vnid);
@@ -225,6 +163,11 @@ static void arm_initialize_modules()
 	for (auto& module : registered)
 	{
 		LOG_TRACE(LOADER, "Registered static module: %s", module->name);
+	}
+
+	for (auto& pair : arm_module_manager::get())
+	{
+		const auto module = pair.second;
 
 		for (auto& function : module->functions)
 		{
@@ -375,7 +318,7 @@ void arm_load_exec(const arm_exec_object& elf)
 	{
 		if (prog.p_type == 0x1 /* LOAD */ && prog.p_memsz)
 		{
-			if (!vm::falloc(prog.p_vaddr, prog.p_memsz, vm::main))
+			if (!vm::falloc(prog.p_vaddr & ~0xfff, prog.p_memsz + (prog.p_vaddr & 0xfff), vm::main))
 			{
 				fmt::throw_exception("vm::falloc() failed (addr=0x%x, size=0x%x)", prog.p_vaddr, prog.p_memsz);
 			}
@@ -630,7 +573,7 @@ void arm_load_exec(const arm_exec_object& elf)
 	const auto stop_code = vm::ptr<u32>::make(vm::alloc(3 * 4, vm::main));
 	stop_code[0] = 0xf870; // HACK instruction (Thumb)
 	stop_code[1] = 1; // Predefined function index (HLE return)
-	Emu.SetCPUThreadStop(stop_code.addr());
+	arm_function_manager::addr = stop_code.addr();
 
 	const std::string& thread_name = proc_param->sceUserMainThreadName ? proc_param->sceUserMainThreadName.get_ptr() : "main_thread";
 	const u32 stack_size = proc_param->sceUserMainThreadStackSize ? proc_param->sceUserMainThreadStackSize->value() : 256 * 1024;
@@ -644,7 +587,7 @@ void arm_load_exec(const arm_exec_object& elf)
 	// Initialize args
 	std::vector<char> argv_data;
 
-	for (const auto& arg : { Emu.GetPath(), "-emu"s })
+	for (const auto& arg : Emu.argv)
 	{
 		argv_data.insert(argv_data.end(), arg.begin(), arg.end());
 		argv_data.insert(argv_data.end(), '\0');

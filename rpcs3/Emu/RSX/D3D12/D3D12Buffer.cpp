@@ -7,7 +7,9 @@
 #include "../Common/BufferUtils.h"
 #include "D3D12Formats.h"
 #include "../rsx_methods.h"
-#include <Utilities/variant.hpp>
+#include "restore_new.h"
+#include "Utilities/variant.hpp"
+#include "define_new_memleakdetect.h"
 
 namespace
 {
@@ -40,7 +42,7 @@ namespace
 		fmt::throw_exception("Wrong vector size %d" HERE, size);
 	}
 
-	u32 get_vertex_count(const std::vector<std::pair<u32, u32> > first_count_commands)
+	u32 get_vertex_count(const std::vector<std::pair<u32, u32> >& first_count_commands)
 	{
 		u32 vertex_count = 0;
 		for (const auto &pair : first_count_commands)
@@ -52,8 +54,8 @@ namespace
 	{
 		u32 element_size = rsx::get_vertex_type_size_on_host(info.type(), info.size());
 		D3D12_SHADER_RESOURCE_VIEW_DESC vertex_buffer_view = {
-		    get_vertex_attribute_format(info.type(), info.size()), D3D12_SRV_DIMENSION_BUFFER,
-		    get_component_mapping_from_vector_size(info.type(), info.size())};
+			get_vertex_attribute_format(info.type(), info.size()), D3D12_SRV_DIMENSION_BUFFER,
+			get_component_mapping_from_vector_size(info.type(), info.size())};
 		vertex_buffer_view.Buffer.FirstElement = offset_in_vertex_buffers_buffer / element_size;
 		vertex_buffer_view.Buffer.NumElements = buffer_size / element_size;
 		return vertex_buffer_view;
@@ -63,7 +65,7 @@ namespace
 	{
 		u32 element_size = rsx::get_vertex_type_size_on_host(type, size);
 		D3D12_SHADER_RESOURCE_VIEW_DESC vertex_buffer_view = {get_vertex_attribute_format(type, size),
-		    D3D12_SRV_DIMENSION_BUFFER, get_component_mapping_from_vector_size(type, size)};
+			D3D12_SRV_DIMENSION_BUFFER, get_component_mapping_from_vector_size(type, size)};
 		vertex_buffer_view.Buffer.FirstElement = offset_in_vertex_buffers_buffer / element_size;
 		vertex_buffer_view.Buffer.NumElements = buffer_size / element_size;
 		return vertex_buffer_view;
@@ -80,27 +82,19 @@ namespace
 
 void D3D12GSRender::upload_and_bind_scale_offset_matrix(size_t descriptorIndex)
 {
-	size_t heap_offset = m_buffer_data.alloc<D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>(256);
+	size_t heap_offset = m_buffer_data.alloc<D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT>(512);
 
 	// Scale offset buffer
 	// Separate constant buffer
-	void *mapped_buffer = m_buffer_data.map<void>(CD3DX12_RANGE(heap_offset, heap_offset + 256));
-	fill_scale_offset_data(mapped_buffer);
-	int is_alpha_tested = rsx::method_registers.alpha_test_enabled();
-	u8 alpha_ref_raw = rsx::method_registers.alpha_ref();
-	float alpha_ref = alpha_ref_raw / 255.f;
-	memcpy((char*)mapped_buffer + 16 * sizeof(float), &is_alpha_tested, sizeof(int));
-	memcpy((char*)mapped_buffer + 17 * sizeof(float), &alpha_ref, sizeof(float));
-	f32 fogp0 = rsx::method_registers.fog_params_0();
-	f32 fogp1 = rsx::method_registers.fog_params_1();
-	memcpy((char*)mapped_buffer + 18 * sizeof(float), &fogp0, sizeof(float));
-	memcpy((char*)mapped_buffer + 19 * sizeof(float), &fogp1, sizeof(float));
-
-	m_buffer_data.unmap(CD3DX12_RANGE(heap_offset, heap_offset + 256));
+	void *mapped_buffer = m_buffer_data.map<void>(CD3DX12_RANGE(heap_offset, heap_offset + 512));
+	fill_scale_offset_data(mapped_buffer, true);
+	fill_user_clip_data((char*)mapped_buffer + 64);
+	fill_fragment_state_buffer((char *)mapped_buffer + 128, current_fragment_program);
+	m_buffer_data.unmap(CD3DX12_RANGE(heap_offset, heap_offset + 512));
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC constant_buffer_view_desc = {
 		m_buffer_data.get_heap()->GetGPUVirtualAddress() + heap_offset,
-		256
+		512
 	};
 	m_device->CreateConstantBufferView(&constant_buffer_view_desc,
 		CD3DX12_CPU_DESCRIPTOR_HANDLE(get_current_resource_storage().descriptors_heap->GetCPUDescriptorHandleForHeapStart())
@@ -115,6 +109,7 @@ void D3D12GSRender::upload_and_bind_vertex_shader_constants(size_t descriptor_in
 
 	void *mapped_buffer = m_buffer_data.map<void>(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
 	fill_vertex_program_constants_data(mapped_buffer);
+	*(reinterpret_cast<u32*>((char *)mapped_buffer + (468 * 4 * sizeof(float)))) = rsx::method_registers.transform_branch_bits();
 	m_buffer_data.unmap(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC constant_buffer_view_desc = {
@@ -129,7 +124,7 @@ void D3D12GSRender::upload_and_bind_vertex_shader_constants(size_t descriptor_in
 D3D12_CONSTANT_BUFFER_VIEW_DESC D3D12GSRender::upload_fragment_shader_constants()
 {
 	// Get constant from fragment program
-	size_t buffer_size = m_pso_cache.get_fragment_constants_buffer_size(m_fragment_program);
+	size_t buffer_size = m_pso_cache.get_fragment_constants_buffer_size(current_fragment_program);
 	// Multiple of 256 never 0
 	buffer_size = (buffer_size + 255) & ~255;
 
@@ -137,7 +132,7 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC D3D12GSRender::upload_fragment_shader_constants(
 
 	size_t offset = 0;
 	float *mapped_buffer = m_buffer_data.map<float>(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
-	m_pso_cache.fill_fragment_constants_buffer({ mapped_buffer, ::narrow<int>(buffer_size) }, m_fragment_program);
+	m_pso_cache.fill_fragment_constants_buffer({ mapped_buffer, ::narrow<int>(buffer_size) }, current_fragment_program);
 	m_buffer_data.unmap(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
 
 	return {
@@ -228,9 +223,8 @@ namespace
 		const std::vector<std::pair<u32, u32>>& vertex_ranges, d3d12_data_heap& m_buffer_data)
 	{
 		size_t index_count = std::accumulate(
-			vertex_ranges.begin(), vertex_ranges.end(), 0, [](size_t acc, const auto& pair) {
-				return acc + get_index_count(
-								 rsx::method_registers.current_draw_clause.primitive, pair.second);
+			vertex_ranges.begin(), vertex_ranges.end(), 0ll, [](size_t acc, const auto& pair) {
+				return acc + get_index_count(rsx::method_registers.current_draw_clause.primitive, pair.second);
 			});
 
 		// Alloc
@@ -240,15 +234,13 @@ namespace
 
 		void* mapped_buffer =
 			m_buffer_data.map<void>(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
-		size_t first = 0;
-		for (const auto& pair : vertex_ranges) {
-			size_t element_count =
-				get_index_count(rsx::method_registers.current_draw_clause.primitive, pair.second);
-			write_index_array_for_non_indexed_non_native_primitive_to_buffer((char*)mapped_buffer,
-				rsx::method_registers.current_draw_clause.primitive, (u32)first, (u32)pair.second);
-			mapped_buffer = (char*)mapped_buffer + element_count * sizeof(u16);
-			first += pair.second;
-		}
+
+		u32 vertex_count = 0;
+		for (const auto& pair : vertex_ranges)
+			vertex_count += pair.second;
+
+		write_index_array_for_non_indexed_non_native_primitive_to_buffer((char *)mapped_buffer, rsx::method_registers.current_draw_clause.primitive, vertex_count);
+
 		m_buffer_data.unmap(CD3DX12_RANGE(heap_offset, heap_offset + buffer_size));
 		D3D12_INDEX_BUFFER_VIEW index_buffer_view = {
 			m_buffer_data.get_heap()->GetGPUVirtualAddress() + heap_offset, (UINT)buffer_size,
@@ -401,7 +393,10 @@ namespace
 				get_index_count(rsx::method_registers.current_draw_clause.primitive,
 					::narrow<int>(get_vertex_count(command.ranges_to_fetch_in_index_buffer)));
 
-			rsx::index_array_type indexed_type = rsx::method_registers.index_type();
+			rsx::index_array_type indexed_type = rsx::method_registers.current_draw_clause.is_immediate_draw?
+				rsx::index_array_type::u32:
+				rsx::method_registers.index_type();
+
 			size_t index_size = get_index_type_size(indexed_type);
 
 			// Alloc
@@ -415,7 +410,7 @@ namespace
 			gsl::span<gsl::byte> dst{
 				reinterpret_cast<gsl::byte*>(mapped_buffer), ::narrow<u32>(buffer_size)};
 
-			std::tie(min_index, max_index) =
+			std::tie(min_index, max_index, index_count) =
 				write_index_array_data_to_buffer(dst, command.raw_index_buffer, indexed_type,
 					rsx::method_registers.current_draw_clause.primitive,
 					rsx::method_registers.restart_index_enabled(),
@@ -473,7 +468,7 @@ D3D12GSRender::upload_and_set_vertex_index_data(ID3D12GraphicsCommandList* comma
 	return std::apply_visitor(
 		draw_command_visitor(command_list, m_buffer_data, m_vertex_buffer_data.Get(),
 			[this](
-				const auto& state, const auto& list) { return get_vertex_buffers(state, list); }),
+				const auto& state, const auto& list) { return get_vertex_buffers(state, list, 0); }),
 		get_draw_command(rsx::method_registers));
 }
 

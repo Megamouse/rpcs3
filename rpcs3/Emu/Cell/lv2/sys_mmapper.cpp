@@ -1,9 +1,12 @@
 #include "stdafx.h"
 #include "sys_mmapper.h"
+#include "Emu/Cell/PPUThread.h"
+#include "sys_ppu_thread.h"
+#include "Emu/Cell/lv2/sys_event.h"
 
 namespace vm { using namespace ps3; }
 
-logs::channel sys_mmapper("sys_mmapper", logs::level::notice);
+logs::channel sys_mmapper("sys_mmapper");
 
 error_code sys_mmapper_allocate_address(u64 size, u64 flags, u64 alignment, vm::ptr<u32> alloc_addr)
 {
@@ -33,7 +36,7 @@ error_code sys_mmapper_allocate_address(u64 size, u64 flags, u64 alignment, vm::
 	case 0x40000000:
 	case 0x80000000:
 	{
-		for (u64 addr = ::align<u64>(0x30000000, alignment); addr < 0xC0000000; addr += alignment)
+		for (u64 addr = ::align<u64>(0x50000000, alignment); addr < 0xC0000000; addr += alignment)
 		{
 			if (const auto area = vm::map(static_cast<u32>(addr), static_cast<u32>(size), flags))
 			{
@@ -53,7 +56,7 @@ error_code sys_mmapper_allocate_fixed_address()
 {
 	sys_mmapper.error("sys_mmapper_allocate_fixed_address()");
 
-	if (!vm::map(0xB0000000, 0x10000000)) // TODO: set correct flags (they aren't used currently though)
+	if (!vm::map(0xB0000000, 0x10000000, SYS_MEMORY_PAGE_SIZE_1M))
 	{
 		return CELL_EEXIST;
 	}
@@ -103,7 +106,7 @@ error_code sys_mmapper_allocate_shared_memory(u64 unk, u32 size, u64 flags, vm::
 	}
 
 	// Generate a new mem ID
-	*mem_id = idm::make<lv2_memory>(size, flags & SYS_MEMORY_PAGE_SIZE_1M ? 0x100000 : 0x10000, flags, dct);
+	*mem_id = idm::make<lv2_obj, lv2_memory>(size, flags & SYS_MEMORY_PAGE_SIZE_1M ? 0x100000 : 0x10000, flags, dct);
 
 	return CELL_OK;
 }
@@ -141,32 +144,29 @@ error_code sys_mmapper_allocate_shared_memory_from_container(u64 unk, u32 size, 
 	}
 	}
 
-	error_code result{};
-
-	const auto ct = idm::get<lv2_memory_container>(cid, [&](u32, lv2_memory_container& ct)
+	const auto ct = idm::get<lv2_memory_container>(cid, [&](lv2_memory_container& ct) -> CellError
 	{
 		// Try to get "physical memory"
 		if (!ct.take(size))
 		{
-			result = CELL_ENOMEM;
-			return false;
+			return CELL_ENOMEM;
 		}
 
-		return true;
+		return {};
 	});
 
-	if (!ct && !result)
+	if (!ct)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (!ct)
+	if (ct.ret)
 	{
-		return result;
+		return ct.ret;
 	}
 
 	// Generate a new mem ID
-	*mem_id = idm::make<lv2_memory>(size, flags & SYS_MEMORY_PAGE_SIZE_1M ? 0x100000 : 0x10000, flags, ct);
+	*mem_id = idm::make<lv2_obj, lv2_memory>(size, flags & SYS_MEMORY_PAGE_SIZE_1M ? 0x100000 : 0x10000, flags, ct.ptr);
 
 	return CELL_OK;
 }
@@ -182,6 +182,19 @@ error_code sys_mmapper_free_address(u32 addr)
 {
 	sys_mmapper.error("sys_mmapper_free_address(addr=0x%x)", addr);
 
+	// If page fault notify exists and an address in this area is faulted, we can't free the memory.
+	auto pf_events = fxm::get_always<page_fault_event_entries>();
+	semaphore_lock pf_lock(pf_events->pf_mutex);
+
+	for (const auto& ev : pf_events->events)
+	{
+		auto mem = vm::get(vm::any, addr);
+		if (mem && addr <= ev.fault_addr && ev.fault_addr <= addr + mem->size - 1)
+		{
+			return CELL_EBUSY;
+		}
+	}
+
 	// Try to unmap area
 	const auto area = vm::unmap(addr, true);
 
@@ -195,6 +208,21 @@ error_code sys_mmapper_free_address(u32 addr)
 		return CELL_EBUSY;
 	}
 
+	// If a memory block is freed, remove it from page notification table.
+	auto pf_entries = fxm::get_always<page_fault_notification_entries>();
+	auto ind_to_remove = pf_entries->entries.begin();
+	for (; ind_to_remove != pf_entries->entries.end(); ++ind_to_remove)
+	{
+		if (addr == ind_to_remove->start_addr)
+		{
+			break;
+		}
+	}
+	if (ind_to_remove != pf_entries->entries.end())
+	{
+		pf_entries->entries.erase(ind_to_remove);
+	}
+
 	return CELL_OK;
 }
 
@@ -202,28 +230,25 @@ error_code sys_mmapper_free_shared_memory(u32 mem_id)
 {
 	sys_mmapper.warning("sys_mmapper_free_shared_memory(mem_id=0x%x)", mem_id);
 
-	error_code result{};
-
 	// Conditionally remove memory ID
-	const auto mem = idm::withdraw<lv2_memory>(mem_id, [&](u32, lv2_memory& mem)
+	const auto mem = idm::withdraw<lv2_obj, lv2_memory>(mem_id, [&](lv2_memory& mem) -> CellError
 	{
-		if (mem.addr.compare_and_swap_test(0, -1))
+		if (!mem.addr.compare_and_swap_test(0, -1))
 		{
-			result = CELL_EBUSY;
-			return false;
+			return CELL_EBUSY;
 		}
 
-		return true;
+		return {};
 	});
 
-	if (!mem && !result)
+	if (!mem)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (!mem)
+	if (mem.ret)
 	{
-		return result;
+		return mem.ret;
 	}
 
 	// Return "physical memory" to the memory container
@@ -234,16 +259,16 @@ error_code sys_mmapper_free_shared_memory(u32 mem_id)
 
 error_code sys_mmapper_map_shared_memory(u32 addr, u32 mem_id, u64 flags)
 {
-	sys_mmapper.error("sys_mmapper_map_shared_memory(addr=0x%x, mem_id=0x%x, flags=0x%llx)", addr, mem_id, flags);
+	sys_mmapper.warning("sys_mmapper_map_shared_memory(addr=0x%x, mem_id=0x%x, flags=0x%llx)", addr, mem_id, flags);
 
 	const auto area = vm::get(vm::any, addr);
 
-	if (!area || addr < 0x30000000 || addr >= 0xC0000000)
+	if (!area || addr < 0x50000000 || addr >= 0xC0000000)
 	{
 		return CELL_EINVAL;
 	}
 
-	const auto mem = idm::get<lv2_memory>(mem_id);
+	const auto mem = idm::get<lv2_obj, lv2_memory>(mem_id);
 
 	if (!mem)
 	{
@@ -261,7 +286,7 @@ error_code sys_mmapper_map_shared_memory(u32 addr, u32 mem_id, u64 flags)
 		return CELL_OK;
 	}
 
-	if (!area->falloc(addr, mem->size))
+	if (!area->falloc(addr, mem->size, mem->data.data()))
 	{
 		mem->addr = 0;
 		return CELL_EBUSY;
@@ -273,16 +298,16 @@ error_code sys_mmapper_map_shared_memory(u32 addr, u32 mem_id, u64 flags)
 
 error_code sys_mmapper_search_and_map(u32 start_addr, u32 mem_id, u64 flags, vm::ptr<u32> alloc_addr)
 {
-	sys_mmapper.error("sys_mmapper_search_and_map(start_addr=0x%x, mem_id=0x%x, flags=0x%llx, alloc_addr=*0x%x)", start_addr, mem_id, flags, alloc_addr);
+	sys_mmapper.warning("sys_mmapper_search_and_map(start_addr=0x%x, mem_id=0x%x, flags=0x%llx, alloc_addr=*0x%x)", start_addr, mem_id, flags, alloc_addr);
 
 	const auto area = vm::get(vm::any, start_addr);
 
-	if (!area || start_addr != area->addr || start_addr < 0x30000000 || start_addr >= 0xC0000000)
+	if (!area || start_addr < 0x50000000 || start_addr >= 0xC0000000)
 	{
 		return CELL_EINVAL;
 	}
 
-	const auto mem = idm::get<lv2_memory>(mem_id);
+	const auto mem = idm::get<lv2_obj, lv2_memory>(mem_id);
 
 	if (!mem)
 	{
@@ -295,7 +320,7 @@ error_code sys_mmapper_search_and_map(u32 start_addr, u32 mem_id, u64 flags, vm:
 		return CELL_OK;
 	}
 
-	const u32 addr = area->alloc(mem->size, mem->align);
+	const u32 addr = area->alloc(mem->size, mem->align, mem->data.data());
 
 	if (!addr)
 	{
@@ -309,16 +334,16 @@ error_code sys_mmapper_search_and_map(u32 start_addr, u32 mem_id, u64 flags, vm:
 
 error_code sys_mmapper_unmap_shared_memory(u32 addr, vm::ptr<u32> mem_id)
 {
-	sys_mmapper.error("sys_mmapper_unmap_shared_memory(addr=0x%x, mem_id=*0x%x)", addr, mem_id);
+	sys_mmapper.warning("sys_mmapper_unmap_shared_memory(addr=0x%x, mem_id=*0x%x)", addr, mem_id);
 
 	const auto area = vm::get(vm::any, addr);
 
-	if (!area || addr != area->addr || addr < 0x30000000 || addr >= 0xC0000000)
+	if (!area || addr < 0x50000000 || addr >= 0xC0000000)
 	{
 		return CELL_EINVAL;
 	}
 
-	const auto mem = idm::select<lv2_memory>([&](u32 id, lv2_memory& mem)
+	const auto mem = idm::select<lv2_obj, lv2_memory>([&](u32 id, lv2_memory& mem)
 	{
 		if (mem.addr == addr)
 		{
@@ -334,13 +359,51 @@ error_code sys_mmapper_unmap_shared_memory(u32 addr, vm::ptr<u32> mem_id)
 		return CELL_EINVAL;
 	}
 
-	verify(HERE), area->dealloc(addr), mem->addr.exchange(0) == addr;
+	verify(HERE), area->dealloc(addr, mem->data.data()), mem->addr.exchange(0) == addr;
 	return CELL_OK;
 }
 
-error_code sys_mmapper_enable_page_fault_notification(u32 addr, u32 eq)
+error_code sys_mmapper_enable_page_fault_notification(u32 start_addr, u32 event_queue_id)
 {
-	sys_mmapper.todo("sys_mmapper_enable_page_fault_notification(addr=0x%x, eq=0x%x)", addr, eq);
+	sys_mmapper.warning("sys_mmapper_enable_page_fault_notification(start_addr=0x%x, event_queue_id=0x%x)", start_addr, event_queue_id);
+
+	auto mem = vm::get(vm::any, start_addr);
+	if (!mem)
+	{
+		return CELL_EINVAL;
+	}
+
+	// TODO: Check memory region's flags to make sure the memory can be used for page faults.
+
+	auto queue = idm::get<lv2_obj, lv2_event_queue>(event_queue_id);
+
+	if (!queue)
+	{ // Can't connect the queue if it doesn't exist.
+		return CELL_ESRCH;
+	}
+
+	auto pf_entries = fxm::get_always<page_fault_notification_entries>();
+
+	// We're not allowed to have the same queue registered more than once for page faults.
+	for (const auto& entry : pf_entries->entries)
+	{
+		if (entry.event_queue_id == event_queue_id)
+		{
+			return CELL_ESRCH;
+		}
+	}
+
+	vm::ptr<u32> port_id = vm::make_var<u32>(0);
+	error_code res = sys_event_port_create(port_id, SYS_EVENT_PORT_LOCAL, SYS_MEMORY_PAGE_FAULT_EVENT_KEY);
+	sys_event_port_connect_local(port_id->value(), event_queue_id);
+
+	if (res == CELL_EAGAIN)
+	{ // Not enough system resources.
+		return CELL_EAGAIN;
+	}
+
+	page_fault_notification_entry entry{ start_addr, event_queue_id, port_id->value() };
+	pf_entries->entries.emplace_back(entry);
 
 	return CELL_OK;
 }

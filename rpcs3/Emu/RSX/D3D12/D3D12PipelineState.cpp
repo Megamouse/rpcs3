@@ -1,15 +1,13 @@
 #ifdef _MSC_VER
 #include "stdafx.h"
 #include "stdafx_d3d12.h"
-#include "Utilities/Config.h"
 #include "D3D12PipelineState.h"
 #include "D3D12GSRender.h"
 #include "D3D12Formats.h"
 #include "../rsx_methods.h"
+#include "../rsx_utils.h"
 
 #define TO_STRING(x) #x
-
-extern cfg::bool_entry g_cfg_rsx_debug_output;
 
 extern pD3DCompile wrapD3DCompile;
 
@@ -19,7 +17,7 @@ void Shader::Compile(const std::string &code, SHADER_TYPE st)
 	HRESULT hr;
 	ComPtr<ID3DBlob> errorBlob;
 	UINT compileFlags;
-	if (g_cfg_rsx_debug_output)
+	if (g_cfg.video.debug_output)
 		compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 	else
 		compileFlags = 0;
@@ -28,40 +26,38 @@ void Shader::Compile(const std::string &code, SHADER_TYPE st)
 	case SHADER_TYPE::SHADER_TYPE_VERTEX:
 		hr = wrapD3DCompile(code.c_str(), code.size(), "VertexProgram.hlsl", nullptr, nullptr, "main", "vs_5_0", compileFlags, 0, &bytecode, errorBlob.GetAddressOf());
 		if (hr != S_OK)
-			LOG_ERROR(RSX, "VS build failed:%s", errorBlob->GetBufferPointer());
+			LOG_ERROR(RSX, "VS build failed:%s", (char*)errorBlob->GetBufferPointer());
 		break;
 	case SHADER_TYPE::SHADER_TYPE_FRAGMENT:
 		hr = wrapD3DCompile(code.c_str(), code.size(), "FragmentProgram.hlsl", nullptr, nullptr, "main", "ps_5_0", compileFlags, 0, &bytecode, errorBlob.GetAddressOf());
 		if (hr != S_OK)
-			LOG_ERROR(RSX, "FS build failed:%s", errorBlob->GetBufferPointer());
+			LOG_ERROR(RSX, "FS build failed:%s", (char*)errorBlob->GetBufferPointer());
 		break;
 	}
 }
 
 void D3D12GSRender::load_program()
 {
-	m_vertex_program = get_current_vertex_program();
-	m_fragment_program = get_current_fragment_program();
-
-	for (int i = 0; i < 16; ++i)
+	auto rtt_lookup_func = [this](u32 texaddr, rsx::fragment_texture&, bool is_depth) -> std::tuple<bool, u16>
 	{
-		auto &tex = rsx::method_registers.fragment_textures[i];
-		if (tex.enabled())
-		{
-			const u32 texaddr = rsx::get_address(tex.offset(), tex.location());
-			if (m_rtts.get_texture_from_depth_stencil_if_applicable(texaddr))
-			{
-				if (m_rtts.get_texture_from_render_target_if_applicable(texaddr))
-					continue;
+		ID3D12Resource *surface = nullptr;
+		if (!is_depth)
+			surface = m_rtts.get_texture_from_render_target_if_applicable(texaddr);
+		else
+			surface = m_rtts.get_texture_from_depth_stencil_if_applicable(texaddr);
 
-				u32 format = tex.format() & ~(CELL_GCM_TEXTURE_LN | CELL_GCM_TEXTURE_UN);
-				if (format == CELL_GCM_TEXTURE_A8R8G8B8 || format == CELL_GCM_TEXTURE_D8R8G8B8)
-				{
-					m_fragment_program.redirected_textures |= (1 << i);
-				}
-			}
-		}
-	}
+		if (!surface) return std::make_tuple(false, 0);
+		
+		D3D12_RESOURCE_DESC desc = surface->GetDesc();
+		u16 native_pitch = get_dxgi_texel_size(desc.Format) * (u16)desc.Width;
+		return std::make_tuple(true, native_pitch);
+	};
+
+	get_current_vertex_program();
+	get_current_fragment_program_legacy(rtt_lookup_func);
+
+	if (!current_fragment_program.valid)
+		return;
 
 	D3D12PipelineProperties prop = {};
 	prop.Topology = get_primitive_topology_type(rsx::method_registers.current_draw_clause.primitive);
@@ -93,21 +89,7 @@ void D3D12GSRender::load_program()
 		D3D12_BLEND d3d_sfactor_alpha = get_blend_factor_alpha(sfactor_a);
 		D3D12_BLEND d3d_dfactor_alpha = get_blend_factor_alpha(dfactor_a);
 		
-		FLOAT BlendColor[4];
-		
-		//TODO: Check surface color format for u16 colors
-		{
-			u8 blend_color_r = rsx::method_registers.blend_color_8b_r();
-			u8 blend_color_g = rsx::method_registers.blend_color_8b_g();
-			u8 blend_color_b = rsx::method_registers.blend_color_8b_b();
-			u8 blend_color_a = rsx::method_registers.blend_color_8b_a();
-
-			BlendColor[0] = blend_color_r / 255.f;
-			BlendColor[1] = blend_color_g / 255.f;
-			BlendColor[2] = blend_color_b / 255.f;
-			BlendColor[3] = blend_color_a / 255.f;
-		}
-		
+		auto BlendColor = rsx::get_constant_blend_colors();
 		bool color_blend_possible = true;
 
 		if (sfactor_rgb == rsx::blend_factor::constant_alpha ||
@@ -140,6 +122,9 @@ void D3D12GSRender::load_program()
 				case D3D12_BLEND_INV_BLEND_FACTOR:
 					return D3D12_BLEND_ZERO;
 				}
+
+				LOG_ERROR(RSX, "No suitable conversion defined for blend factor 0x%X" HERE, (u32)in);
+				return in;
 			};
 
 			d3d_sfactor_rgb = flatten_d3d12_factor(d3d_sfactor_rgb);
@@ -149,7 +134,7 @@ void D3D12GSRender::load_program()
 		}
 		else
 		{
-			get_current_resource_storage().command_list->OMSetBlendFactor(BlendColor);
+			get_current_resource_storage().command_list->OMSetBlendFactor(BlendColor.data());
 		}
 
 		prop.Blend.RenderTarget[0].BlendEnable = true;
@@ -291,6 +276,7 @@ void D3D12GSRender::load_program()
 		D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF,
 	};
 	prop.Rasterization = CD3D12_RASTERIZER_DESC;
+	prop.Rasterization.DepthClipEnable = rsx::method_registers.depth_clip_enabled();
 
 	if (rsx::method_registers.cull_face_enabled())
 	{
@@ -309,7 +295,10 @@ void D3D12GSRender::load_program()
 
 	if (rsx::method_registers.restart_index_enabled())
 	{
-		rsx::index_array_type index_type = rsx::method_registers.index_type();
+		rsx::index_array_type index_type = rsx::method_registers.current_draw_clause.is_immediate_draw?
+			rsx::index_array_type::u32:
+			rsx::method_registers.index_type();
+
 		if (index_type == rsx::index_array_type::u32)
 		{
 			prop.CutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
@@ -320,12 +309,18 @@ void D3D12GSRender::load_program()
 		}
 	}
 
-	m_current_pso = m_pso_cache.getGraphicPipelineState(m_vertex_program, m_fragment_program, prop, m_device.Get(), m_shared_root_signature.Get());
+	m_current_pso = m_pso_cache.getGraphicPipelineState(current_vertex_program, current_fragment_program, prop, m_device.Get(), m_shared_root_signature.Get());
 	return;
 }
 
 std::pair<std::string, std::string> D3D12GSRender::get_programs() const
 {
-	return std::make_pair(m_pso_cache.get_transform_program(m_vertex_program).content, m_pso_cache.get_shader_program(m_fragment_program).content);
+	return std::make_pair(m_pso_cache.get_transform_program(current_vertex_program).content, m_pso_cache.get_shader_program(current_fragment_program).content);
+}
+
+void D3D12GSRender::notify_tile_unbound(u32 tile)
+{
+	u32 addr = rsx::get_address(tiles[tile].offset, tiles[tile].location);
+	m_rtts.invalidate_surface_address(addr, false);
 }
 #endif

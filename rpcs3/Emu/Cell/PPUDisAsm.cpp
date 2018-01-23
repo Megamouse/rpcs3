@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "PPUDisAsm.h"
+#include "PPUFunction.h"
 
 const ppu_decoder<PPUDisAsm> s_ppu_disasm;
 
@@ -892,20 +893,14 @@ void PPUDisAsm::BC(ppu_opcode_t op)
 	Write(fmt::format("bc [%x:%x:%x:%x:%x], cr%d[%x], 0x%x, %d, %d", bo0, bo1, bo2, bo3, bo4, bi / 4, bi % 4, bd, aa, lk));
 }
 
-void PPUDisAsm::HACK(ppu_opcode_t op)
-{
-	Write(fmt::format("hack %d", op.opcode & 0x3ffffff));
-}
-
 void PPUDisAsm::SC(ppu_opcode_t op)
 {
-	switch (op.lev)
+	if (op.opcode != ppu_instructions::SC(0))
 	{
-	case 0x0: Write("sc"); break;
-	case 0x1: Write("HyperCall LV1"); break;
-	case 0x3: Write("fast_stop()"); break; // hack
-	default: Write(fmt::format("Unknown sc: 0x%x", op.lev));
+		return UNK(op);
 	}
+
+	Write("sc");
 }
 
 void PPUDisAsm::B(ppu_opcode_t op)
@@ -1553,7 +1548,14 @@ void PPUDisAsm::OR(ppu_opcode_t op)
 {
 	if (op.rs == op.rb)
 	{
-		DisAsm_R2_RC("mr", op.ra, op.rb, op.rc);
+		switch (op.opcode)
+		{	
+		case 0x7f9ce378: return Write("db8cyc");
+		case 0x7fbdeb78: return Write("db10cyc");
+		case 0x7fdef378: return Write("db12cyc");
+		case 0x7ffffb78: return Write("db16cyc");
+		default : DisAsm_R2_RC("mr", op.ra, op.rb, op.rc);
+		}
 	}
 	else
 	{
@@ -2154,7 +2156,21 @@ void PPUDisAsm::FCFID(ppu_opcode_t op)
 	DisAsm_F2_RC("fcfid", op.frd, op.frb, op.rc);
 }
 
+extern std::vector<std::string> g_ppu_function_names;
+
 void PPUDisAsm::UNK(ppu_opcode_t op)
 {
+	if (op.opcode == dump_pc && ppu_function_manager::addr)
+	{
+		// HLE function index
+		const u32 index = (dump_pc - ppu_function_manager::addr) / 8;
+
+		if (index < ppu_function_manager::get().size())
+		{
+			Write(fmt::format("Function : %s (index %u)", index < g_ppu_function_names.size() ? g_ppu_function_names[index].c_str() : "?", index));
+			return;
+		}
+	}
+
 	Write(fmt::format("Unknown/Illegal opcode! (0x%08x)", op.opcode));
 }

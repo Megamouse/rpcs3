@@ -1,12 +1,16 @@
 #include "File.h"
+#include "mutex.h"
 #include "StrFmt.h"
-#include "SharedMutex.h"
 #include "BEType.h"
 #include "Crypto/sha1.h"
 
 #include <unordered_map>
 #include <algorithm>
+#include <cstring>
 #include <cerrno>
+#include <typeinfo>
+
+using namespace std::literals::string_literals;
 
 #ifdef _WIN32
 
@@ -69,17 +73,46 @@ static time_t to_time(const FILETIME& ft)
 	return to_time(v);
 }
 
+static FILETIME from_time(s64 _time)
+{
+	FILETIME result;
+
+	if (_time <= -11644473600ll)
+	{
+		result.dwLowDateTime = 0;
+		result.dwHighDateTime = 0;
+	}
+	else if (_time > INT64_MAX / 10000000ll - 11644473600ll)
+	{
+		result.dwLowDateTime = 0xffffffff;
+		result.dwHighDateTime = 0x7fffffff;
+	}
+	else
+	{
+		const ullong wtime = (_time + 11644473600ull) * 10000000ull;
+		result.dwLowDateTime = static_cast<DWORD>(wtime);
+		result.dwHighDateTime = static_cast<DWORD>(wtime >> 32);
+	}
+
+	return result;
+}
+
 static fs::error to_error(DWORD e)
 {
 	switch (e)
 	{
 	case ERROR_FILE_NOT_FOUND: return fs::error::noent;
 	case ERROR_PATH_NOT_FOUND: return fs::error::noent;
+	case ERROR_ACCESS_DENIED: return fs::error::acces;
 	case ERROR_ALREADY_EXISTS: return fs::error::exist;
 	case ERROR_FILE_EXISTS: return fs::error::exist;
 	case ERROR_NEGATIVE_SEEK: return fs::error::inval;
 	case ERROR_DIRECTORY: return fs::error::inval;
 	case ERROR_INVALID_NAME: return fs::error::inval;
+	case ERROR_SHARING_VIOLATION: return fs::error::acces;
+	case ERROR_DIR_NOT_EMPTY: return fs::error::notempty;
+	case ERROR_NOT_READY: return fs::error::noent;
+	//case ERROR_INVALID_PARAMETER: return fs::error::inval;
 	default: fmt::throw_exception("Unknown Win32 error: %u.", e);
 	}
 }
@@ -89,16 +122,21 @@ static fs::error to_error(DWORD e)
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/statvfs.h>
+#include <sys/file.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <libgen.h>
 #include <string.h>
 #include <unistd.h>
+#include <utime.h>
 
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__)
 #include <copyfile.h>
 #include <mach-o/dyld.h>
-#else
+#elif defined(__DragonFly__) || defined(__FreeBSD__)
+#include <sys/socket.h> // sendfile
+#elif defined(__linux__) || defined(__sun)
 #include <sys/sendfile.h>
 #endif
 
@@ -109,6 +147,8 @@ static fs::error to_error(int e)
 	case ENOENT: return fs::error::noent;
 	case EEXIST: return fs::error::exist;
 	case EINVAL: return fs::error::inval;
+	case EACCES: return fs::error::acces;
+	case ENOTEMPTY: return fs::error::notempty;
 	default: fmt::throw_exception("Unknown system error: %d.", e);
 	}
 }
@@ -135,6 +175,28 @@ namespace fs
 		// Use magic static
 		static device_manager instance;
 		return instance;
+	}
+
+	file_base::~file_base()
+	{
+	}
+
+	stat_t file_base::stat()
+	{
+		fmt::throw_exception("fs::file::stat() not supported for %s", typeid(*this).name());
+	}
+
+	void file_base::sync()
+	{
+		// Do notning
+	}
+
+	dir_base::~dir_base()
+	{
+	}
+
+	device_base::~device_base()
+	{
 	}
 }
 
@@ -366,6 +428,45 @@ bool fs::is_dir(const std::string& path)
 	return true;
 }
 
+bool fs::statfs(const std::string& path, fs::device_stat& info)
+{
+	if (auto device = get_virtual_device(path))
+	{
+		return device->statfs(path, info);
+	}
+
+#ifdef _WIN32
+	ULARGE_INTEGER avail_free;
+	ULARGE_INTEGER total_size;
+	ULARGE_INTEGER total_free;
+
+	if (!GetDiskFreeSpaceExW(to_wchar(path).get(), &avail_free, &total_size, &total_free))
+	{
+		g_tls_error = to_error(GetLastError());
+		return false;
+	}
+
+	info.block_size = 4096; // TODO
+	info.total_size = total_size.QuadPart;
+	info.total_free = total_free.QuadPart;
+	info.avail_free = avail_free.QuadPart;
+#else
+	struct ::statvfs buf;
+	if (::statvfs(path.c_str(), &buf) != 0)
+	{
+		g_tls_error = to_error(errno);
+		return false;
+	}
+
+	info.block_size = buf.f_frsize;
+	info.total_size = info.block_size * buf.f_blocks;
+	info.total_free = info.block_size * buf.f_bfree;
+	info.avail_free = info.block_size * buf.f_bavail;
+#endif
+
+	return true;
+}
+
 bool fs::create_dir(const std::string& path)
 {
 	if (auto device = get_virtual_device(path))
@@ -430,7 +531,7 @@ bool fs::remove_dir(const std::string& path)
 #endif
 }
 
-bool fs::rename(const std::string& from, const std::string& to)
+bool fs::rename(const std::string& from, const std::string& to, bool overwrite)
 {
 	const auto device = get_virtual_device(from);
 
@@ -445,14 +546,43 @@ bool fs::rename(const std::string& from, const std::string& to)
 	}
 
 #ifdef _WIN32
-	if (!MoveFileW(to_wchar(from).get(), to_wchar(to).get()))
+	const auto ws1 = to_wchar(from);
+	const auto ws2 = to_wchar(to);
+
+	if (!MoveFileExW(ws1.get(), ws2.get(), overwrite ? MOVEFILE_REPLACE_EXISTING : 0))
 	{
-		g_tls_error = to_error(GetLastError());
+		DWORD error1 = GetLastError();
+
+		if (overwrite && error1 == ERROR_ACCESS_DENIED && is_dir(from) && is_dir(to))
+		{
+			if (RemoveDirectoryW(ws2.get()))
+			{
+				if (MoveFileW(ws1.get(), ws2.get()))
+				{
+					return true;
+				}
+
+				error1 = GetLastError();
+				CreateDirectoryW(ws2.get(), NULL); // TODO
+			}
+			else
+			{
+				error1 = GetLastError();
+			}
+		}
+
+		g_tls_error = to_error(error1);
 		return false;
 	}
 
 	return true;
 #else
+	if (!overwrite && exists(to))
+	{
+		g_tls_error = fs::error::exist;
+		return false;
+	}
+
 	if (::rename(from.c_str(), to.c_str()) != 0)
 	{
 		g_tls_error = to_error(errno);
@@ -501,14 +631,20 @@ bool fs::copy_file(const std::string& from, const std::string& to, bool overwrit
 	}
 
 	// Here we use kernel-space copying for performance reasons
-#if defined(__APPLE__) || defined(__FreeBSD__)
-	// fcopyfile works on FreeBSD and OS X 10.5+ 
+#if defined(__APPLE__)
+	// fcopyfile works on OS X 10.5+
 	if (::fcopyfile(input, output, 0, COPYFILE_ALL))
-#else
+#elif defined(__DragonFly__) || defined(__FreeBSD__)
+	if (::sendfile(input, output, 0, 0, NULL, NULL, 0))
+#elif defined(__linux__) || defined(__sun)
 	// sendfile will work with non-socket output (i.e. regular file) on Linux 2.6.33+
 	off_t bytes_copied = 0;
 	struct ::stat fileinfo = { 0 };
 	if (::fstat(input, &fileinfo) || ::sendfile(output, input, &bytes_copied, fileinfo.st_size))
+#else // NetBSD, OpenBSD, etc.
+	fmt::throw_exception("fs::copy_file() isn't implemented for this platform.\nFrom: %s\nTo: %s", from, to);
+	errno = 0;
+	if (true)
 #endif
 	{
 		const int err = errno;
@@ -560,18 +696,17 @@ bool fs::truncate_file(const std::string& path, u64 length)
 
 #ifdef _WIN32
 	// Open the file
-	const auto handle = CreateFileW(to_wchar(path).get(), GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	const auto handle = CreateFileW(to_wchar(path).get(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		g_tls_error = to_error(GetLastError());
 		return false;
 	}
 
-	LARGE_INTEGER distance;
-	distance.QuadPart = length;
+	FILE_END_OF_FILE_INFO _eof;
+	_eof.EndOfFile.QuadPart = length;
 
-	// Seek and truncate
-	if (!SetFilePointerEx(handle, distance, NULL, FILE_BEGIN) || !SetEndOfFile(handle))
+	if (!SetFileInformationByHandle(handle, FileEndOfFileInfo, &_eof, sizeof(_eof)))
 	{
 		g_tls_error = to_error(GetLastError());
 		CloseHandle(handle);
@@ -591,6 +726,48 @@ bool fs::truncate_file(const std::string& path, u64 length)
 #endif
 }
 
+bool fs::utime(const std::string& path, s64 atime, s64 mtime)
+{
+	if (auto device = get_virtual_device(path))
+	{
+		return device->utime(path, atime, mtime);
+	}
+
+#ifdef _WIN32
+	// Open the file
+	const auto handle = CreateFileW(to_wchar(path).get(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (handle == INVALID_HANDLE_VALUE)
+	{
+		g_tls_error = to_error(GetLastError());
+		return false;
+	}
+
+	FILETIME _atime = from_time(atime);
+	FILETIME _mtime = from_time(mtime);
+	if (!SetFileTime(handle, nullptr, &_atime, &_mtime))
+	{
+		g_tls_error = to_error(GetLastError());
+		CloseHandle(handle);
+		return false;
+	}
+
+	CloseHandle(handle);
+	return true;
+#else
+	::utimbuf buf;
+	buf.actime = atime;
+	buf.modtime = mtime;
+
+	if (::utime(path.c_str(), &buf) != 0)
+	{
+		g_tls_error = to_error(errno);
+		return false;
+	}
+
+	return true;
+#endif
+}
+
 void fs::file::xnull() const
 {
 	fmt::throw_exception<std::logic_error>("fs::file is null");
@@ -601,17 +778,17 @@ void fs::file::xfail() const
 	fmt::throw_exception("Unexpected fs::error %s", g_tls_error);
 }
 
-bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
+fs::file::file(const std::string& path, bs_t<open_mode> mode)
 {
 	if (auto device = get_virtual_device(path))
 	{
 		if (auto&& _file = device->open(path, mode))
 		{
 			m_file = std::move(_file);
-			return true;
+			return;
 		}
 
-		return false;
+		return;
 	}
 
 #ifdef _WIN32
@@ -631,21 +808,27 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 		if (test(mode & fs::excl))
 		{
 			g_tls_error = error::inval;
-			return false;
+			return;
 		}
 
 		disp = test(mode & fs::trunc) ? TRUNCATE_EXISTING : OPEN_EXISTING;
 	}
 
-	const HANDLE handle = CreateFileW(to_wchar(path).get(), access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, disp, FILE_ATTRIBUTE_NORMAL, NULL);
+	DWORD share = FILE_SHARE_READ;
+	if (!test(mode & fs::unshare))
+	{
+		share |= FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+	}
+
+	const HANDLE handle = CreateFileW(to_wchar(path).get(), access, share, NULL, disp, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		g_tls_error = to_error(GetLastError());
-		return false;
+		return;
 	}
 
-	class windows_file final : public file_base
+	class windows_file final : public file_base, public get_native_handle
 	{
 		const HANDLE m_handle;
 
@@ -676,25 +859,22 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 			return info;
 		}
 
+		void sync() override
+		{
+			verify("file::sync" HERE), FlushFileBuffers(m_handle);
+		}
+
 		bool trunc(u64 length) override
 		{
-			LARGE_INTEGER old, pos;
+			FILE_END_OF_FILE_INFO _eof;
+			_eof.EndOfFile.QuadPart = length;
 
-			pos.QuadPart = 0;
-			if (!SetFilePointerEx(m_handle, pos, &old, FILE_CURRENT)) // get old position
+			if (!SetFileInformationByHandle(m_handle, FileEndOfFileInfo, &_eof, sizeof(_eof)))
 			{
 				g_tls_error = to_error(GetLastError());
 				return false;
 			}
 
-			pos.QuadPart = length;
-			if (!SetFilePointerEx(m_handle, pos, NULL, FILE_BEGIN)) // set new position
-			{
-				g_tls_error = to_error(GetLastError());
-				return false;
-			}
-
-			verify("file::trunc" HERE), SetEndOfFile(m_handle), SetFilePointerEx(m_handle, old, NULL, FILE_BEGIN);
 			return true;
 		}
 
@@ -731,7 +911,11 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 				whence == seek_end ? FILE_END :
 				(fmt::throw_exception("Invalid whence (0x%x)" HERE, whence), 0);
 
-			verify("file::seek" HERE), SetFilePointerEx(m_handle, pos, &pos, mode);
+			if (!SetFilePointerEx(m_handle, pos, &pos, mode))
+			{
+				g_tls_error = to_error(GetLastError());
+				return -1;
+			}
 
 			return pos.QuadPart;
 		}
@@ -742,6 +926,11 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 			verify("file::size" HERE), GetFileSizeEx(m_handle, &size);
 
 			return size.QuadPart;
+		}
+
+		native_handle get() override
+		{
+			return m_handle;
 		}
 	};
 
@@ -763,10 +952,17 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 	if (fd == -1)
 	{
 		g_tls_error = to_error(errno);
-		return false;
+		return;
 	}
 
-	class unix_file final : public file_base
+	if (test(mode & fs::unshare) && ::flock(fd, LOCK_EX | LOCK_NB) != 0)
+	{
+		g_tls_error = errno == EWOULDBLOCK ? fs::error::acces : to_error(errno);
+		::close(fd);
+		return;
+	}
+
+	class unix_file final : public file_base, public get_native_handle
 	{
 		const int m_fd;
 
@@ -795,6 +991,11 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 			info.ctime = file_info.st_ctime;
 
 			return info;
+		}
+
+		void sync() override
+		{
+			verify("file::sync" HERE), ::fsync(m_fd) == 0;
 		}
 
 		bool trunc(u64 length) override
@@ -833,7 +1034,12 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 				(fmt::throw_exception("Invalid whence (0x%x)" HERE, whence), 0);
 
 			const auto result = ::lseek(m_fd, offset, mode);
-			verify("file::seek" HERE), result != -1;
+			
+			if (result == -1)
+			{
+				g_tls_error = to_error(errno);
+				return -1;
+			}
 
 			return result;
 		}
@@ -845,12 +1051,15 @@ bool fs::file::open(const std::string& path, bs_t<open_mode> mode)
 
 			return file_info.st_size;
 		}
+
+		native_handle get() override
+		{
+			return m_fd;
+		}
 	};
 
 	m_file = std::make_unique<unix_file>(fd);
 #endif
-
-	return true;
 }
 
 fs::file::file(const void* ptr, std::size_t size)
@@ -869,38 +1078,48 @@ fs::file::file(const void* ptr, std::size_t size)
 		{
 		}
 
-		fs::stat_t stat() override
-		{
-			fmt::throw_exception<std::logic_error>("Not supported" HERE);
-		}
-
 		bool trunc(u64 length) override
 		{
-			fmt::throw_exception<std::logic_error>("Not allowed" HERE);
+			return false;
 		}
 
 		u64 read(void* buffer, u64 count) override
 		{
-			const u64 start = m_pos;
-			const u64 end = seek(count, fs::seek_cur);
-			if (end < start) fmt::throw_exception<std::logic_error>("Stream overflow" HERE);
-			const u64 read_size = end - start;
-			std::memcpy(buffer, m_ptr + start, read_size);
-			return read_size;
+			if (m_pos < m_size)
+			{
+				// Get readable size
+				if (const u64 result = std::min<u64>(count, m_size - m_pos))
+				{
+					std::memcpy(buffer, m_ptr + m_pos, result);
+					m_pos += result;
+					return result;
+				}
+			}
+
+			return 0;
 		}
 
 		u64 write(const void* buffer, u64 count) override
 		{
-			fmt::throw_exception<std::logic_error>("Not allowed" HERE);
+			return 0;
 		}
 
 		u64 seek(s64 offset, fs::seek_mode whence) override
 		{
-			return
-				whence == fs::seek_set ? m_pos = std::min<u64>(offset, m_size) :
-				whence == fs::seek_cur ? m_pos = std::min<u64>(offset + m_pos, m_size) :
-				whence == fs::seek_end ? m_pos = std::min<u64>(offset + m_size, m_size) :
-				(fmt::throw_exception("Invalid whence (0x%x)" HERE, whence), 0);
+			const s64 new_pos =
+				whence == fs::seek_set ? offset :
+				whence == fs::seek_cur ? offset + m_pos :
+				whence == fs::seek_end ? offset + size() :
+				(fmt::raw_error("fs::file::memory_stream::seek(): invalid whence"), 0);
+
+			if (new_pos < 0)
+			{
+				fs::g_tls_error = fs::error::inval;
+				return -1;
+			}
+
+			m_pos = new_pos;
+			return m_pos;
 		}
 
 		u64 size() override
@@ -910,6 +1129,20 @@ fs::file::file(const void* ptr, std::size_t size)
 	};
 
 	m_file = std::make_unique<memory_stream>(ptr, size);
+}
+
+fs::native_handle fs::file::get_handle() const
+{
+	if (auto getter = dynamic_cast<get_native_handle*>(m_file.get()))
+	{
+		return getter->get();
+	}
+
+#ifdef _WIN32
+	return INVALID_HANDLE_VALUE;
+#else
+	return -1;
+#endif
 }
 
 void fs::dir::xnull() const
@@ -1055,11 +1288,22 @@ const std::string& fs::get_config_dir()
 	// Use magic static
 	static const std::string s_dir = []
 	{
-#ifdef _WIN32
-		return get_executable_dir(); // ?
-#else
 		std::string dir;
 
+#ifdef _WIN32
+		wchar_t buf[2048];
+		if (GetModuleFileName(NULL, buf, ::size32(buf)) - 1 >= ::size32(buf) - 1)
+		{
+			MessageBoxA(0, fmt::format("GetModuleFileName() failed: error %u.", GetLastError()).c_str(), "fs::get_config_dir()", MB_ICONERROR);
+			return dir; // empty
+		}
+
+		to_utf8(dir, buf); // Convert to UTF-8
+
+		std::replace(dir.begin(), dir.end(), '\\', '/');
+
+		dir.resize(dir.rfind('/') + 1);
+#else
 		if (const char* home = ::getenv("XDG_CONFIG_HOME"))
 			dir = home;
 		else if (const char* home = ::getenv("HOME"))
@@ -1072,59 +1316,9 @@ const std::string& fs::get_config_dir()
 		if (!is_dir(dir) && !create_path(dir))
 		{
 			std::printf("Failed to create configuration directory '%s' (%d).\n", dir.c_str(), errno);
-			return get_executable_dir();
 		}
-
-		return dir;
 #endif
-	}();
 
-	return s_dir;
-}
-
-const std::string& fs::get_executable_dir()
-{
-	// Use magic static
-	static const std::string s_dir = []
-	{
-		std::string dir;
-
-#ifdef _WIN32
-		wchar_t buf[2048];
-		if (GetModuleFileName(NULL, buf, ::size32(buf)) - 1 >= ::size32(buf) - 1)
-		{
-			MessageBoxA(0, fmt::format("GetModuleFileName() failed: error %u.", GetLastError()).c_str(), "fs::get_executable_dir()", MB_ICONERROR);
-			return dir; // empty
-		}
-	
-		to_utf8(dir, buf); // Convert to UTF-8
-
-		std::replace(dir.begin(), dir.end(), '\\', '/');
-
-#elif __APPLE__
-		char buf[4096];
-		u32 size = sizeof(buf);
-		if (_NSGetExecutablePath(buf, &size))
-		{
-			std::printf("_NSGetExecutablePath() failed (size=0x%x).\n", size);
-			return dir; // empty
-		}
-
-		dir = buf;
-#else
-		char buf[4096];
-		const auto size = ::readlink("/proc/self/exe", buf, sizeof(buf));
-		if (size <= 0 || size >= sizeof(buf))
-		{
-			std::printf("readlink(/proc/self/exe) failed (%d).\n", errno);
-			return dir; // empty
-		}
-
-		dir.assign(buf, size);
-#endif
-	
-		// Leave only path
-		dir.resize(dir.rfind('/') + 1);
 		return dir;
 	}();
 
@@ -1135,7 +1329,7 @@ std::string fs::get_data_dir(const std::string& prefix, const std::string& locat
 {
 	static const std::string s_dir = []
 	{
-		const std::string& dir = get_config_dir() + "/data/";
+		const std::string& dir = get_config_dir() + "data/";
 
 		if (!is_dir(dir) && !create_path(dir))
 		{
@@ -1282,6 +1476,8 @@ void fmt_class_string<fs::error>::format(std::string& out, u64 arg)
 		case fs::error::inval: return "Invalid arguments";
 		case fs::error::noent: return "Not found";
 		case fs::error::exist: return "Already exists";
+		case fs::error::acces: return "Access violation";
+		case fs::error::notempty: return "Not empty";
 		}
 
 		return unknown;

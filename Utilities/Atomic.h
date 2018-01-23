@@ -300,21 +300,24 @@ struct atomic_storage<T, 2> : atomic_storage<T, 0>
 	static inline bool bts(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btsw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ushort _bit = (ushort)bit;
+		__asm__("lock btsw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 
 	static inline bool btr(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btrw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ushort _bit = (ushort)bit;
+		__asm__("lock btrw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 
 	static inline bool btc(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btcw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ushort _bit = (ushort)bit;
+		__asm__("lock btcw %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 #endif
@@ -498,21 +501,24 @@ struct atomic_storage<T, 8> : atomic_storage<T, 0>
 	static inline bool bts(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btsq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ullong _bit = bit;
+		__asm__("lock btsq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 
 	static inline bool btr(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btrq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ullong _bit = bit;
+		__asm__("lock btrq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 
 	static inline bool btc(T& dest, uint bit)
 	{
 		bool result;
-		__asm__("lock btcq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (bit) : "cc");
+		ullong _bit = bit;
+		__asm__("lock btcq %2, %0\n" "setc %1" : "+m" (dest), "=r" (result) : "Ir" (_bit) : "cc");
 		return result;
 	}
 #endif
@@ -530,7 +536,7 @@ struct atomic_storage<T, 16> : atomic_storage<T, 0>
 
 	static inline T load(const T& dest)
 	{
-		llong result[2];
+		llong result[2]{0, 0};
 		_InterlockedCompareExchange128((volatile llong*)&dest, 0, 0, result);
 		return *(T*)+result;
 	}

@@ -1,90 +1,125 @@
 language: cpp
 sudo: required
-dist: trusty
 
 os:
- - linux
- - osx
+  - linux
+  #- osx
 
-osx_image: xcode6.4
+# osx_image: xcode6.4
 
 compiler:
- - clang
- - gcc
+  - clang
+  - gcc
 
-env:
-  global:
-   - secure: "Vf+FY48nip9JppMnq11105NealdErSWsoUhHo63/V3V+LKfA9guenxCp93/qoSIdSGC/sJwb0yIIMGvkTT/rxDJNh6Z+BWUTb2E0WEIIQbvTJNOSUzoq7dfF1LT61XjVjByFzcbC2xjtaBowmcAYEs1jGUUuEjYVCMmD5lY8hUg="
-   # Which Travis environment to run Coverity on
-   - coverity_scan_run_condition='"$TRAVIS_OS_NAME" = linux -a "$CC" = gcc'
-   # Test mode is for testing if it's working with Coverity. Change to true if testing, to avoid reaching the quota.
-   - coverity_scan_script_test_mode=false
+cache:
+  ccache: true
+  directories:
+    - $HOME/hombebrew_cache
 
 matrix:
- exclude:
-  - os: osx
-    compiler: gcc
+  exclude:
+    - os: osx
+      compiler: gcc
 
 git:
+  depth: false # Unshallow clone to obtain proper GIT_VERSION
   submodules: false
 
 before_install:
-# shutdown services on Travis, which may have a memory impact
-  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then
-      sudo apt-get install -y libwxgtk3.0-dev;
+  - if [ "$CC" = "clang" ]; then
+      export CXX="clang++-4.0" CC="clang-4.0";
     fi;
   - if [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$CXX" = "g++" ]; then
       export CXX="g++-5" CC="gcc-5" CXXFLAGS="-Wno-format-security";
-      export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01';
     fi;
-# Add coverall for C++ so coverall.io could be triggered. Even it should be --coverage and gcov.
   - if [ "$TRAVIS_OS_NAME" = "linux" ]; then
-      sudo pip install cpp-coveralls requests[security];
+      wget http://download.qt.io/official_releases/online_installers/qt-unified-linux-x64-online.run ;
+      chmod a+x ./qt-unified-linux-x64-online.run ;
+      export QT_QPA_PLATFORM=minimal ;
+      travis_wait 60 ./qt-unified-linux-x64-online.run --script qt-installer-noninteractive.qs --no-force-installations --verbose ;
+    fi;
+
+  # Install updated libglew-dev since the version provided by trusty is outdated
+  - if [ "$TRAVIS_OS_NAME" = "linux" ]; then
+      wget https://mirrors.kernel.org/ubuntu/pool/universe/g/glew/libglew-dev_2.0.0-5_amd64.deb;
+      wget https://mirrors.kernel.org/ubuntu/pool/universe/g/glew/libglew2.0_2.0.0-5_amd64.deb;
+      wget https://mirrors.kernel.org/ubuntu/pool/universe/v/vulkan/libvulkan1_1.0.61.1+dfsg1-1ubuntu1~16.04.1_amd64.deb;
+      wget https://mirrors.kernel.org/ubuntu/pool/universe/v/vulkan/libvulkan-dev_1.0.61.1+dfsg1-1ubuntu1~16.04.1_amd64.deb;
+      sudo dpkg -i libglew2.0_2.0.0-5_amd64.deb libglew-dev_2.0.0-5_amd64.deb libvulkan1_1.0.61.1+dfsg1-1ubuntu1~16.04.1_amd64.deb libvulkan-dev_1.0.61.1+dfsg1-1ubuntu1~16.04.1_amd64.deb;
     else
-      brew update; brew update;
-      brew install glew wxwidgets llvm38;
+      brew update;
+      brew install ccache glew llvm40;
     fi;
 
 before_script:
- - git submodule update --init rsx_program_decompiler asmjit 3rdparty/ffmpeg 3rdparty/pugixml 3rdparty/GSL 3rdparty/libpng Utilities/yaml-cpp 3rdparty/cereal
- - mkdir build
- - cd build
- - if [ "$TRAVIS_OS_NAME" = "linux" ]; then cmake ..; else cmake .. -DLLVM_DIR=/usr/local/opt/llvm38/lib/llvm-3.8/share/llvm/cmake; fi
+  - git submodule update --init asmjit 3rdparty/ffmpeg 3rdparty/pugixml 3rdparty/GSL 3rdparty/libpng Utilities/yaml-cpp 3rdparty/cereal 3rdparty/hidapi 3rdparty/Optional Vulkan/glslang Vulkan/Vulkan-LoaderAndValidationLayers
+  - mkdir build
+  - cd build
+  - export CMAKE_PREFIX_PATH=~/Qt/5.10.0/gcc_64/lib/cmake
+  - export CXXFLAGS="$CXXFLAGS -DTRAVIS=true";
+  - if [ "$TRAVIS_PULL_REQUEST" = false ]; then
+      export CXXFLAGS="$CXXFLAGS -DBRANCH=$TRAVIS_REPO_SLUG/$TRAVIS_BRANCH";
+    else
+      export CXXFLAGS="$CXXFLAGS -DBRANCH=$TRAVIS_REPO_SLUG/$TRAVIS_BRANCH/#$TRAVIS_PULL_REQUEST";
+    fi;
+  - cmake .. -DCMAKE_INSTALL_PREFIX=/usr -G Ninja;
+  - ninja
+  - # AppImage generation
+  - if [ -n "$UPLOAD_URL" ] && [ "$TRAVIS_BRANCH" = "master" ] && [ "$CC" = "clang-4.0" ] && [ "$TRAVIS_PULL_REQUEST" = false ]; then
+      export LD_LIBRARY_PATH=~/Qt/5.10.0/gcc_64/lib;
+      DESTDIR=appdir ninja install ; find appdir/ ;
+      find ../bin ;
+      wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage" ;
+      chmod a+x linuxdeployqt*.AppImage ;
+      export PATH=~/Qt/5.10.0/gcc_64/bin/:${PATH} ;
+      ./linuxdeployqt*.AppImage --appimage-extract ;
+      ./linuxdeployqt*.AppImage ./appdir/usr/share/applications/*.desktop -bundle-non-qt-libs ;
+      mkdir ./appdir/usr/plugins/xcbglintegrations/ ;
+      mkdir ./appdir/usr/plugins/imageformats/ ;
+      cp ~/Qt/5.10.0/gcc_64/lib/libQt5Svg.so.5 ./appdir/usr/lib/ ;
+      cp ~/Qt/5.10.0/gcc_64/plugins/xcbglintegrations/* ./appdir/usr/plugins/xcbglintegrations/ ;
+      cp ~/Qt/5.10.0/gcc_64/plugins/imageformats/* ./appdir/usr/plugins/imageformats/ ;
+      cp ~/Qt/5.10.0/gcc_64/plugins/platforms/* ./appdir/usr/plugins/platforms/ ;
+      export PATH=${TRAVIS_BUILD_DIR}/build/squashfs-root/usr/bin/:${PATH} ;
+      ./squashfs-root/usr/bin/appimagetool ${TRAVIS_BUILD_DIR}/build/appdir ;
+      find ./appdir -executable -type f -exec ldd {} \; | grep " => /usr" | cut -d " " -f 2-3 | sort | uniq ;
+      curl ${UPLOAD_URL}${TRAVIS_COMMIT:0:7}-${TRAVIS_BUILD_NUMBER}_linux64 --upload-file ./RPCS3*.AppImage;
+   fi;
 
 script:
-# Add a command to show all the variables. May be useful for debugging Travis.
-# - echo "--Shell Export Lists START--" ; export -p; echo "--Shell Export Lists STOP--";
-# And to ensure the versions of toolchain
-- echo "--CXX version?"; "$CXX" --version; echo "--CXX version confirmed";
-- if [ "$COVERITY_SCAN_BRANCH" != 1 ]; then make -j 4; fi
+  # Add a command to show all the variables. May be useful for debugging Travis.
+  #- echo "--Shell Export Lists START--" ; export -p; echo "--Shell Export Lists STOP--";
+  # And to ensure the versions of toolchain
+  - echo "--CXX version?"; "$CXX" --version; echo "--CXX version confirmed";
 
 addons:
   apt:
     sources:
-    - ubuntu-toolchain-r-test
-#    - llvm-toolchain-trusty-3.8 temporarily disabled
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-trusty-4.0
+      - sourceline: 'ppa:jonathonf/binutils' # We need to update binutils to a newer version to link against the ffmpeg libs on.
     packages:
-    - cmake
-    - libopenal-dev
-    - freeglut3-dev
-    - libglew-dev
-    - libc6-dev
-#    - llvm-3.8
-#    - llvm-3.8-dev
-    - libedit-dev
-    - g++-5
-    - gcc-5
-#    - clang-3.6
-    - libstdc++-5-dev
-    - lib32stdc++6
-    - zlib1g-dev
-  coverity_scan:
-    project:
-      name: $TRAVIS_REPO_SLUG
-      description: "PS3 emulator/debugger"
-    notification_email: raul.tambre@gmail.com
-    build_command: "make -j 4"
-    branch_pattern: coverity_scan
-
-after_success:
-- if [ "$COVERITY_SCAN_BRANCH" != 1 ] && [ "$TRAVIS_OS_NAME" = linux ]; then coveralls --extension .c --extension .cpp --extension .h; fi
+      - binutils
+      - cmake
+      - ninja-build
+      - libasound2-dev
+      - libopenal-dev
+      - freeglut3-dev
+      #- libglew-dev
+      #- libvulkan1
+      #- libvulkan-dev
+      - libc6-dev
+      - llvm-4.0
+      - llvm-4.0-dev
+      - clang-4.0
+      - libedit-dev
+      - g++-5
+      - gcc-5
+      - libstdc++-5-dev
+      - lib32stdc++6
+      - zlib1g-dev
+      # We need to install qt 5.10.0 manually because the version trusty provides is too old.
+      #- qtbase5-dev
+      - libudev-dev
+      - libevdev-dev
+      - libpulse-dev

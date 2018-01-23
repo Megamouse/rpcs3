@@ -3,8 +3,9 @@
 #include "sha1.h"
 #include "utils.h"
 #include "unself.h"
+#include "Emu/VFS.h"
 
-// TODO: Still reliant on wxWidgets for zlib functions. Alternative solutions?
+#include <algorithm>
 #include <zlib.h>
 
 inline u8 Read8(const fs::file& f)
@@ -647,6 +648,236 @@ void SelfHeader::Load(const fs::file& f)
 	pad = Read64(f);
 }
 
+SCEDecrypter::SCEDecrypter(const fs::file& s)
+	: sce_f(s)
+	, data_buf_length(0)
+{
+}
+
+bool SCEDecrypter::LoadHeaders()
+{
+	// Read SCE header.
+	sce_f.seek(0);
+	sce_hdr.Load(sce_f);
+
+	// Check SCE magic.
+	if (!sce_hdr.CheckMagic())
+	{
+		LOG_ERROR(LOADER, "SELF: Not a SELF file!");
+		return false;
+	}
+
+	return true;
+}
+
+bool SCEDecrypter::LoadMetadata(const u8 erk[32], const u8 riv[16])
+{
+	aes_context aes;
+	u32 metadata_info_size = SIZE_32(meta_info);
+	auto metadata_info = std::make_unique<u8[]>(metadata_info_size);
+	u32 metadata_headers_size = sce_hdr.se_hsize - (SIZE_32(sce_hdr) + sce_hdr.se_meta + SIZE_32(meta_info));
+	auto metadata_headers = std::make_unique<u8[]>(metadata_headers_size);
+
+	// Locate and read the encrypted metadata info.
+	sce_f.seek(sce_hdr.se_meta + sizeof(sce_hdr));
+	sce_f.read(metadata_info.get(), metadata_info_size);
+
+	// Locate and read the encrypted metadata header and section header.
+	sce_f.seek(sce_hdr.se_meta + sizeof(sce_hdr) + metadata_info_size);
+	sce_f.read(metadata_headers.get(), metadata_headers_size);
+
+	// Copy the necessary parameters.
+	u8 metadata_key[0x20];
+	u8 metadata_iv[0x10];
+	memcpy(metadata_key, erk, 0x20);
+	memcpy(metadata_iv, riv, 0x10);
+
+	// Check DEBUG flag.
+	if ((sce_hdr.se_flags & 0x8000) != 0x8000)
+	{
+		// Decrypt the metadata info.
+		aes_setkey_dec(&aes, metadata_key, 256);  // AES-256
+		aes_crypt_cbc(&aes, AES_DECRYPT, metadata_info_size, metadata_iv, metadata_info.get(), metadata_info.get());
+	}
+
+	// Load the metadata info.
+	meta_info.Load(metadata_info.get());
+
+	// If the padding is not NULL for the key or iv fields, the metadata info
+	// is not properly decrypted.
+	if ((meta_info.key_pad[0] != 0x00) ||
+		(meta_info.iv_pad[0] != 0x00))
+	{
+		LOG_ERROR(LOADER, "SELF: Failed to decrypt metadata info!");
+		return false;
+	}
+
+	// Perform AES-CTR encryption on the metadata headers.
+	size_t ctr_nc_off = 0;
+	u8 ctr_stream_block[0x10];
+	aes_setkey_enc(&aes, meta_info.key, 128);
+	aes_crypt_ctr(&aes, metadata_headers_size, &ctr_nc_off, meta_info.iv, ctr_stream_block, metadata_headers.get(), metadata_headers.get());
+
+	// Load the metadata header.
+	meta_hdr.Load(metadata_headers.get());
+
+	// Load the metadata section headers.
+	meta_shdr.clear();
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
+	{
+		meta_shdr.emplace_back();
+		meta_shdr.back().Load(metadata_headers.get() + sizeof(meta_hdr) + sizeof(MetadataSectionHeader) * i);
+	}
+
+	// Copy the decrypted data keys.
+	data_keys_length = meta_hdr.key_count * 0x10;
+	data_keys = std::make_unique<u8[]>(data_keys_length);
+	memcpy(data_keys.get(), metadata_headers.get() + sizeof(meta_hdr) + meta_hdr.section_count * sizeof(MetadataSectionHeader), data_keys_length);
+
+	return true;
+}
+
+bool SCEDecrypter::DecryptData()
+{
+	aes_context aes;
+
+	// Calculate the total data size.
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
+	{
+		data_buf_length += meta_shdr[i].data_size;
+	}
+
+	// Allocate a buffer to store decrypted data.
+	data_buf = std::make_unique<u8[]>(data_buf_length);
+
+	// Set initial offset.
+	u32 data_buf_offset = 0;
+
+	// Parse the metadata section headers to find the offsets of encrypted data.
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
+	{
+		size_t ctr_nc_off = 0;
+		u8 ctr_stream_block[0x10];
+		u8 data_key[0x10];
+		u8 data_iv[0x10];
+
+		// Check if this is an encrypted section.
+		if (meta_shdr[i].encrypted == 3)
+		{
+			// Make sure the key and iv are not out of boundaries.
+			if ((meta_shdr[i].key_idx <= meta_hdr.key_count - 1) && (meta_shdr[i].iv_idx <= meta_hdr.key_count))
+			{
+				// Get the key and iv from the previously stored key buffer.
+				memcpy(data_key, data_keys.get() + meta_shdr[i].key_idx * 0x10, 0x10);
+				memcpy(data_iv, data_keys.get() + meta_shdr[i].iv_idx * 0x10, 0x10);
+
+				// Allocate a buffer to hold the data.
+				auto buf = std::make_unique<u8[]>(meta_shdr[i].data_size);
+
+				// Seek to the section data offset and read the encrypted data.
+				sce_f.seek(meta_shdr[i].data_offset);
+				sce_f.read(buf.get(), meta_shdr[i].data_size);
+
+				// Zero out our ctr nonce.
+				memset(ctr_stream_block, 0, sizeof(ctr_stream_block));
+
+				// Perform AES-CTR encryption on the data blocks.
+				aes_setkey_enc(&aes, data_key, 128);
+				aes_crypt_ctr(&aes, meta_shdr[i].data_size, &ctr_nc_off, data_iv, ctr_stream_block, buf.get(), buf.get());
+
+				// Copy the decrypted data.
+				memcpy(data_buf.get() + data_buf_offset, buf.get(), meta_shdr[i].data_size);
+			}
+		}
+		else
+		{
+			auto buf = std::make_unique<u8[]>(meta_shdr[i].data_size);
+			sce_f.seek(meta_shdr[i].data_offset);
+			sce_f.read(buf.get(), meta_shdr[i].data_size);
+			memcpy(data_buf.get() + data_buf_offset, buf.get(), meta_shdr[i].data_size);
+		}
+
+		// Advance the buffer's offset.
+		data_buf_offset += meta_shdr[i].data_size;
+	}
+
+	return true;
+}
+
+// Each section gets put into its own file.
+std::vector<fs::file> SCEDecrypter::MakeFile()
+{
+	std::vector<fs::file> vec;
+
+	// Set initial offset.
+	u32 data_buf_offset = 0;
+
+	// Write data.
+	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
+	{
+		fs::file out_f = fs::make_stream<std::vector<u8>>();
+
+		bool isValid = true;
+
+		// Decompress if necessary.
+		if (meta_shdr[i].compressed == 2)
+		{
+			const size_t BUFSIZE = 32 * 1024;
+			u8 tempbuf[BUFSIZE];
+			z_stream strm;
+			strm.zalloc = Z_NULL;
+			strm.zfree = Z_NULL;
+			strm.opaque = Z_NULL;
+			strm.avail_in = meta_shdr[i].data_size;
+			strm.avail_out = BUFSIZE;
+			strm.next_in = data_buf.get()+data_buf_offset;
+			strm.next_out = tempbuf;
+			int ret = inflateInit(&strm);
+
+			while (strm.avail_in)
+			{
+				ret = inflate(&strm, Z_NO_FLUSH);
+				if (ret == Z_STREAM_END)
+					break;
+				if (ret != Z_OK)
+					isValid = false;
+
+				if (!strm.avail_out) {
+					out_f.write(tempbuf, BUFSIZE);
+					strm.next_out = tempbuf;
+					strm.avail_out = BUFSIZE;
+				}
+				else
+					break;
+			}
+
+			int inflate_res = Z_OK;
+			inflate_res = inflate(&strm, Z_FINISH);
+
+			if (inflate_res != Z_STREAM_END)
+				isValid = false;
+
+			out_f.write(tempbuf, BUFSIZE - strm.avail_out);
+			inflateEnd(&strm);
+		}
+		else
+		{
+			// Write the data.
+			out_f.write(data_buf.get()+data_buf_offset, meta_shdr[i].data_size);
+		}
+
+		// Advance the data buffer offset by data size.
+		data_buf_offset += meta_shdr[i].data_size;
+
+		if (out_f.pos() != out_f.size())
+			fmt::throw_exception("MakeELF written bytes (%llu) does not equal buffer size (%llu).", out_f.pos(), out_f.size());
+
+		if (isValid) vec.push_back(std::move(out_f));
+	}
+
+	return vec;
+}
+
 SELFDecrypter::SELFDecrypter(const fs::file& s)
 	: self_f(s)
 	, key_v()
@@ -850,16 +1081,9 @@ bool SELFDecrypter::DecryptNPDRM(u8 *metadata, u32 metadata_size)
 	// If not, the data has no NPDRM layer.
 	if (!ctrl)
 	{
-		LOG_WARNING(LOADER, "SELF: No NPDRM control info found!");
+		LOG_NOTICE(LOADER, "SELF: No NPDRM control info found!");
 		return true;
 	}
-
-	u8 klicensee_key[0x10];
-	memcpy(klicensee_key, key_v.GetKlicenseeKey(), 0x10);
-
-	// Use klicensee if available.
-	if (klicensee_key != NULL)
-		memcpy(npdrm_key, klicensee_key, 0x10);
 
 	if (ctrl->npdrm.license == 1)  // Network license.
 	{
@@ -877,8 +1101,11 @@ bool SELFDecrypter::DecryptNPDRM(u8 *metadata, u32 metadata_size)
 	}
 	else if (ctrl->npdrm.license == 3)  // Free license.
 	{
-		// Use the NP_KLIC_FREE.
-		memcpy(npdrm_key, NP_KLIC_FREE, 0x10);
+		// Use klicensee if available.
+		if (key_v.GetKlicenseeKey() != nullptr)
+			memcpy(npdrm_key, key_v.GetKlicenseeKey(), 0x10);
+		else 
+			memcpy(npdrm_key, NP_KLIC_FREE, 0x10);
 	}
 	else
 	{
@@ -900,24 +1127,28 @@ bool SELFDecrypter::DecryptNPDRM(u8 *metadata, u32 metadata_size)
 	return true;
 }
 
-bool SELFDecrypter::LoadMetadata()
+bool SELFDecrypter::LoadMetadata(u8* klic_key)
 {
 	aes_context aes;
 	u32 metadata_info_size = SIZE_32(meta_info);
-	u8 *metadata_info = (u8 *)malloc(metadata_info_size);
+	auto metadata_info = std::make_unique<u8[]>(metadata_info_size);
 	u32 metadata_headers_size = sce_hdr.se_hsize - (SIZE_32(sce_hdr) + sce_hdr.se_meta + SIZE_32(meta_info));
-	u8 *metadata_headers = (u8 *)malloc(metadata_headers_size);
+	auto metadata_headers = std::make_unique<u8[]>(metadata_headers_size);
 
 	// Locate and read the encrypted metadata info.
 	self_f.seek(sce_hdr.se_meta + sizeof(sce_hdr));
-	self_f.read(metadata_info, metadata_info_size);
+	self_f.read(metadata_info.get(), metadata_info_size);
 
 	// Locate and read the encrypted metadata header and section header.
 	self_f.seek(sce_hdr.se_meta + sizeof(sce_hdr) + metadata_info_size);
-	self_f.read(metadata_headers, metadata_headers_size);
+	self_f.read(metadata_headers.get(), metadata_headers_size);
 
 	// Find the right keyset from the key vault.
 	SELF_KEY keyset = key_v.FindSelfKey(app_info.self_type, sce_hdr.se_flags, app_info.version);
+
+	// Set klic if given
+	if (klic_key)
+		key_v.SetKlicenseeKey(klic_key);
 
 	// Copy the necessary parameters.
 	u8 metadata_key[0x20];
@@ -929,16 +1160,16 @@ bool SELFDecrypter::LoadMetadata()
 	if ((sce_hdr.se_flags & 0x8000) != 0x8000)
 	{
 		// Decrypt the NPDRM layer.
-		if (!DecryptNPDRM(metadata_info, metadata_info_size))
+		if (!DecryptNPDRM(metadata_info.get(), metadata_info_size))
 			return false;
 
 		// Decrypt the metadata info.
 		aes_setkey_dec(&aes, metadata_key, 256);  // AES-256
-		aes_crypt_cbc(&aes, AES_DECRYPT, metadata_info_size, metadata_iv, metadata_info, metadata_info);
+		aes_crypt_cbc(&aes, AES_DECRYPT, metadata_info_size, metadata_iv, metadata_info.get(), metadata_info.get());
 	}
 
 	// Load the metadata info.
-	meta_info.Load(metadata_info);
+	meta_info.Load(metadata_info.get());
 
 	// If the padding is not NULL for the key or iv fields, the metadata info
 	// is not properly decrypted.
@@ -953,23 +1184,23 @@ bool SELFDecrypter::LoadMetadata()
 	size_t ctr_nc_off = 0;
 	u8 ctr_stream_block[0x10];
 	aes_setkey_enc(&aes, meta_info.key, 128);
-	aes_crypt_ctr(&aes, metadata_headers_size, &ctr_nc_off, meta_info.iv, ctr_stream_block, metadata_headers, metadata_headers);
+	aes_crypt_ctr(&aes, metadata_headers_size, &ctr_nc_off, meta_info.iv, ctr_stream_block, metadata_headers.get(), metadata_headers.get());
 
 	// Load the metadata header.
-	meta_hdr.Load(metadata_headers);
+	meta_hdr.Load(metadata_headers.get());
 
 	// Load the metadata section headers.
 	meta_shdr.clear();
 	for (unsigned int i = 0; i < meta_hdr.section_count; i++)
 	{
 		meta_shdr.emplace_back();
-		meta_shdr.back().Load(metadata_headers + sizeof(meta_hdr) + sizeof(MetadataSectionHeader) * i);
+		meta_shdr.back().Load(metadata_headers.get() + sizeof(meta_hdr) + sizeof(MetadataSectionHeader) * i);
 	}
 
 	// Copy the decrypted data keys.
 	data_keys_length = meta_hdr.key_count * 0x10;
-	data_keys = (u8 *) malloc (data_keys_length);
-	memcpy(data_keys, metadata_headers + sizeof(meta_hdr) + meta_hdr.section_count * sizeof(MetadataSectionHeader), data_keys_length);
+	data_keys = std::make_unique<u8[]>(data_keys_length);
+	memcpy(data_keys.get(), metadata_headers.get() + sizeof(meta_hdr) + meta_hdr.section_count * sizeof(MetadataSectionHeader), data_keys_length);
 
 	return true;
 }
@@ -989,7 +1220,7 @@ bool SELFDecrypter::DecryptData()
 	}
 
 	// Allocate a buffer to store decrypted data.
-	data_buf = (u8*)malloc(data_buf_length);
+	data_buf = std::make_unique<u8[]>(data_buf_length);
 
 	// Set initial offset.
 	u32 data_buf_offset = 0;
@@ -1009,31 +1240,28 @@ bool SELFDecrypter::DecryptData()
 			if((meta_shdr[i].key_idx <= meta_hdr.key_count - 1) && (meta_shdr[i].iv_idx <= meta_hdr.key_count))
 			{
 				// Get the key and iv from the previously stored key buffer.
-				memcpy(data_key, data_keys + meta_shdr[i].key_idx * 0x10, 0x10);
-				memcpy(data_iv, data_keys + meta_shdr[i].iv_idx * 0x10, 0x10);
+				memcpy(data_key, data_keys.get() + meta_shdr[i].key_idx * 0x10, 0x10);
+				memcpy(data_iv, data_keys.get() + meta_shdr[i].iv_idx * 0x10, 0x10);
 
 				// Allocate a buffer to hold the data.
-				u8 *buf = (u8 *)malloc(meta_shdr[i].data_size);
+				auto buf = std::make_unique<u8[]>(meta_shdr[i].data_size);
 
 				// Seek to the section data offset and read the encrypted data.
 				self_f.seek(meta_shdr[i].data_offset);
-				self_f.read(buf, meta_shdr[i].data_size);
+				self_f.read(buf.get(), meta_shdr[i].data_size);
 
 				// Zero out our ctr nonce.
 				memset(ctr_stream_block, 0, sizeof(ctr_stream_block));
 
 				// Perform AES-CTR encryption on the data blocks.
 				aes_setkey_enc(&aes, data_key, 128);
-				aes_crypt_ctr(&aes, meta_shdr[i].data_size, &ctr_nc_off, data_iv, ctr_stream_block, buf, buf);
+				aes_crypt_ctr(&aes, meta_shdr[i].data_size, &ctr_nc_off, data_iv, ctr_stream_block, buf.get(), buf.get());
 
 				// Copy the decrypted data.
-				memcpy(data_buf + data_buf_offset, buf, meta_shdr[i].data_size);
+				memcpy(data_buf.get() + data_buf_offset, buf.get(), meta_shdr[i].data_size);
 
 				// Advance the buffer's offset.
 				data_buf_offset += meta_shdr[i].data_size;
-
-				// Release the temporary buffer.
-				free(buf);
 			}
 		}
 	}
@@ -1041,15 +1269,10 @@ bool SELFDecrypter::DecryptData()
 	return true;
 }
 
-bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
+fs::file SELFDecrypter::MakeElf(bool isElf32)
 {
 	// Create a new ELF file.
-	fs::file e(elf, fs::rewrite);
-	if(!e)
-	{
-		LOG_ERROR(LOADER, "Could not create ELF file! (%s)", elf.c_str());
-		return false;
-	}
+	fs::file e = fs::make_stream<std::vector<u8>>();
 
 	// Set initial offset.
 	u32 data_buf_offset = 0;
@@ -1072,7 +1295,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 			{
 				// Seek to the program header data offset and write the data.
 				e.seek(phdr32_arr[meta_shdr[i].program_idx].p_offset);
-				e.write(data_buf + data_buf_offset, meta_shdr[i].data_size);
+				e.write(data_buf.get() + data_buf_offset, meta_shdr[i].data_size);
 
 				// Advance the data buffer offset by data size.
 				data_buf_offset += meta_shdr[i].data_size;
@@ -1110,9 +1333,6 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 				// Decompress if necessary.
 				if (meta_shdr[i].compressed == 2)
 				{
-					/// Removed all wxWidget dependent code. Replaced with zlib functions.
-					/// Also changed local mallocs to unique_ptrs.
-
 					// Store the length in writeable memory space.
 					std::unique_ptr<uLongf> decomp_buf_length(new uLongf);
 					memcpy(decomp_buf_length.get(), &phdr64_arr[meta_shdr[i].program_idx].p_filesz, sizeof(uLongf));
@@ -1122,7 +1342,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 
 					// Create a buffer separate from data_buf to uncompress.
 					std::unique_ptr<u8[]> zlib_buf(new u8[data_buf_length]);
-					memcpy(zlib_buf.get(), data_buf, data_buf_length);
+					memcpy(zlib_buf.get(), data_buf.get(), data_buf_length);
 
 					// Use zlib uncompress on the new buffer.
 					// decomp_buf_length changes inside the call to uncompress, so it must be a pointer to correct type (in writeable mem space).
@@ -1145,7 +1365,7 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 				{
 					// Seek to the program header data offset and write the data.
 					e.seek(phdr64_arr[meta_shdr[i].program_idx].p_offset);
-					e.write(data_buf + data_buf_offset, meta_shdr[i].data_size);
+					e.write(data_buf.get() + data_buf_offset, meta_shdr[i].data_size);
 				}
 
 				// Advance the data buffer offset by data size.
@@ -1165,33 +1385,25 @@ bool SELFDecrypter::MakeElf(const std::string& elf, bool isElf32)
 		}
 	}
 
-	return true;
+	return e;
 }
 
-bool SELFDecrypter::GetKeyFromRap(u8 *content_id, u8 *npdrm_key)
+bool SELFDecrypter::GetKeyFromRap(u8* content_id, u8* npdrm_key)
 {
 	// Set empty RAP key.
 	u8 rap_key[0x10];
 	memset(rap_key, 0, 0x10);
 
 	// Try to find a matching RAP file under exdata folder.
-	std::string ci_str((const char *)content_id);
-	std::string pf_str("00000001");  // TODO: Allow multiple profiles. Use default for now.
-	std::string rap_path("dev_hdd0/home/" + pf_str + "/exdata/" + ci_str + ".rap");
-
-	// Check if we have a valid RAP file.
-	if (!fs::is_file(rap_path))
-	{
-		LOG_ERROR(LOADER, "This application requires a valid RAP file for decryption!");
-		return false;
-	}
+	const std::string ci_str = reinterpret_cast<const char*>(content_id);
+	const std::string rap_path = "/dev_hdd0/home/00000001/exdata/" + ci_str + ".rap";
 
 	// Open the RAP file and read the key.
-	fs::file rap_file(rap_path);
+	const fs::file rap_file(vfs::get(rap_path));
 
 	if (!rap_file)
 	{
-		LOG_ERROR(LOADER, "Failed to load RAP file!");
+		LOG_FATAL(LOADER, "Failed to load RAP file: %s", rap_path);
 		return false;
 	}
 
@@ -1204,23 +1416,11 @@ bool SELFDecrypter::GetKeyFromRap(u8 *content_id, u8 *npdrm_key)
 	return true;
 }
 
-bool IsSelf(const std::string& path)
+static bool IsSelfElf32(const fs::file& f)
 {
-	fs::file f(path);
-
 	if (!f) return false;
 
-	SceHeader hdr;
-	hdr.Load(f);
-
-	return hdr.CheckMagic();
-}
-
-bool IsSelfElf32(const std::string& path)
-{
-	fs::file f(path);
-
-	if (!f) return false;
+	f.seek(0);
 
 	SceHeader hdr;
 	SelfHeader sh;
@@ -1236,46 +1436,31 @@ bool IsSelfElf32(const std::string& path)
 	return (elf_class[4] == 1);
 }
 
-bool CheckDebugSelf(const std::string& self, const std::string& elf)
+static bool CheckDebugSelf(fs::file& s)
 {
-	// Open the SELF file.
-	fs::file s(self);
-
-	if (!s)
+	if (s.size() < 0x18)
 	{
-		LOG_ERROR(LOADER, "Could not open SELF file! (%s)", self.c_str());
 		return false;
 	}
 
 	// Get the key version.
 	s.seek(0x08);
 
-	u16 key_version;
-	s.read(&key_version, sizeof(key_version));
+	const u16 key_version = s.read<le_t<u16>>();
 
 	// Check for DEBUG version.
-	if (swap16(key_version) == 0x8000)
+	if (key_version == 0x80 || key_version == 0xc0)
 	{
 		LOG_WARNING(LOADER, "Debug SELF detected! Removing fake header...");
 
 		// Get the real elf offset.
 		s.seek(0x10);
 
-		u64 elf_offset;
-		s.read(&elf_offset, sizeof(elf_offset));
-
 		// Start at the real elf offset.
-		elf_offset = swap64(elf_offset);
-
-		s.seek(elf_offset);
+		s.seek(key_version == 0x80 ? +s.read<be_t<u64>>() : +s.read<le_t<u64>>());
 
 		// Write the real ELF file back.
-		fs::file e(elf, fs::rewrite);
-		if (!e)
-		{
-			LOG_ERROR(LOADER, "Could not create ELF file! (%s)", elf.c_str());
-			return false;
-		}
+		fs::file e = fs::make_stream<std::vector<u8>>();
 
 		// Copy the data.
 		char buf[2048];
@@ -1284,6 +1469,7 @@ bool CheckDebugSelf(const std::string& self, const std::string& elf)
 			e.write(buf, size);
 		}
 
+		s = std::move(e);
 		return true;
 	}
 
@@ -1291,24 +1477,66 @@ bool CheckDebugSelf(const std::string& self, const std::string& elf)
 	return false;
 }
 
-bool DecryptSelf(const std::string& elf, const std::string& self)
-{
-	LOG_NOTICE(LOADER, "Decrypting %s", self);
-
-	// Check for a debug SELF first.
-	if (!CheckDebugSelf(self, elf))
+extern fs::file decrypt_self(fs::file elf_or_self, u8* klic_key)
+{	
+	if (!elf_or_self) 
 	{
-		// Set a virtual pointer to the SELF file.
-		fs::file self_vf(self);
+		return fs::file{};
+	}
+	
+	elf_or_self.seek(0);
 
-		if (!self_vf)
-			return false;
+	// Check SELF header first. Check for a debug SELF.
+	if (elf_or_self.size() >= 4 && elf_or_self.read<u32>() == "SCE\0"_u32 && !CheckDebugSelf(elf_or_self))
+	{
+		// Check the ELF file class (32 or 64 bit).
+		bool isElf32 = IsSelfElf32(elf_or_self);
 
+		// Start the decrypter on this SELF file.
+		SELFDecrypter self_dec(elf_or_self);
+
+		// Load the SELF file headers.
+		if (!self_dec.LoadHeaders(isElf32))
+		{
+			LOG_ERROR(LOADER, "SELF: Failed to load SELF file headers!");
+			return fs::file{};
+		}
+		
+		// Load and decrypt the SELF file metadata.
+		if (!self_dec.LoadMetadata(klic_key))
+		{
+			LOG_ERROR(LOADER, "SELF: Failed to load SELF file metadata!");
+			return fs::file{};
+		}
+		
+		// Decrypt the SELF file data.
+		if (!self_dec.DecryptData())
+		{
+			LOG_ERROR(LOADER, "SELF: Failed to decrypt SELF file data!");
+			return fs::file{};
+		}
+		
+		// Make a new ELF file from this SELF.
+		return self_dec.MakeElf(isElf32);
+	}
+
+	return elf_or_self;
+}
+
+extern bool verify_npdrm_self_headers(const fs::file& self, u8* klic_key)
+{
+	if (!self)
+		return false;
+
+	self.seek(0);
+
+	if (self.size() >= 4 && self.read<u32>() == "SCE\0"_u32)
+	{
 		// Check the ELF file class (32 or 64 bit).
 		bool isElf32 = IsSelfElf32(self);
 
 		// Start the decrypter on this SELF file.
-		SELFDecrypter self_dec(self_vf);
+		SELFDecrypter self_dec(self);
 
 		// Load the SELF file headers.
 		if (!self_dec.LoadHeaders(isElf32))
@@ -1316,28 +1544,20 @@ bool DecryptSelf(const std::string& elf, const std::string& self)
 			LOG_ERROR(LOADER, "SELF: Failed to load SELF file headers!");
 			return false;
 		}
-		
+
 		// Load and decrypt the SELF file metadata.
-		if (!self_dec.LoadMetadata())
+		if (!self_dec.LoadMetadata(klic_key))
 		{
 			LOG_ERROR(LOADER, "SELF: Failed to load SELF file metadata!");
 			return false;
 		}
-		
-		// Decrypt the SELF file data.
-		if (!self_dec.DecryptData())
-		{
-			LOG_ERROR(LOADER, "SELF: Failed to decrypt SELF file data!");
-			return false;
-		}
-		
-		// Make a new ELF file from this SELF.
-		if (!self_dec.MakeElf(elf, isElf32))
-		{
-			LOG_ERROR(LOADER, "SELF: Failed to make ELF file from SELF!");
-			return false;
-		}
 	}
-
 	return true;
+}
+
+std::array<u8, 0x10> get_default_self_klic()
+{
+	std::array<u8, 0x10> key;
+	std::copy(std::begin(NP_KLIC_FREE), std::end(NP_KLIC_FREE), std::begin(key));
+	return key;
 }

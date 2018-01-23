@@ -5,44 +5,65 @@
 
 #include "Emu/Cell/lv2/sys_lwmutex.h"
 #include "Emu/Cell/lv2/sys_lwcond.h"
+#include "Emu/Cell/lv2/sys_mutex.h"
+#include "Emu/Cell/lv2/sys_cond.h"
 #include "sysPrxForUser.h"
 
 extern logs::channel sysPrxForUser;
 
-s32 sys_lwcond_create(vm::ptr<sys_lwcond_t> lwcond, vm::ptr<sys_lwmutex_t> lwmutex, vm::ptr<sys_lwcond_attribute_t> attr)
+extern bool g_avoid_lwm = false;
+
+error_code sys_lwcond_create(vm::ptr<sys_lwcond_t> lwcond, vm::ptr<sys_lwmutex_t> lwmutex, vm::ptr<sys_lwcond_attribute_t> attr)
 {
-	sysPrxForUser.warning("sys_lwcond_create(lwcond=*0x%x, lwmutex=*0x%x, attr=*0x%x)", lwcond, lwmutex, attr);
+	sysPrxForUser.trace("sys_lwcond_create(lwcond=*0x%x, lwmutex=*0x%x, attr=*0x%x)", lwcond, lwmutex, attr);
 
-	lwcond->lwcond_queue = idm::make<lv2_lwcond_t>(reinterpret_cast<u64&>(attr->name));
-	lwcond->lwmutex = lwmutex;
+	vm::var<u32> out_id;
+	vm::var<sys_cond_attribute_t> attrs;
+	attrs->pshared  = SYS_SYNC_NOT_PROCESS_SHARED;
+	attrs->name_u64 = attr->name_u64;
 
+	if (auto res = g_avoid_lwm ? sys_cond_create(out_id, lwmutex->sleep_queue, attrs) : _sys_lwcond_create(out_id, lwmutex->sleep_queue, lwcond, attr->name_u64, 0))
+	{
+		return res;
+	}
+
+	lwcond->lwmutex      = lwmutex;
+	lwcond->lwcond_queue = *out_id;
 	return CELL_OK;
 }
 
-s32 sys_lwcond_destroy(vm::ptr<sys_lwcond_t> lwcond)
+error_code sys_lwcond_destroy(vm::ptr<sys_lwcond_t> lwcond)
 {
 	sysPrxForUser.trace("sys_lwcond_destroy(lwcond=*0x%x)", lwcond);
 
-	const s32 res = _sys_lwcond_destroy(lwcond->lwcond_queue);
-
-	if (res == CELL_OK)
+	if (g_avoid_lwm)
 	{
-		lwcond->lwcond_queue = lwmutex_dead;
+		return sys_cond_destroy(lwcond->lwcond_queue);
 	}
 
-	return res;
+	if (error_code res = _sys_lwcond_destroy(lwcond->lwcond_queue))
+	{
+		return res;
+	}
+
+	lwcond->lwcond_queue = lwmutex_dead;
+	return CELL_OK;
 }
 
-s32 sys_lwcond_signal(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
+error_code sys_lwcond_signal(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 {
 	sysPrxForUser.trace("sys_lwcond_signal(lwcond=*0x%x)", lwcond);
+
+	if (g_avoid_lwm)
+	{
+		return sys_cond_signal(ppu, lwcond->lwcond_queue);
+	}
 
 	const vm::ptr<sys_lwmutex_t> lwmutex = lwcond->lwmutex;
 
 	if ((lwmutex->attribute & SYS_SYNC_ATTR_PROTOCOL_MASK) == SYS_SYNC_RETRY)
 	{
-		// TODO (protocol ignored)
-		//return _sys_lwcond_signal(lwcond->lwcond_queue, 0, -1, 2);
+		return _sys_lwcond_signal(ppu, lwcond->lwcond_queue, 0, -1, 2);
 	}
 
 	if (lwmutex->vars.owner.load() == ppu.id)
@@ -51,17 +72,21 @@ s32 sys_lwcond_signal(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 		lwmutex->all_info++;
 
 		// call the syscall
-		if (s32 res = _sys_lwcond_signal(lwcond->lwcond_queue, lwmutex->sleep_queue, -1, 1))
+		if (error_code res = _sys_lwcond_signal(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, -1, 1))
 		{
+			ppu.test_state();
 			lwmutex->all_info--;
 
-			return res == CELL_EPERM ? CELL_OK : res;
+			if (res != CELL_EPERM)
+			{
+				return res;
+			}
 		}
 
 		return CELL_OK;
 	}
 
-	if (s32 res = sys_lwmutex_trylock(ppu, lwmutex))
+	if (error_code res = sys_lwmutex_trylock(ppu, lwmutex))
 	{
 		// if locking failed
 
@@ -71,42 +96,50 @@ s32 sys_lwcond_signal(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 		}
 
 		// call the syscall
-		return _sys_lwcond_signal(lwcond->lwcond_queue, 0, -1, 2);
+		return _sys_lwcond_signal(ppu, lwcond->lwcond_queue, 0, -1, 2);
 	}
 
 	// if locking succeeded
 	lwmutex->all_info++;
 
 	// call the syscall
-	if (s32 res = _sys_lwcond_signal(lwcond->lwcond_queue, lwmutex->sleep_queue, -1, 3))
+	if (error_code res = _sys_lwcond_signal(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, -1, 3))
 	{
+		ppu.test_state();
 		lwmutex->all_info--;
 
 		// unlock the lightweight mutex
 		sys_lwmutex_unlock(ppu, lwmutex);
 
-		return res == CELL_ENOENT ? CELL_OK : res;
+		if (res != CELL_ENOENT)
+		{
+			return res;
+		}
 	}
 
 	return CELL_OK;
 }
 
-s32 sys_lwcond_signal_all(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
+error_code sys_lwcond_signal_all(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 {
 	sysPrxForUser.trace("sys_lwcond_signal_all(lwcond=*0x%x)", lwcond);
+
+	if (g_avoid_lwm)
+	{
+		return sys_cond_signal_all(ppu, lwcond->lwcond_queue);
+	}
 
 	const vm::ptr<sys_lwmutex_t> lwmutex = lwcond->lwmutex;
 
 	if ((lwmutex->attribute & SYS_SYNC_ATTR_PROTOCOL_MASK) == SYS_SYNC_RETRY)
 	{
-		// TODO (protocol ignored)
-		//return _sys_lwcond_signal_all(lwcond->lwcond_queue, lwmutex->sleep_queue, 2);
+		return _sys_lwcond_signal_all(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, 2);
 	}
 
 	if (lwmutex->vars.owner.load() == ppu.id)
 	{
 		// if owns the mutex, call the syscall
-		const s32 res = _sys_lwcond_signal_all(lwcond->lwcond_queue, lwmutex->sleep_queue, 1);
+		const error_code res = _sys_lwcond_signal_all(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, 1);
 
 		if (res <= 0)
 		{
@@ -114,12 +147,13 @@ s32 sys_lwcond_signal_all(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 			return res;
 		}
 
+		ppu.test_state();
 		lwmutex->all_info += res;
 
 		return CELL_OK;
 	}
 
-	if (s32 res = sys_lwmutex_trylock(ppu, lwmutex))
+	if (error_code res = sys_lwmutex_trylock(ppu, lwmutex))
 	{
 		// if locking failed
 
@@ -129,11 +163,13 @@ s32 sys_lwcond_signal_all(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 		}
 
 		// call the syscall
-		return _sys_lwcond_signal_all(lwcond->lwcond_queue, lwmutex->sleep_queue, 2);
+		return _sys_lwcond_signal_all(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, 2);
 	}
 
 	// if locking succeeded, call the syscall
-	s32 res = _sys_lwcond_signal_all(lwcond->lwcond_queue, lwmutex->sleep_queue, 1);
+	error_code res = _sys_lwcond_signal_all(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, 1);
+
+	ppu.test_state();
 
 	if (res > 0)
 	{
@@ -148,16 +184,20 @@ s32 sys_lwcond_signal_all(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond)
 	return res;
 }
 
-s32 sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_thread_id)
+error_code sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_thread_id)
 {
 	sysPrxForUser.trace("sys_lwcond_signal_to(lwcond=*0x%x, ppu_thread_id=0x%x)", lwcond, ppu_thread_id);
+
+	if (g_avoid_lwm)
+	{
+		return sys_cond_signal_to(ppu, lwcond->lwcond_queue, ppu_thread_id);
+	}
 
 	const vm::ptr<sys_lwmutex_t> lwmutex = lwcond->lwmutex;
 
 	if ((lwmutex->attribute & SYS_SYNC_ATTR_PROTOCOL_MASK) == SYS_SYNC_RETRY)
 	{
-		// TODO (protocol ignored)
-		//return _sys_lwcond_signal(lwcond->lwcond_queue, 0, ppu_thread_id, 2);
+		return _sys_lwcond_signal(ppu, lwcond->lwcond_queue, 0, ppu_thread_id, 2);
 	}
 
 	if (lwmutex->vars.owner.load() == ppu.id)
@@ -166,8 +206,9 @@ s32 sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_
 		lwmutex->all_info++;
 
 		// call the syscall
-		if (s32 res = _sys_lwcond_signal(lwcond->lwcond_queue, lwmutex->sleep_queue, ppu_thread_id, 1))
+		if (error_code res = _sys_lwcond_signal(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, ppu_thread_id, 1))
 		{
+			ppu.test_state();
 			lwmutex->all_info--;
 
 			return res;
@@ -176,7 +217,7 @@ s32 sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_
 		return CELL_OK;
 	}
 
-	if (s32 res = sys_lwmutex_trylock(ppu, lwmutex))
+	if (error_code res = sys_lwmutex_trylock(ppu, lwmutex))
 	{
 		// if locking failed
 
@@ -186,15 +227,16 @@ s32 sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_
 		}
 
 		// call the syscall
-		return _sys_lwcond_signal(lwcond->lwcond_queue, 0, ppu_thread_id, 2);
+		return _sys_lwcond_signal(ppu, lwcond->lwcond_queue, 0, ppu_thread_id, 2);
 	}
 
 	// if locking succeeded
 	lwmutex->all_info++;
 
 	// call the syscall
-	if (s32 res = _sys_lwcond_signal(lwcond->lwcond_queue, lwmutex->sleep_queue, ppu_thread_id, 3))
+	if (error_code res = _sys_lwcond_signal(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, ppu_thread_id, 3))
 	{
+		ppu.test_state();
 		lwmutex->all_info--;
 
 		// unlock the lightweight mutex
@@ -206,9 +248,14 @@ s32 sys_lwcond_signal_to(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u32 ppu_
 	return CELL_OK;
 }
 
-s32 sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
+error_code sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
 {
 	sysPrxForUser.trace("sys_lwcond_wait(lwcond=*0x%x, timeout=0x%llx)", lwcond, timeout);
+
+	if (g_avoid_lwm)
+	{
+		return sys_cond_wait(ppu, lwcond->lwcond_queue, timeout);
+	}
 
 	const be_t<u32> tid(ppu.id);
 
@@ -228,7 +275,7 @@ s32 sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
 	lwmutex->recursive_count = 0;
 
 	// call the syscall
-	s32 res = _sys_lwcond_queue_wait(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, timeout);
+	const error_code res = _sys_lwcond_queue_wait(ppu, lwcond->lwcond_queue, lwmutex->sleep_queue, timeout);
 
 	if (res == CELL_OK || res == CELL_ESRCH)
 	{
@@ -241,7 +288,7 @@ s32 sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
 		const auto old = lwmutex->vars.owner.exchange(tid);
 		lwmutex->recursive_count = recursive_value;
 
-		if (old != lwmutex_reserved)
+		if (old == lwmutex_free || old == lwmutex_dead)
 		{
 			fmt::throw_exception("Locking failed (lwmutex=*0x%x, owner=0x%x)" HERE, lwmutex, old);
 		}
@@ -251,17 +298,20 @@ s32 sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
 
 	if (res == CELL_EBUSY || res == CELL_ETIMEDOUT)
 	{
-		const s32 res2 = sys_lwmutex_lock(ppu, lwmutex, 0);
-
-		if (res2 == CELL_OK)
+		if (error_code res2 = sys_lwmutex_lock(ppu, lwmutex, 0))
 		{
-			// if successfully locked, restore recursive value
-			lwmutex->recursive_count = recursive_value;
-
-			return res == CELL_EBUSY ? CELL_OK : res;
+			return res2;
 		}
 
-		return res2;
+		// if successfully locked, restore recursive value
+		lwmutex->recursive_count = recursive_value;
+
+		if (res == CELL_EBUSY)
+		{
+			return CELL_OK;
+		}
+
+		return res;
 	}
 
 	if (res == CELL_EDEADLK)
@@ -270,15 +320,15 @@ s32 sys_lwcond_wait(ppu_thread& ppu, vm::ptr<sys_lwcond_t> lwcond, u64 timeout)
 		const auto old = lwmutex->vars.owner.exchange(tid);
 		lwmutex->recursive_count = recursive_value;
 
-		if (old != lwmutex_reserved)
+		if (old == lwmutex_free || old == lwmutex_dead)
 		{
 			fmt::throw_exception("Locking failed (lwmutex=*0x%x, owner=0x%x)" HERE, lwmutex, old);
 		}
 
-		return CELL_ETIMEDOUT;
+		return not_an_error(CELL_ETIMEDOUT);
 	}
 
-	fmt::throw_exception("Unexpected syscall result (lwcond=*0x%x, result=0x%x)" HERE, lwcond, res);
+	fmt::throw_exception("Unexpected syscall result (lwcond=*0x%x, result=0x%x)" HERE, lwcond, +res);
 }
 
 void sysPrxForUser_sys_lwcond_init()

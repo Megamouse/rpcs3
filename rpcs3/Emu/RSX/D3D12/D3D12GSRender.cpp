@@ -1,8 +1,8 @@
 #ifdef _MSC_VER
 #include "stdafx.h"
 #include "stdafx_d3d12.h"
-#include "Utilities/Config.h"
 #include "D3D12GSRender.h"
+#include "Emu/System.h"
 #include <wrl/client.h>
 #include <dxgi1_4.h>
 #include <thread>
@@ -15,19 +15,13 @@
 #include "D3D12Formats.h"
 #include "../rsx_methods.h"
 
-extern cfg::bool_entry g_cfg_rsx_vsync;
-extern cfg::bool_entry g_cfg_rsx_debug_output;
-extern cfg::bool_entry g_cfg_rsx_overlay;
-
-static cfg::node s_cfg_d3d12(cfg::root.video, "D3D12");
-
-cfg::string_entry g_cfg_d3d12_adapter(s_cfg_d3d12, "Adapter");
-
 PFN_D3D12_CREATE_DEVICE wrapD3D12CreateDevice;
 PFN_D3D12_GET_DEBUG_INTERFACE wrapD3D12GetDebugInterface;
 PFN_D3D12_SERIALIZE_ROOT_SIGNATURE wrapD3D12SerializeRootSignature;
 PFN_D3D11ON12_CREATE_DEVICE wrapD3D11On12CreateDevice;
 pD3DCompile wrapD3DCompile;
+
+ID3D12Device* g_d3d12_device = nullptr;
 
 #define VERTEX_BUFFERS_SLOT 0
 #define FRAGMENT_CONSTANT_BUFFERS_SLOT 1
@@ -141,11 +135,11 @@ namespace
 }
 
 D3D12GSRender::D3D12GSRender()
-	: GSRender(frame_type::DX12)
+	: GSRender()
 	, m_d3d12_lib()
 	, m_current_pso({})
 {
-	if (g_cfg_rsx_debug_output)
+	if (g_cfg.video.debug_output)
 	{
 		Microsoft::WRL::ComPtr<ID3D12Debug> debugInterface;
 		wrapD3D12GetDebugInterface(IID_PPV_ARGS(&debugInterface));
@@ -157,7 +151,7 @@ D3D12GSRender::D3D12GSRender()
 
 	// Create adapter
 	ComPtr<IDXGIAdapter> adapter;
-	const std::wstring& adapter_name = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>().from_bytes(g_cfg_d3d12_adapter);
+	const std::wstring adapter_name = std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>>().from_bytes(g_cfg.video.d3d12.adapter);
 	
 	for (UINT id = 0; dxgi_factory->EnumAdapters(id, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; id++)
 	{
@@ -177,7 +171,19 @@ D3D12GSRender::D3D12GSRender()
 		}
 	}
 
-	CHECK_HRESULT(wrapD3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)));
+	if (FAILED(wrapD3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+	{
+		LOG_ERROR(RSX, "Failed to initialize D3D device on adapter '%s', falling back to first available GPU", g_cfg.video.d3d12.adapter.get());
+		
+		//Try to create a device on the first available device
+		if (FAILED(wrapD3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+		{
+			LOG_FATAL(RSX, "Unable to create D3D12 device. Your GPU(s) may not have D3D12 support.");
+			return;
+		}
+	}
+
+	g_d3d12_device = m_device.Get();
 
 	// Queues
 	D3D12_COMMAND_QUEUE_DESC graphic_queue_desc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
@@ -257,12 +263,18 @@ D3D12GSRender::D3D12GSRender()
 			)
 		);
 
-	if (g_cfg_rsx_overlay)
+	if (g_cfg.video.overlay)
 		init_d2d_structures();
 }
 
 D3D12GSRender::~D3D12GSRender()
 {
+	if (!m_device)
+	{
+		//Initialization must have failed
+		return;
+	}
+
 	wait_for_command_queue(m_device.Get(), m_command_queue.Get());
 
 	m_texture_cache.unprotect_all();
@@ -275,9 +287,24 @@ D3D12GSRender::~D3D12GSRender()
 	release_d2d_structures();
 }
 
+void D3D12GSRender::on_init_thread()
+{
+	if (!m_device)
+	{
+		//Init must have failed
+		fmt::throw_exception("No D3D12 device was created");
+	}
+}
+
 void D3D12GSRender::on_exit()
 {
 	return GSRender::on_exit();
+}
+
+void D3D12GSRender::do_local_task(bool)
+{
+	//TODO
+	m_frame->clear_wm_events();
 }
 
 bool D3D12GSRender::do_method(u32 cmd, u32 arg)
@@ -301,15 +328,26 @@ bool D3D12GSRender::do_method(u32 cmd, u32 arg)
 
 void D3D12GSRender::end()
 {
-	std::chrono::time_point<std::chrono::system_clock> start_duration = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> start_duration = steady_clock::now();
 
-	std::chrono::time_point<std::chrono::system_clock> rtt_duration_start = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> program_load_start = steady_clock::now();
+	load_program();
+	std::chrono::time_point<steady_clock> program_load_end = steady_clock::now();
+	m_timers.program_load_duration += std::chrono::duration_cast<std::chrono::microseconds>(program_load_end - program_load_start).count();
+
+	if (!current_fragment_program.valid)
+	{
+		rsx::thread::end();
+		return;
+	}
+
+	std::chrono::time_point<steady_clock> rtt_duration_start = steady_clock::now();
 	prepare_render_targets(get_current_resource_storage().command_list.Get());
 
-	std::chrono::time_point<std::chrono::system_clock> rtt_duration_end = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> rtt_duration_end = steady_clock::now();
 	m_timers.prepare_rtt_duration += std::chrono::duration_cast<std::chrono::microseconds>(rtt_duration_end - rtt_duration_start).count();
 
-	std::chrono::time_point<std::chrono::system_clock> vertex_index_duration_start = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> vertex_index_duration_start = steady_clock::now();
 
 	size_t currentDescriptorIndex = get_current_resource_storage().descriptors_heap_index;
 
@@ -320,18 +358,13 @@ void D3D12GSRender::end()
 
 	UINT vertex_buffer_count = static_cast<UINT>(vertex_buffer_views.size());
 
-	std::chrono::time_point<std::chrono::system_clock> vertex_index_duration_end = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> vertex_index_duration_end = steady_clock::now();
 	m_timers.vertex_index_duration += std::chrono::duration_cast<std::chrono::microseconds>(vertex_index_duration_end - vertex_index_duration_start).count();
-
-	std::chrono::time_point<std::chrono::system_clock> program_load_start = std::chrono::system_clock::now();
-	load_program();
-	std::chrono::time_point<std::chrono::system_clock> program_load_end = std::chrono::system_clock::now();
-	m_timers.program_load_duration += std::chrono::duration_cast<std::chrono::microseconds>(program_load_end - program_load_start).count();
 
 	get_current_resource_storage().command_list->SetGraphicsRootSignature(m_shared_root_signature.Get());
 	get_current_resource_storage().command_list->OMSetStencilRef(rsx::method_registers.stencil_func_ref());
 
-	std::chrono::time_point<std::chrono::system_clock> constants_duration_start = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> constants_duration_start = steady_clock::now();
 
 	INT offset = 0;
 	for (const auto view : vertex_buffer_views)
@@ -356,7 +389,7 @@ void D3D12GSRender::end()
 		.Offset((INT)currentDescriptorIndex + vertex_buffer_count, m_descriptor_stride_srv_cbv_uav)
 		);
 
-	if (m_transform_constants_dirty && !g_cfg_rsx_debug_output)
+	if (m_transform_constants_dirty && !g_cfg.video.debug_output)
 	{
 		m_current_transform_constants_buffer_descriptor_id = (u32)currentDescriptorIndex + 1 + vertex_buffer_count;
 		upload_and_bind_vertex_shader_constants(currentDescriptorIndex + 1 + vertex_buffer_count);
@@ -368,12 +401,12 @@ void D3D12GSRender::end()
 	}
 
 
-	std::chrono::time_point<std::chrono::system_clock> constants_duration_end = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> constants_duration_end = steady_clock::now();
 	m_timers.constants_duration += std::chrono::duration_cast<std::chrono::microseconds>(constants_duration_end - constants_duration_start).count();
 
 	get_current_resource_storage().command_list->SetPipelineState(std::get<0>(m_current_pso).Get());
 
-	std::chrono::time_point<std::chrono::system_clock> texture_duration_start = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> texture_duration_start = steady_clock::now();
 
 	get_current_resource_storage().descriptors_heap_index += 2 + vertex_buffer_count;
 	size_t texture_count = std::get<2>(m_current_pso);
@@ -421,7 +454,7 @@ void D3D12GSRender::end()
 		get_current_resource_storage().descriptors_heap_index += texture_count;
 	}
 
-	std::chrono::time_point<std::chrono::system_clock> texture_duration_end = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> texture_duration_end = steady_clock::now();
 	m_timers.texture_duration += std::chrono::duration_cast<std::chrono::microseconds>(texture_duration_end - texture_duration_start).count();
 	set_rtt_and_ds(get_current_resource_storage().command_list.Get());
 
@@ -434,8 +467,8 @@ void D3D12GSRender::end()
 		0.f,
 		(float)clip_w,
 		(float)clip_h,
-		rsx::method_registers.clip_min(),
-		rsx::method_registers.clip_max(),
+		0.f,
+		1.f,
 	};
 	get_current_resource_storage().command_list->RSSetViewports(1, &viewport);
 
@@ -449,11 +482,11 @@ void D3D12GSRender::end()
 	else
 		get_current_resource_storage().command_list->DrawInstanced((UINT)vertex_count, 1, 0, 0);
 
-	std::chrono::time_point<std::chrono::system_clock> end_duration = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> end_duration = steady_clock::now();
 	m_timers.draw_calls_duration += std::chrono::duration_cast<std::chrono::microseconds>(end_duration - start_duration).count();
 	m_timers.draw_calls_count++;
 
-	if (g_cfg_rsx_debug_output)
+	if (g_cfg.video.debug_output)
 	{
 		CHECK_HRESULT(get_current_resource_storage().command_list->Close());
 		m_command_queue->ExecuteCommandLists(1, (ID3D12CommandList**)get_current_resource_storage().command_list.GetAddressOf());
@@ -496,10 +529,9 @@ void D3D12GSRender::flip(int buffer)
 		size_t offset = 0;
 		if (false)
 		{
-			CellGcmDisplayInfo* buffers = nullptr;// = vm::ps3::_ptr<CellGcmDisplayInfo>(m_gcm_buffers_addr);
-			u32 addr = rsx::get_address(gcm_buffers[gcm_current_buffer].offset, CELL_GCM_LOCATION_LOCAL);
-			w = gcm_buffers[gcm_current_buffer].width;
-			h = gcm_buffers[gcm_current_buffer].height;
+			u32 addr = rsx::get_address(display_buffers[current_display_buffer].offset, CELL_GCM_LOCATION_LOCAL);
+			w = display_buffers[current_display_buffer].width;
+			h = display_buffers[current_display_buffer].height;
 			u8 *src_buffer = vm::ps3::_ptr<u8>(addr);
 
 			row_pitch = align(w * 4, 256);
@@ -621,21 +653,21 @@ void D3D12GSRender::flip(int buffer)
 	if (resource_to_flip)
 		get_current_resource_storage().command_list->DrawInstanced(4, 1, 0, 0);
 
-	if (!g_cfg_rsx_overlay)
+	if (!g_cfg.video.overlay)
 		get_current_resource_storage().command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backbuffer[m_swap_chain->GetCurrentBackBufferIndex()].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	if (is_flip_surface_in_global_memory(rsx::method_registers.surface_color_target()) && resource_to_flip != nullptr)
 		get_current_resource_storage().command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(resource_to_flip, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET));
 	CHECK_HRESULT(get_current_resource_storage().command_list->Close());
 	m_command_queue->ExecuteCommandLists(1, (ID3D12CommandList**)get_current_resource_storage().command_list.GetAddressOf());
 
-	if (g_cfg_rsx_overlay)
+	if (g_cfg.video.overlay)
 		render_overlay();
 
 	reset_timer();
 
-	std::chrono::time_point<std::chrono::system_clock> flip_start = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> flip_start = steady_clock::now();
 
-	CHECK_HRESULT(m_swap_chain->Present(g_cfg_rsx_vsync ? 1 : 0, 0));
+	CHECK_HRESULT(m_swap_chain->Present(g_cfg.video.vsync ? 1 : 0, 0));
 	// Add an event signaling queue completion
 
 	resource_storage &storage = get_non_current_resource_storage();
@@ -667,7 +699,7 @@ void D3D12GSRender::flip(int buffer)
 	m_frame->flip(nullptr);
 
 
-	std::chrono::time_point<std::chrono::system_clock> flip_end = std::chrono::system_clock::now();
+	std::chrono::time_point<steady_clock> flip_end = steady_clock::now();
 	m_timers.flip_duration += std::chrono::duration_cast<std::chrono::microseconds>(flip_end - flip_start).count();
 }
 

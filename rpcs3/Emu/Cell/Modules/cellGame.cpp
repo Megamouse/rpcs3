@@ -12,7 +12,7 @@
 
 #include <thread>
 
-logs::channel cellGame("cellGame", logs::level::notice);
+logs::channel cellGame("cellGame");
 
 template<>
 void fmt_class_string<CellGameError>::format(std::string& out, u64 arg)
@@ -80,14 +80,13 @@ struct content_permission final
 	// SFO file
 	psf::registry sfo;
 
-	// True if temporary directory is created and must be moved or deleted
-	bool is_temporary = false;
+	// Temporary directory path
+	std::string temp;
 
 	template <typename Dir, typename Sfo>
-	content_permission(Dir&& dir, Sfo&& sfo, bool is_temp = false)
+	content_permission(Dir&& dir, Sfo&& sfo)
 		: dir(std::forward<Dir>(dir))
 		, sfo(std::forward<Sfo>(sfo))
-		, is_temporary(is_temp)
 	{
 	}
 
@@ -95,9 +94,9 @@ struct content_permission final
 	{
 		try
 		{
-			if (is_temporary)
+			if (temp.size() > 1)
 			{
-				fs::remove_all(vfs::get("/dev_hdd1/game/" + dir));
+				fs::remove_all(temp);
 			}
 		}
 		catch (...)
@@ -116,7 +115,7 @@ s32 cellHddGameCheck(ppu_thread& ppu, u32 version, vm::cptr<char> dirName, u32 e
 
 	if (dir.size() != 9)
 	{
-		return CELL_HDDGAME_ERROR_PARAM;
+		return (s32)CELL_HDDGAME_ERROR_PARAM;
 	}
 
 	vm::var<CellHddGameCBResult> result;
@@ -145,7 +144,7 @@ s32 cellHddGameCheck(ppu_thread& ppu, u32 version, vm::cptr<char> dirName, u32 e
 		// TODO: Is cellHddGameCheck really responsible for writing the information in get->getParam ? (If not, delete this else)
 		const auto& psf = psf::load_object(fs::file(local_dir +"/PARAM.SFO"));
 
-		// Some following fields may be zero in old FW 1.00 version PARAM.SFO 
+		// Some following fields may be zero in old FW 1.00 version PARAM.SFO
 		if (psf.count("PARENTAL_LEVEL") != 0) get->getParam.parentalLevel = psf.at("PARENTAL_LEVEL").as_integer();
 		if (psf.count("ATTRIBUTE") != 0) get->getParam.attribute = psf.at("ATTRIBUTE").as_integer();
 		if (psf.count("RESOLUTION") != 0) get->getParam.resolution = psf.at("RESOLUTION").as_integer();
@@ -166,7 +165,7 @@ s32 cellHddGameCheck(ppu_thread& ppu, u32 version, vm::cptr<char> dirName, u32 e
 
 	if (result->result != CELL_HDDGAME_CBRESULT_OK && result->result != CELL_HDDGAME_CBRESULT_OK_CANCEL)
 	{
-		return CELL_HDDGAME_ERROR_CBRESULT;
+		return (s32)CELL_HDDGAME_ERROR_CBRESULT;
 	}
 
 	// TODO ?
@@ -179,14 +178,26 @@ s32 cellHddGameCheck2()
 	fmt::throw_exception("Unimplemented" HERE);
 }
 
-s32 cellHddGameGetSizeKB()
+s32 cellHddGameGetSizeKB(vm::ptr<u32> size)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	cellGame.warning("cellHddGameGetSizeKB(size=*0x%x)", size);
+
+	const std::string local_dir = vfs::get("/dev_hdd0/game/" + Emu.GetTitleID());
+
+	if (!fs::is_dir(local_dir))
+	{
+		return (s32)CELL_HDDGAME_ERROR_FAILURE;
+	}
+
+	*size = ::narrow<u32>(fs::get_dir_size(local_dir) / 1024);
+
+	return CELL_OK;
 }
 
 s32 cellHddGameSetSystemVer()
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	UNIMPLEMENTED_FUNC(cellGame);
+	return CELL_OK;
 }
 
 s32 cellHddGameExitBroken()
@@ -197,17 +208,24 @@ s32 cellHddGameExitBroken()
 
 s32 cellGameDataGetSizeKB(vm::ptr<u32> size)
 {
-	cellGame.warning("cellGameDataGetSizeKB(): Unimplemented, returning 0");
-	if (size)
+	cellGame.warning("cellGameDataGetSizeKB(size=*0x%x)", size);
+
+	const std::string local_dir = vfs::get("/dev_hdd0/game/" + Emu.GetTitleID());
+
+	if (!fs::is_dir(local_dir))
 	{
-		*size = 0;
+		return CELL_GAMEDATA_ERROR_FAILURE;
 	}
+
+	*size = ::narrow<u32>(fs::get_dir_size(local_dir) / 1024);
+
 	return CELL_OK;
 }
 
 s32 cellGameDataSetSystemVer()
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	UNIMPLEMENTED_FUNC(cellGame);
+	return CELL_OK;
 }
 
 s32 cellGameDataExitBroken()
@@ -230,51 +248,43 @@ error_code cellGameBootCheck(vm::ptr<u32> type, vm::ptr<u32> attributes, vm::ptr
 		size->sysSizeKB = 0;
 	}
 
-	// According to testing (in debug mode) cellGameBootCheck doesn't return an error code, when PARAM.SFO doesn't exist.
-	psf::registry sfo = psf::load_object(fs::file(vfs::get("/app_home/../PARAM.SFO")));
+	if (!type)
+	{
+		return CELL_GAME_ERROR_PARAM;
+	}
 
-	const std::string& category = psf::get_string(sfo, "CATEGORY");
-
-	if (category == "DG")
+	if (Emu.GetCat() == "DG")
 	{
 		*type = CELL_GAME_GAMETYPE_DISC;
 		*attributes = 0; // TODO
-		if (dirName) strcpy_trunc(*dirName, ""); // ???
+		// TODO: dirName might be a read only string when BootCheck is called on a disc game. (e.g. Ben 10 Ultimate Alien: Cosmic Destruction)
 
-		if (!fxm::make<content_permission>("", std::move(sfo)))
+		if (!fxm::make<content_permission>("", psf::load_object(fs::file(vfs::get("/dev_bdvd/PS3_GAME/PARAM.SFO")))))
 		{
 			return CELL_GAME_ERROR_BUSY;
 		}
 	}
-	else if (category == "HG")
-	{
-		*type = CELL_GAME_GAMETYPE_HDD;
-		*attributes = 0; // TODO
-		if (dirName) strcpy_trunc(*dirName, Emu.GetTitleID()); 
-
-		if (!fxm::make<content_permission>(Emu.GetTitleID(), std::move(sfo)))
-		{
-			return CELL_GAME_ERROR_BUSY;
-		}
-	}
-	else if (category == "GD")
+	else if (Emu.GetCat() == "GD")
 	{
 		*type = CELL_GAME_GAMETYPE_DISC;
 		*attributes = CELL_GAME_ATTRIBUTE_PATCH; // TODO
 		if (dirName) strcpy_trunc(*dirName, Emu.GetTitleID()); // ???
 
-		if (!fxm::make<content_permission>("", std::move(sfo)))
+		if (!fxm::make<content_permission>("", psf::load_object(fs::file(vfs::get("/dev_hdd0/game/" + Emu.GetTitleID() + "/PARAM.SFO")))))
 		{
 			return CELL_GAME_ERROR_BUSY;
 		}
 	}
 	else
 	{
-		// Hack: When there is no (or unknown) CATEGORY returned, instead of throwing an exception
-		// we assume it's a disk game.
-		*type = CELL_GAME_GAMETYPE_DISC;
-		*attributes = 0;
-		cellGame.error("cellGameBootCheck(): Unknown CATEGORY: %s", category);
+		*type = CELL_GAME_GAMETYPE_HDD;
+		*attributes = 0; // TODO
+		if (dirName) strcpy_trunc(*dirName, Emu.GetTitleID());
+
+		if (!fxm::make<content_permission>(Emu.GetTitleID(), psf::load_object(fs::file(vfs::get("/dev_hdd0/game/" + Emu.GetTitleID() + "/PARAM.SFO")))))
+		{
+			return CELL_GAME_ERROR_BUSY;
+		}
 	}
 
 	return CELL_OK;
@@ -294,18 +304,16 @@ error_code cellGamePatchCheck(vm::ptr<CellGameContentSize> size, vm::ptr<void> r
 		size->sysSizeKB = 0;
 	}
 
-	psf::registry sfo = psf::load_object(fs::file(vfs::get("/app_home/../PARAM.SFO")));
-
-	if (psf::get_string(sfo, "CATEGORY") != "GD")
+	if (Emu.GetCat() != "GD")
 	{
 		return CELL_GAME_ERROR_NOTPATCH;
 	}
 
-	if (!fxm::make<content_permission>(Emu.GetTitleID(), std::move(sfo)))
+	if (!fxm::make<content_permission>(Emu.GetTitleID(), psf::load_object(fs::file(vfs::get("/dev_hdd0/game/" + Emu.GetTitleID() + "/PARAM.SFO")))))
 	{
 		return CELL_GAME_ERROR_BUSY;
 	}
-	
+
 	return CELL_OK;
 }
 
@@ -313,9 +321,9 @@ error_code cellGameDataCheck(u32 type, vm::cptr<char> dirName, vm::ptr<CellGameC
 {
 	cellGame.warning("cellGameDataCheck(type=%d, dirName=%s, size=*0x%x)", type, dirName, size);
 
-	if ((type - 1) >= 3)
+	if ((type - 1) >= 3 || (type != CELL_GAME_GAMETYPE_DISC && !dirName))
 	{
-		return CELL_GAME_ERROR_PARAM;
+		return {CELL_GAME_ERROR_PARAM, type};
 	}
 
 	if (size)
@@ -359,7 +367,7 @@ error_code cellGameContentPermit(vm::ptr<char[CELL_GAME_PATH_MAX]> contentInfoPa
 	}
 
 	const auto prm = fxm::get<content_permission>();
-	
+
 	if (!prm)
 	{
 		return CELL_GAME_ERROR_FAILURE;
@@ -367,7 +375,7 @@ error_code cellGameContentPermit(vm::ptr<char[CELL_GAME_PATH_MAX]> contentInfoPa
 
 	const std::string dir = prm->dir.empty() ? "/dev_bdvd/PS3_GAME"s : "/dev_hdd0/game/" + prm->dir;
 
-	if (prm->is_temporary)
+	if (!prm->temp.empty())
 	{
 		// Make temporary directory persistent
 		const auto vdir = vfs::get(dir);
@@ -377,7 +385,7 @@ error_code cellGameContentPermit(vm::ptr<char[CELL_GAME_PATH_MAX]> contentInfoPa
 			fmt::throw_exception("cellGameContentPermit(): epic fail: directory '%s' already exists", dir);
 		}
 
-		if (fs::rename(vfs::get("/dev_hdd1/game/" + prm->dir), vdir))
+		if (fs::rename(prm->temp, vdir, false))
 		{
 			cellGame.success("cellGameContentPermit(): directory '%s' has been created", dir);
 		}
@@ -390,19 +398,21 @@ error_code cellGameContentPermit(vm::ptr<char[CELL_GAME_PATH_MAX]> contentInfoPa
 		psf::save_object(fs::file(vdir + "/PARAM.SFO", fs::rewrite), prm->sfo);
 
 		// Disable deletion
-		prm->is_temporary = false;
+		prm->temp.clear();
 	}
 
 	strcpy_trunc(*contentInfoPath, dir);
 	strcpy_trunc(*usrdirPath, dir + "/USRDIR");
 	verify(HERE), fxm::remove<content_permission>();
-	
+
 	return CELL_OK;
 }
 
 error_code cellGameDataCheckCreate2(ppu_thread& ppu, u32 version, vm::cptr<char> dirName, u32 errDialog, vm::ptr<CellGameDataStatCallback> funcStat, u32 container)
 {
 	cellGame.error("cellGameDataCheckCreate2(version=0x%x, dirName=%s, errDialog=0x%x, funcStat=*0x%x, container=%d)", version, dirName, errDialog, funcStat, container);
+
+	//older sdk. it might not care about game type.
 
 	if (version != CELL_GAMEDATA_VERSION_CURRENT || errDialog > 1)
 	{
@@ -411,23 +421,17 @@ error_code cellGameDataCheckCreate2(ppu_thread& ppu, u32 version, vm::cptr<char>
 
 	// TODO: output errors (errDialog)
 
-	const std::string& dir = "/dev_hdd0/game/"s + dirName.get_ptr();
-
-	if (!fs::is_dir(vfs::get(dir)))
-	{
-		cellGame.todo("cellGameDataCheckCreate2(): should create directory '%s'", dir);
-		// TODO: create data
-		return CELL_OK;
-	}
+	const std::string dir = "/dev_hdd0/game/"s + dirName.get_ptr();
 
 	vm::var<CellGameDataCBResult> cbResult;
 	vm::var<CellGameDataStatGet>  cbGet;
 	vm::var<CellGameDataStatSet>  cbSet;
+	cbGet->isNewData = fs::is_dir(vfs::get(dir)) ? CELL_GAMEDATA_ISNEWDATA_NO : CELL_GAMEDATA_ISNEWDATA_YES;
 
 	// TODO: Use the free space of the computer's HDD where RPCS3 is being run.
 	cbGet->hddFreeSizeKB = 40000000; //40 GB
 
-	cbGet->isNewData = CELL_GAMEDATA_ISNEWDATA_NO;
+
 	strcpy_trunc(cbGet->contentInfoPath, dir);
 	strcpy_trunc(cbGet->gameDataPath, dir + "/USRDIR");
 
@@ -440,32 +444,70 @@ error_code cellGameDataCheckCreate2(ppu_thread& ppu, u32 version, vm::cptr<char>
 	cbGet->sizeKB = CELL_GAMEDATA_SIZEKB_NOTCALC;
 	cbGet->sysSizeKB = 0;
 
-	psf::registry sfo = psf::load_object(fs::file(vfs::get("/app_home/../PARAM.SFO")));
+	psf::registry sfo = psf::load_object(fs::file(vfs::get(Emu.GetCat() == "DG" ? "/dev_bdvd/PS3_GAME/PARAM.SFO"s : "/dev_hdd0/game/" + Emu.GetTitleID() + "/PARAM.SFO")));
 
 	cbGet->getParam.attribute = CELL_GAMEDATA_ATTR_NORMAL;
 	cbGet->getParam.parentalLevel = psf::get_integer(sfo, "PARENTAL_LEVEL", 0);
 	strcpy_trunc(cbGet->getParam.dataVersion, psf::get_string(sfo, "APP_VER", ""));
 	strcpy_trunc(cbGet->getParam.titleId, psf::get_string(sfo, "TITLE_ID", ""));
 	strcpy_trunc(cbGet->getParam.title, psf::get_string(sfo, "TITLE", ""));
-	// TODO: write lang titles
+	for (u32 i = 0; i < CELL_HDDGAME_SYSP_LANGUAGE_NUM; i++)
+	{
+		strcpy_trunc(cbGet->getParam.titleLang[i], psf::get_string(sfo, fmt::format("TITLE_%02d", i)));
+	}
 
 	funcStat(ppu, cbResult, cbGet, cbSet);
-
-	if (cbSet->setParam)
-	{
-		// TODO: write PARAM.SFO from cbSet
-		cellGame.todo("cellGameDataCheckCreate2(): writing PARAM.SFO parameters (addr=0x%x)", cbSet->setParam);
-	}
 
 	switch ((s32)cbResult->result)
 	{
 	case CELL_GAMEDATA_CBRESULT_OK_CANCEL:
-		// TODO: do not process game data
+	{
+		// TODO: do not process game data(directory)
 		cellGame.warning("cellGameDataCheckCreate2(): callback returned CELL_GAMEDATA_CBRESULT_OK_CANCEL");
+		return CELL_OK;
+	}
 
 	case CELL_GAMEDATA_CBRESULT_OK:
-		return CELL_OK;
+	{
+		// Game confirmed that it wants to create directory
+		const std::string usrdir = dir + "/USRDIR";
+		const std::string vusrdir = vfs::get(usrdir);
 
+		if (!fs::is_dir(vusrdir) && !fs::create_path(vusrdir))
+		{
+			return {CELL_GAME_ERROR_ACCESS_ERROR, usrdir};
+		}
+
+		if (cbSet->setParam)
+		{
+			psf::assign(sfo, "CATEGORY", psf::string(3, "GD"));
+			psf::assign(sfo, "TITLE_ID", psf::string(CELL_GAME_SYSP_TITLEID_SIZE, cbSet->setParam->titleId));
+			psf::assign(sfo, "TITLE", psf::string(CELL_GAME_SYSP_TITLE_SIZE, cbSet->setParam->title));
+			psf::assign(sfo, "VERSION", psf::string(CELL_GAME_SYSP_VERSION_SIZE, cbSet->setParam->dataVersion));
+			psf::assign(sfo, "PARENTAL_LEVEL", cbSet->setParam->parentalLevel.value());
+
+			for (u32 i = 0; i < CELL_HDDGAME_SYSP_LANGUAGE_NUM; i++)
+			{
+				if (!cbSet->setParam->titleLang[i][0])
+				{
+					continue;
+				}
+
+				psf::assign(sfo, fmt::format("TITLE_%02d", i), psf::string(CELL_GAME_SYSP_TITLE_SIZE, cbSet->setParam->titleLang[i]));
+			}
+
+			const auto vdir = vfs::get(dir);
+
+			if (!fs::is_dir(vdir))
+			{
+				return {CELL_GAME_ERROR_INTERNAL, dir};
+			}
+
+			psf::save_object(fs::file(vdir + "/PARAM.SFO", fs::rewrite), sfo);
+		}
+
+		return CELL_OK;
+	}
 	case CELL_GAMEDATA_CBRESULT_ERR_NOSPACE: // TODO: process errors, error message and needSizeKB result
 		cellGame.error("cellGameDataCheckCreate2(): callback returned CELL_GAMEDATA_CBRESULT_ERR_NOSPACE");
 		return CELL_GAMEDATA_ERROR_CBRESULT;
@@ -526,8 +568,8 @@ error_code cellGameCreateGameData(vm::ptr<CellGameSetInitParams> init, vm::ptr<c
 	strcpy_trunc(*tmp_contentInfoPath, tmp_contentInfo);
 	strcpy_trunc(*tmp_usrdirPath, tmp_usrdir);
 
+	prm->temp = vfs::get(tmp_contentInfo);
 	cellGame.success("cellGameCreateGameData(): temporary directory '%s' has been created", tmp_contentInfo);
-	prm->is_temporary = true;
 
 	// Initial PARAM.SFO parameters (overwrite)
 	prm->sfo =
@@ -600,6 +642,7 @@ static const char* get_param_string_key(s32 id)
 	case CELL_GAME_PARAMID_TITLE_POLISH:             return "TITLE_16";
 	case CELL_GAME_PARAMID_TITLE_PORTUGUESE_BRAZIL:  return "TITLE_17";
 	case CELL_GAME_PARAMID_TITLE_ENGLISH_UK:         return "TITLE_18";
+	case CELL_GAME_PARAMID_TITLE_TURKISH:            return "TITLE_19";
 
 	case CELL_GAME_PARAMID_TITLE_ID:                 return "TITLE_ID";
 	case CELL_GAME_PARAMID_VERSION:                  return "VERSION";
@@ -613,6 +656,11 @@ static const char* get_param_string_key(s32 id)
 error_code cellGameGetParamString(s32 id, vm::ptr<char> buf, u32 bufsize)
 {
 	cellGame.warning("cellGameGetParamString(id=%d, buf=*0x%x, bufsize=%d)", id, buf, bufsize);
+
+	if (!buf || bufsize == 0)
+	{
+		return CELL_GAME_ERROR_PARAM;
+	}
 
 	const auto prm = fxm::get<content_permission>();
 
@@ -640,6 +688,11 @@ error_code cellGameSetParamString(s32 id, vm::cptr<char> buf)
 {
 	cellGame.warning("cellGameSetParamString(id=%d, buf=*0x%x)", id, buf);
 
+	if (!buf)
+	{
+		return CELL_GAME_ERROR_PARAM;
+	}
+
 	const auto prm = fxm::get<content_permission>();
 
 	if (!prm)
@@ -664,14 +717,31 @@ error_code cellGameSetParamString(s32 id, vm::cptr<char> buf)
 	case CELL_GAME_PARAMID_APP_VER:        max_size = CELL_GAME_SYSP_APP_VER_SIZE; break;
 	}
 
-	prm->sfo.emplace(key, psf::string(max_size, buf.get_ptr()));
+	psf::assign(prm->sfo, key, psf::string(max_size, buf.get_ptr()));
 
 	return CELL_OK;
 }
 
-s32 cellGameGetSizeKB()
+error_code cellGameGetSizeKB(vm::ptr<s32> size)
 {
-	UNIMPLEMENTED_FUNC(cellGame);
+	cellGame.warning("cellGameGetSizeKB(size=*0x%x)", size);
+
+	const auto prm = fxm::get<content_permission>();
+
+	if (!prm)
+	{
+		return CELL_GAME_ERROR_FAILURE;
+	}
+
+	const std::string local_dir = !prm->temp.empty() ? prm->temp : vfs::get("/dev_hdd0/game/" + prm->dir);
+
+	if (!fs::is_dir(local_dir))
+	{
+		return CELL_GAME_ERROR_ACCESS_ERROR;
+	}
+
+	*size = ::narrow<u32>(fs::get_dir_size(local_dir) / 1024);
+
 	return CELL_OK;
 }
 
@@ -731,12 +801,14 @@ error_code cellGameContentErrorDialog(s32 type, s32 errNeedSizeKB, vm::cptr<char
 		result = true;
 	};
 
-	dlg->Create(errorMsg);
+	Emu.CallAfter([&]()
+	{
+		dlg->Create(errorMsg);
+	});
 
 	while (!result)
 	{
-		CHECK_EMU_STATUS;
-		std::this_thread::sleep_for(1ms);
+		thread_ctrl::wait_for(1000);
 	}
 
 	return CELL_OK;
@@ -755,9 +827,27 @@ s32 cellGameThemeInstallFromBuffer()
 }
 
 
-s32 cellDiscGameGetBootDiscInfo()
+s32 cellDiscGameGetBootDiscInfo(vm::ptr<CellDiscGameSystemFileParam> getParam)
 {
-	UNIMPLEMENTED_FUNC(cellGame);
+	cellGame.warning("cellDiscGameGetBootDiscInfo(getParam=*0x%x)", getParam);
+
+	// This is also called by non-disc games, see NPUB90029
+	const std::string dir = "/dev_bdvd/PS3_GAME"s;
+
+	if (!fs::is_dir(vfs::get(dir)))
+	{
+		// Not a disc game. TODO: Fetch PARAM.SFO from proper game dir
+		cellGame.warning("cellDiscGameGetBootDiscInfo(): directory '%s' not found", dir);
+		getParam->parentalLevel = 0;
+		strcpy_trunc(getParam->titleId, "0");
+		return CELL_OK;
+	}
+
+	const auto& psf = psf::load_object(fs::file(vfs::get(dir + "/PARAM.SFO")));
+
+	if (psf.count("PARENTAL_LEVEL") != 0) getParam->parentalLevel = psf.at("PARENTAL_LEVEL").as_integer();
+	if (psf.count("TITLE_ID") != 0) strcpy_trunc(getParam->titleId, psf.at("TITLE_ID").as_string());
+
 	return CELL_OK;
 }
 

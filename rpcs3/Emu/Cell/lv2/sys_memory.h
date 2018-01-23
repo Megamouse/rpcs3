@@ -46,7 +46,13 @@ struct sys_page_attr_t
 
 struct lv2_memory_container
 {
-	const u32 size = 0x10000000; // Amount of "physical" memory in this container
+	static const u32 id_base = 0x1; // Wrong?
+	static const u32 id_step = 0x1;
+	static const u32 id_count = 16;
+
+	// This is purposely set lower to fake the size of the OS
+	// Todo: This could change with requested sdk
+	const u32 size = 0xEC00000; // Amount of "physical" memory in this container
 
 	atomic_t<u32> used{}; // Amount of "physical" memory currently used
 	

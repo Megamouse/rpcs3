@@ -5,16 +5,19 @@ namespace vk
 {
 	namespace glsl
 	{
+		using namespace ::glsl;
+
 		program::program(VkDevice dev, VkPipeline p, const std::vector<program_input> &vertex_input, const std::vector<program_input>& fragment_inputs)
 			: m_device(dev), pipeline(p)
 		{
-			load_uniforms(glsl::program_domain::glsl_vertex_program, vertex_input);
-			load_uniforms(glsl::program_domain::glsl_vertex_program, fragment_inputs);
+			load_uniforms(program_domain::glsl_vertex_program, vertex_input);
+			load_uniforms(program_domain::glsl_vertex_program, fragment_inputs);
+			attribute_location_mask = 0;
+			vertex_attributes_mask = 0;
 		}
 
 		program::~program()
 		{
-			LOG_ERROR(RSX, "Program destructor invoked!");
 			vkDestroyPipeline(m_device, pipeline, nullptr);
 		}
 
@@ -58,14 +61,15 @@ namespace vk
 					descriptor_writer.pImageInfo = &image_descriptor;
 					descriptor_writer.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 					descriptor_writer.dstArrayElement = 0;
-					descriptor_writer.dstBinding = uniform.location + TEXTURES_FIRST_BIND_SLOT;
+					descriptor_writer.dstBinding = uniform.location;
 
 					vkUpdateDescriptorSets(m_device, 1, &descriptor_writer, 0, nullptr);
+					attribute_location_mask |= (1ull << uniform.location);
 					return;
 				}
 			}
 
-			fmt::throw_exception("texture not found" HERE);
+			LOG_NOTICE(RSX, "texture not found in program: %s", uniform_name.c_str());
 		}
 
 		void program::bind_uniform(VkDescriptorBufferInfo buffer_descriptor, uint32_t binding_point, VkDescriptorSet &descriptor_set)
@@ -80,6 +84,7 @@ namespace vk
 			descriptor_writer.dstBinding = binding_point;
 
 			vkUpdateDescriptorSets(m_device, 1, &descriptor_writer, 0, nullptr);
+			attribute_location_mask |= (1ull << binding_point);
 		}
 
 		void program::bind_uniform(const VkBufferView &buffer_view, const std::string &binding_name, VkDescriptorSet &descriptor_set)
@@ -95,13 +100,32 @@ namespace vk
 					descriptor_writer.pTexelBufferView = &buffer_view;
 					descriptor_writer.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
 					descriptor_writer.dstArrayElement = 0;
-					descriptor_writer.dstBinding = uniform.location + VERTEX_BUFFERS_FIRST_BIND_SLOT;
+					descriptor_writer.dstBinding = uniform.location;
 
 					vkUpdateDescriptorSets(m_device, 1, &descriptor_writer, 0, nullptr);
+					attribute_location_mask |= (1ull << uniform.location);
 					return;
 				}
 			}
-			fmt::throw_exception("vertex buffer not found" HERE);
+			
+			LOG_NOTICE(RSX, "vertex buffer not found in program: %s", binding_name.c_str());
+		}
+
+		u64 program::get_vertex_input_attributes_mask()
+		{
+			if (vertex_attributes_mask)
+				return vertex_attributes_mask;
+
+			for (auto &uniform : uniforms)
+			{
+				if (uniform.domain == program_domain::glsl_vertex_program &&
+					uniform.type == program_input_type::input_type_texel_buffer)
+				{
+					vertex_attributes_mask |= (1ull << (uniform.location - VERTEX_BUFFERS_FIRST_BIND_SLOT));
+				}
+			}
+
+			return vertex_attributes_mask;
 		}
 	}
 }

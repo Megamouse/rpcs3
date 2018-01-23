@@ -2,11 +2,17 @@
 #include "Emu/System.h"
 #include "Emu/Cell/PPUModule.h"
 
-#include "Emu/Cell/lv2/sys_process.h"
+#include "sysPrxForUser.h"
+#include "Emu/IdManager.h"
 #include "Crypto/unedat.h"
+#include "Crypto/unself.h"
+#include "cellRtc.h"
 #include "sceNp.h"
+#include "cellSysutil.h"
 
-logs::channel sceNp("sceNp", logs::level::notice);
+logs::channel sceNp("sceNp");
+
+s32 g_psn_connection_status = SCE_NP_MANAGER_STATUS_OFFLINE;
 
 s32 sceNpInit(u32 poolsize, vm::ptr<void> poolptr)
 {
@@ -36,9 +42,17 @@ s32 sceNpTerm()
 	return CELL_OK;
 }
 
-s32 npDrmIsAvailable(u32 k_licensee_addr, vm::cptr<char> drm_path)
+s32 npDrmIsAvailable(vm::cptr<u8> k_licensee_addr, vm::cptr<char> drm_path)
 {
-	const std::string& enc_drm_path = drm_path.get_ptr();
+	std::array<u8, 0x10> k_licensee{};
+
+	if (k_licensee_addr)
+	{
+		std::copy_n(k_licensee_addr.get_ptr(), k_licensee.size(), k_licensee.begin());
+		sceNp.notice("npDrmIsAvailable(): KLicense key %s", *reinterpret_cast<be_t<v128, 1>*>(k_licensee.data()));
+	}
+
+	const std::string enc_drm_path = drm_path.get_ptr();
 
 	if (!fs::is_file(vfs::get(enc_drm_path)))
 	{
@@ -46,69 +60,76 @@ s32 npDrmIsAvailable(u32 k_licensee_addr, vm::cptr<char> drm_path)
 		return CELL_ENOENT;
 	}
 
-	std::string k_licensee_str = "0";
-	u8 k_licensee[0x10];
+	auto npdrmkeys = fxm::get_always<LoadedNpdrmKeys_t>();
 
-	if (k_licensee_addr)
-	{
-		for (s32 i = 0; i < 0x10; i++)
-		{
-			k_licensee[i] = vm::read8(k_licensee_addr + i);
-			k_licensee_str += fmt::format("%02x", k_licensee[i]);
-		}
-	}
+	npdrmkeys->devKlic.fill(0);
+	npdrmkeys->rifKey.fill(0);
 
-	sceNp.warning("npDrmIsAvailable(): Found DRM license file at %s", enc_drm_path);
-	sceNp.warning("npDrmIsAvailable(): Using k_licensee 0x%s", k_licensee_str);
-
-	// Set the necessary file paths.
-	const std::string& drm_file_name = enc_drm_path.substr(enc_drm_path.find_last_of('/') + 1);
-
-	// TODO: Make more explicit what this actually does (currently it copies "XXXXXXXX" from drm_path (== "/dev_hdd0/game/XXXXXXXXX/*" assumed)
-	const std::string& drm_file_dir = enc_drm_path.substr(15);
-	const std::string& title_id = drm_file_dir.substr(0, drm_file_dir.find_first_of('/'));
-
-	const std::string& dec_drm_path = "/dev_hdd1/cache/" + drm_file_name;
-
-	std::string rap_lpath = vfs::get("/dev_hdd0/home/00000001/exdata/"); // TODO: Allow multiple profiles. Use default for now.
-
-	// Search for a compatible RAP file. 
-	for (const auto& entry : fs::dir(rap_lpath))
-	{
-		if (entry.name.find(title_id) != -1)
-		{
-			rap_lpath += entry.name;
-			break;
-		}
-	}
-
-	if (rap_lpath.back() == '/')
-	{
-		sceNp.warning("npDrmIsAvailable(): Can't find RAP file for %s", enc_drm_path);
-		rap_lpath.clear();
-	}
+	// todo: profile for rap_dir_path
+	std::string rap_dir_path = "/dev_hdd0/home/00000001/exdata/";
 
 	const std::string& enc_drm_path_local = vfs::get(enc_drm_path);
-	const std::string& dec_drm_path_local = vfs::get(dec_drm_path);
+	const fs::file enc_file(enc_drm_path_local);
 
-	if (DecryptEDAT(enc_drm_path_local, dec_drm_path_local, 8, rap_lpath, k_licensee, false) >= 0)
+	u32 magic;
+
+	enc_file.read<u32>(magic);
+	enc_file.seek(0);
+
+	if (magic == "SCE\0"_u32)
 	{
-		// If decryption succeeds, replace the encrypted file with it.
-		fs::remove_file(enc_drm_path_local);
-		fs::rename(dec_drm_path_local, enc_drm_path_local);
-	}
+		if (k_licensee_addr == vm::null)
+			k_licensee = get_default_self_klic();
 
+		if (verify_npdrm_self_headers(enc_file, k_licensee.data()))
+		{
+			npdrmkeys->devKlic = std::move(k_licensee);
+		}
+		else
+		{
+			sceNp.error("npDrmIsAvailable(): Failed to verify sce file %s", enc_drm_path);
+			return SCE_NP_DRM_ERROR_NO_ENTITLEMENT;
+		}
+		
+	}
+	else if (magic == "NPD\0"_u32)
+	{
+		// edata / sdata files
+
+		std::string contentID;
+
+		if (VerifyEDATHeaderWithKLicense(enc_file, enc_drm_path_local, k_licensee, &contentID))
+		{
+			const std::string rap_file = rap_dir_path + contentID + ".rap";
+			npdrmkeys->devKlic = std::move(k_licensee);
+
+			if (fs::is_file(vfs::get(rap_file)))
+				npdrmkeys->rifKey = GetEdatRifKeyFromRapFile(fs::file{ vfs::get(rap_file) });
+			else
+				sceNp.warning("npDrmIsAvailable(): Rap file not found: %s", rap_file.c_str());
+		}
+		else
+		{
+			sceNp.error("npDrmIsAvailable(): Failed to verify npd file %s", enc_drm_path);
+			return SCE_NP_DRM_ERROR_NO_ENTITLEMENT;
+		}
+	}
+	else
+	{
+		// for now assume its just unencrypted
+		sceNp.notice("npDrmIsAvailable(): Assuming npdrm file is unencrypted at %s", enc_drm_path);
+	}
 	return CELL_OK;
 }
 
-s32 sceNpDrmIsAvailable(u32 k_licensee_addr, vm::cptr<char> drm_path)
+s32 sceNpDrmIsAvailable(vm::cptr<u8> k_licensee_addr, vm::cptr<char> drm_path)
 {
 	sceNp.warning("sceNpDrmIsAvailable(k_licensee=*0x%x, drm_path=%s)", k_licensee_addr, drm_path);
 
 	return npDrmIsAvailable(k_licensee_addr, drm_path);
 }
 
-s32 sceNpDrmIsAvailable2(u32 k_licensee_addr, vm::cptr<char> drm_path)
+s32 sceNpDrmIsAvailable2(vm::cptr<u8> k_licensee_addr, vm::cptr<char> drm_path)
 {
 	sceNp.warning("sceNpDrmIsAvailable2(k_licensee=*0x%x, drm_path=%s)", k_licensee_addr, drm_path);
 
@@ -117,15 +138,29 @@ s32 sceNpDrmIsAvailable2(u32 k_licensee_addr, vm::cptr<char> drm_path)
 
 s32 sceNpDrmVerifyUpgradeLicense(vm::cptr<char> content_id)
 {
-	sceNp.todo("sceNpDrmVerifyUpgradeLicense(content_id=%s)", content_id);
+	sceNp.warning("sceNpDrmVerifyUpgradeLicense(content_id=%s)", content_id);
 
+	if (!fs::is_file(vfs::get("/dev_hdd0/home/00000001/exdata/") + content_id.get_ptr() + ".rap"))
+	{
+		// Game hasn't been purchased therefore no RAP file present
+		return SCE_NP_DRM_ERROR_LICENSE_NOT_FOUND;
+	}
+
+	// Game has been purchased and there's a RAP file present
 	return CELL_OK;
 }
 
 s32 sceNpDrmVerifyUpgradeLicense2(vm::cptr<char> content_id)
 {
-	sceNp.todo("sceNpDrmVerifyUpgradeLicense2(content_id=%s)", content_id);
+	sceNp.warning("sceNpDrmVerifyUpgradeLicense2(content_id=%s)", content_id);
 
+	if (!fs::is_file(vfs::get("/dev_hdd0/home/00000001/exdata/") + content_id.get_ptr() + ".rap"))
+	{
+		// Game hasn't been purchased therefore no RAP file present
+		return SCE_NP_DRM_ERROR_LICENSE_NOT_FOUND;
+	}
+
+	// Game has been purchased and there's a RAP file present
 	return CELL_OK;
 }
 
@@ -144,21 +179,29 @@ s32 sceNpDrmGetTimelimit(vm::cptr<char> path, vm::ptr<u64> time_remain)
 	return CELL_OK;
 }
 
-s32 sceNpDrmProcessExitSpawn(vm::cptr<char> path, u32 argv_addr, u32 envp_addr, u32 data_addr, u32 data_size, u32 prio, u64 flags)
+s32 sceNpDrmProcessExitSpawn(ppu_thread& ppu, vm::cptr<u8> klicensee, vm::cptr<char> path, vm::cpptr<char> argv, vm::cpptr<char> envp, u32 data, u32 data_size, s32 prio, u64 flags)
 {
-	sceNp.warning("sceNpDrmProcessExitSpawn() -> sys_game_process_exitspawn");
+	sceNp.warning("sceNpDrmProcessExitSpawn(klicensee=*0x%x, path=%s, argv=**0x%x, envp=**0x%x, data=*0x%x, data_size=0x%x, prio=%d, flags=0x%x)", klicensee, path, argv, envp, data, data_size, prio, flags);
 
-	sys_game_process_exitspawn(path, argv_addr, envp_addr, data_addr, data_size, prio, flags);
+	if (s32 error = npDrmIsAvailable(klicensee, path))
+	{
+		return error;
+	}
 
+	sys_game_process_exitspawn(ppu, path, argv, envp, data, data_size, prio, flags);
 	return CELL_OK;
 }
 
-s32 sceNpDrmProcessExitSpawn2(vm::cptr<char> path, u32 argv_addr, u32 envp_addr, u32 data_addr, u32 data_size, u32 prio, u64 flags)
+s32 sceNpDrmProcessExitSpawn2(ppu_thread& ppu, vm::cptr<u8> klicensee, vm::cptr<char> path, vm::cpptr<char> argv, vm::cpptr<char> envp, u32 data, u32 data_size, s32 prio, u64 flags)
 {
-	sceNp.warning("sceNpDrmProcessExitSpawn2() -> sys_game_process_exitspawn2");
+	sceNp.warning("sceNpDrmProcessExitSpawn2(klicensee=*0x%x, path=%s, argv=**0x%x, envp=**0x%x, data=*0x%x, data_size=0x%x, prio=%d, flags=0x%x)", klicensee, path, argv, envp, data, data_size, prio, flags);
+	
+	if (s32 error = npDrmIsAvailable(klicensee, path))
+	{
+		return error;
+	}
 
-	sys_game_process_exitspawn2(path, argv_addr, envp_addr, data_addr, data_size, prio, flags);
-
+	sys_game_process_exitspawn2(ppu, path, argv, envp, data, data_size, prio, flags);
 	return CELL_OK;
 }
 
@@ -308,37 +351,64 @@ s32 sceNpBasicGetPlayersHistoryEntryCount(u32 options, vm::ptr<u32> count)
 {
 	sceNp.todo("sceNpBasicGetPlayersHistoryEntryCount(options=%d, count=*0x%x)", options, count);
 
-	return CELL_OK;
-}
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
 
-s32 sceNpBasicGetPlayersHistoryEntry()
-{
-	UNIMPLEMENTED_FUNC(sceNp);
-	return CELL_OK;
-}
-
-s32 sceNpBasicAddBlockListEntry()
-{
-	UNIMPLEMENTED_FUNC(sceNp);
-	return CELL_OK;
-}
-
-s32 sceNpBasicGetBlockListEntryCount(u32 count)
-{
-	sceNp.todo("sceNpBasicGetBlockListEntryCount(count=%d)", count);
+	// TODO: Check if there are players histories
+	*count = 0;
 
 	return CELL_OK;
 }
 
-s32 sceNpBasicGetBlockListEntry()
+s32 sceNpBasicGetPlayersHistoryEntry(u32 options, u32 index, vm::ptr<SceNpId> npid)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpBasicGetPlayersHistoryEntry(options=%d, index=%d, npid=*0x%x)", options, index, npid);
+
+	return CELL_OK;
+}
+
+s32 sceNpBasicAddBlockListEntry(vm::cptr<SceNpId> npid)
+{
+	sceNp.todo("sceNpBasicAddBlockListEntry(npid=*0x%x)", npid);
+
+	return CELL_OK;
+}
+
+s32 sceNpBasicGetBlockListEntryCount(vm::ptr<u32> count)
+{
+	sceNp.todo("sceNpBasicGetBlockListEntryCount(count=*0x%x)", count);
+
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
+
+	// TODO: Check if there are block lists
+	*count = 0;
+
+	return CELL_OK;
+}
+
+s32 sceNpBasicGetBlockListEntry(u32 index, vm::ptr<SceNpId> npid)
+{
+	sceNp.todo("sceNpBasicGetBlockListEntry(index=%d, npid=*0x%x)", index, npid);
+
 	return CELL_OK;
 }
 
 s32 sceNpBasicGetMessageAttachmentEntryCount(vm::ptr<u32> count)
 {
 	sceNp.todo("sceNpBasicGetMessageAttachmentEntryCount(count=*0x%x)", count);
+
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
+
+	// TODO: Check if there are message attachments
+	*count = 0;
 
 	return CELL_OK;
 }
@@ -350,21 +420,39 @@ s32 sceNpBasicGetMessageAttachmentEntry(u32 index, vm::ptr<SceNpUserInfo> from)
 	return CELL_OK;
 }
 
-s32 sceNpBasicGetCustomInvitationEntryCount()
+s32 sceNpBasicGetCustomInvitationEntryCount(vm::ptr<u32> count)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpBasicGetCustomInvitationEntryCount(count=*0x%x)", count);
+
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
+
+	// TODO: Check if there are custom invitations
+	*count = 0;
+
 	return CELL_OK;
 }
 
-s32 sceNpBasicGetCustomInvitationEntry()
+s32 sceNpBasicGetCustomInvitationEntry(u32 index, vm::ptr<SceNpUserInfo> from)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpBasicGetCustomInvitationEntry(index=%d, from=*0x%x)", index, from);
+
 	return CELL_OK;
 }
 
 s32 sceNpBasicGetMatchingInvitationEntryCount(vm::ptr<u32> count)
 {
 	sceNp.todo("sceNpBasicGetMatchingInvitationEntryCount(count=*0x%x)", count);
+
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
+
+	// TODO: Check if there are matching invitations
+	*count = 0;
 
 	return CELL_OK;
 }
@@ -379,6 +467,14 @@ s32 sceNpBasicGetMatchingInvitationEntry(u32 index, vm::ptr<SceNpUserInfo> from)
 s32 sceNpBasicGetClanMessageEntryCount(vm::ptr<u32> count)
 {
 	sceNp.todo("sceNpBasicGetClanMessageEntryCount(count=*0x%x)", count);
+
+	if (!count)
+	{
+		return SCE_NP_BASIC_ERROR_INVALID_ARGUMENT;
+	}
+
+	// TODO: Check if there are clan messages
+	*count = 0;
 
 	return CELL_OK;
 }
@@ -412,9 +508,9 @@ s32 sceNpBasicGetEvent(vm::ptr<s32> event, vm::ptr<SceNpUserInfo> from, vm::ptr<
 	sceNp.warning("sceNpBasicGetEvent(event=*0x%x, from=*0x%x, data=*0x%x, size=*0x%x)", event, from, data, size);
 
 	// TODO: Check for other error and pass other events
-	*event = SCE_NP_BASIC_EVENT_OFFLINE;
+	//*event = SCE_NP_BASIC_EVENT_OFFLINE; // This event only indicates a contact is offline, not the current status of the connection
 
-	return CELL_OK;
+	return SCE_NP_BASIC_ERROR_NO_EVENT;
 }
 
 s32 sceNpCommerceCreateCtx()
@@ -804,79 +900,233 @@ s32 sceNpLookupTitleSmallStorageAsync()
 	return CELL_OK;
 }
 
-s32 sceNpManagerRegisterCallback()
+s32 sceNpManagerRegisterCallback(vm::ptr<SceNpManagerCallback> callback, vm::ptr<void> arg)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.warning("sceNpManagerRegisterCallback(callback=*0x%x, arg=*0x%x)", callback, arg);
+
+	if (!callback)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
 	return CELL_OK;
 }
 
 s32 sceNpManagerUnregisterCallback()
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerUnregisterCallback()");
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetStatus(vm::ptr<u32> status)
+s32 sceNpManagerGetStatus(vm::ptr<s32> status)
 {
 	sceNp.warning("sceNpManagerGetStatus(status=*0x%x)", status);
 
-	// TODO: Support different statuses
-	*status = SCE_NP_MANAGER_STATUS_OFFLINE;
+	if (!status)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	*status = g_psn_connection_status;
 
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetNetworkTime()
+s32 sceNpManagerGetNetworkTime(vm::ptr<CellRtcTick> pTick)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetNetworkTime(pTick=*0x%x)", pTick);
+
+	if (!pTick)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetOnlineId()
+s32 sceNpManagerGetOnlineId(vm::ptr<SceNpOnlineId> onlineId)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetOnlineId(onlineId=*0x%x)", onlineId);
+
+	if (!onlineId)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetNpId()
+s32 sceNpManagerGetNpId(ppu_thread& ppu, vm::ptr<SceNpId> npId)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetNpId(npId=*0x%x)", npId);
+
+	if (!npId)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetOnlineName()
+s32 sceNpManagerGetOnlineName(vm::ptr<SceNpOnlineName> onlineName)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetOnlineName(onlineName=*0x%x)", onlineName);
+
+	if (!onlineName)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetAvatarUrl()
+s32 sceNpManagerGetAvatarUrl(vm::ptr<SceNpAvatarUrl> avatarUrl)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetAvatarUrl(avatarUrl=*0x%x)", avatarUrl);
+
+	if (!avatarUrl)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetMyLanguages()
+s32 sceNpManagerGetMyLanguages(vm::ptr<SceNpMyLanguages> myLanguages)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetMyLanguages(myLanguages=*0x%x)", myLanguages);
+
+	if (!myLanguages)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetAccountRegion()
+s32 sceNpManagerGetAccountRegion(vm::ptr<SceNpCountryCode> countryCode, vm::ptr<s32> language)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetAccountRegion(countryCode=*0x%x, language=*0x%x)", countryCode, language);
+
+	if (!countryCode || !language)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetAccountAge()
+s32 sceNpManagerGetAccountAge(vm::ptr<s32> age)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetAccountAge(age=*0x%x)", age);
+
+	if (!age)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetContentRatingFlag(vm::ptr<u32> isRestricted, vm::ptr<u32> age)
+s32 sceNpManagerGetContentRatingFlag(vm::ptr<s32> isRestricted, vm::ptr<s32> age)
 {
 	sceNp.warning("sceNpManagerGetContentRatingFlag(isRestricted=*0x%x, age=*0x%x)", isRestricted, age);
+
+	if (!isRestricted || !age)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
 
 	// TODO: read user's parental control information
 	*isRestricted = 0;
@@ -885,9 +1135,28 @@ s32 sceNpManagerGetContentRatingFlag(vm::ptr<u32> isRestricted, vm::ptr<u32> age
 	return CELL_OK;
 }
 
-s32 sceNpManagerGetChatRestrictionFlag()
+s32 sceNpManagerGetChatRestrictionFlag(vm::ptr<s32> isRestricted)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sceNp.todo("sceNpManagerGetChatRestrictionFlag(isRestricted=*0x%x)", isRestricted);
+
+	if (!isRestricted)
+	{
+		return SCE_NP_ERROR_INVALID_ARGUMENT;
+	}
+
+	if (g_psn_connection_status == SCE_NP_MANAGER_STATUS_OFFLINE)
+	{
+		return SCE_NP_ERROR_OFFLINE;
+	}
+
+	if (g_psn_connection_status != SCE_NP_MANAGER_STATUS_LOGGING_IN && g_psn_connection_status != SCE_NP_MANAGER_STATUS_ONLINE)
+	{
+		return SCE_NP_ERROR_INVALID_STATE;
+	}
+
+	// TODO: read user's parental control information
+	*isRestricted = 0;
+
 	return CELL_OK;
 }
 
@@ -1235,6 +1504,18 @@ s32 sceNpScoreGetRankingByRangeAsync()
 	return CELL_OK;
 }
 
+s32 sceNpScoreGetFriendsRanking()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
+s32 sceNpScoreGetFriendsRankingAsync()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
 s32 sceNpScoreCensorComment()
 {
 	UNIMPLEMENTED_FUNC(sceNp);
@@ -1445,6 +1726,18 @@ s32 sceNpSignalingGetPeerNetInfoResult()
 	return CELL_OK;
 }
 
+s32 sceNpUtilCanonicalizeNpIdForPs3()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
+s32 sceNpUtilCanonicalizeNpIdForPsp()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
 s32 sceNpUtilCmpNpId(vm::ptr<SceNpId> id1, vm::ptr<SceNpId> id2)
 {
 	sceNp.warning("sceNpUtilCmpNpId(id1=*0x%x, id2=*0x%x)", id1, id2);
@@ -1459,6 +1752,24 @@ s32 sceNpUtilCmpNpId(vm::ptr<SceNpId> id1, vm::ptr<SceNpId> id2)
 }
 
 s32 sceNpUtilCmpNpIdInOrder()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
+s32 sceNpUtilCmpOnlineId()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
+s32 sceNpUtilGetPlatformType()
+{
+	UNIMPLEMENTED_FUNC(sceNp);
+	return CELL_OK;
+}
+
+s32 sceNpUtilSetPlatformType()
 {
 	UNIMPLEMENTED_FUNC(sceNp);
 	return CELL_OK;
@@ -1707,6 +2018,8 @@ DECLARE(ppu_module_manager::sceNp)("sceNp", []()
 	REG_FUNC(sceNp, sceNpScoreGetRankingByNpIdAsync);
 	REG_FUNC(sceNp, sceNpScoreGetRankingByRange);
 	REG_FUNC(sceNp, sceNpScoreGetRankingByRangeAsync);
+	REG_FUNC(sceNp, sceNpScoreGetFriendsRanking);
+	REG_FUNC(sceNp, sceNpScoreGetFriendsRankingAsync);
 	REG_FUNC(sceNp, sceNpScoreCensorComment);
 	REG_FUNC(sceNp, sceNpScoreCensorCommentAsync);
 	REG_FUNC(sceNp, sceNpScoreSanitizeComment);
@@ -1742,8 +2055,13 @@ DECLARE(ppu_module_manager::sceNp)("sceNp", []()
 	REG_FUNC(sceNp, sceNpSignalingGetPeerNetInfo);
 	REG_FUNC(sceNp, sceNpSignalingCancelPeerNetInfo);
 	REG_FUNC(sceNp, sceNpSignalingGetPeerNetInfoResult);
+	REG_FUNC(sceNp, sceNpUtilCanonicalizeNpIdForPs3);
+	REG_FUNC(sceNp, sceNpUtilCanonicalizeNpIdForPsp);
 	REG_FUNC(sceNp, sceNpUtilCmpNpId);
 	REG_FUNC(sceNp, sceNpUtilCmpNpIdInOrder);
+	REG_FUNC(sceNp, sceNpUtilCmpOnlineId);
+	REG_FUNC(sceNp, sceNpUtilGetPlatformType);
+	REG_FUNC(sceNp, sceNpUtilSetPlatformType);
 	REG_FUNC(sceNp, _sceNpSysutilClientMalloc);
 	REG_FUNC(sceNp, _sceNpSysutilClientFree);
 	REG_FUNC(sceNp, _Z33_sce_np_sysutil_send_empty_packetiPN16sysutil_cxmlutil11FixedMemoryEPKcS3_);

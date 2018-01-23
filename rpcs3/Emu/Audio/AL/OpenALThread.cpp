@@ -1,10 +1,7 @@
 #include "stdafx.h"
-#include "Utilities/Config.h"
 #include "Emu/System.h"
 
 #include "OpenALThread.h"
-
-extern cfg::bool_entry g_cfg_audio_convert_to_u16;
 
 #ifdef _MSC_VER
 #pragma comment(lib, "OpenAL32.lib")
@@ -44,6 +41,17 @@ OpenALThread::OpenALThread()
 
 	alcMakeContextCurrent(m_context);
 	checkForAlcError("alcMakeContextCurrent");
+
+	if (g_cfg.audio.downmix_to_2ch)
+	{
+		m_format = g_cfg.audio.convert_to_u16 ? AL_FORMAT_STEREO16 : AL_FORMAT_STEREO_FLOAT32;
+	}
+	else
+	{
+		m_format = g_cfg.audio.convert_to_u16 ? AL_FORMAT_71CHN16 : AL_FORMAT_71CHN32;
+	}
+
+	m_buffers = std::make_unique<ALuint[]>(g_cfg.audio.frames);
 }
 
 OpenALThread::~OpenALThread()
@@ -77,7 +85,7 @@ void OpenALThread::Close()
 	if (alIsSource(m_source))
 		alDeleteSources(1, &m_source);
 
-	alDeleteBuffers(g_al_buffers_count, m_buffers);
+	alDeleteBuffers(g_cfg.audio.frames, m_buffers.get());
 	checkForAlError("alDeleteBuffers");
 }
 
@@ -92,7 +100,7 @@ void OpenALThread::Open(const void* src, int size)
 	alGenSources(1, &m_source);
 	checkForAlError("alGenSources");
 
-	alGenBuffers(g_al_buffers_count, m_buffers);
+	alGenBuffers(g_cfg.audio.frames, m_buffers.get());
 	checkForAlError("alGenBuffers");
 
 	alSourcei(m_source, AL_LOOPING, AL_FALSE);
@@ -100,13 +108,13 @@ void OpenALThread::Open(const void* src, int size)
 
 	m_buffer_size = size;
 
-	for (uint i = 0; i<g_al_buffers_count; ++i)
+	for (int i = 0; i < g_cfg.audio.frames; ++i)
 	{
-		alBufferData(m_buffers[i], g_cfg_audio_convert_to_u16 ? AL_FORMAT_71CHN16 : AL_FORMAT_71CHN32, src, m_buffer_size, 48000);
+		alBufferData(m_buffers[i], m_format, src, m_buffer_size, 48000);
 		checkForAlError("alBufferData");
 	}
 
-	alSourceQueueBuffers(m_source, g_al_buffers_count, m_buffers);
+	alSourceQueueBuffers(m_source, g_cfg.audio.frames, m_buffers.get());
 	checkForAlError("alSourceQueueBuffers");
 	Play();
 }
@@ -137,7 +145,7 @@ void OpenALThread::AddData(const void* src, int size)
 
 		int bsize = size < m_buffer_size ? size : m_buffer_size;
 
-		alBufferData(buffer, g_cfg_audio_convert_to_u16 ? AL_FORMAT_71CHN16 : AL_FORMAT_71CHN32, bsrc, bsize, 48000);
+		alBufferData(buffer, m_format, bsrc, bsize, 48000);
 		checkForAlError("alBufferData");
 
 		alSourceQueueBuffers(m_source, 1, &buffer);

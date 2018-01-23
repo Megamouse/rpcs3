@@ -5,7 +5,7 @@
 namespace vm { using namespace ps3; }
 
 // Error codes
-enum
+enum CellAudioError : u32
 {
 	CELL_AUDIO_ERROR_ALREADY_INIT               = 0x80310701,
 	CELL_AUDIO_ERROR_AUDIOSYSTEM                = 0x80310702,
@@ -125,19 +125,29 @@ class audio_config final : public named_thread
 
 	std::string get_name() const override { return "Audio Thread"; }
 
-	vm::var<char[], vm::page_allocator<vm::main>> m_buffer{ AUDIO_PORT_OFFSET * AUDIO_PORT_COUNT };
-	vm::var<u64[], vm::page_allocator<vm::main>> m_indexes{ AUDIO_PORT_COUNT };
+	vm::ptr<char> m_buffer = vm::null;
+	vm::ptr<u64> m_indexes = vm::null;
 
 	u64 m_counter{};
 
 public:
+	void on_init(const std::shared_ptr<void>&) override;
+
 	const u64 start_time = get_system_time();
 
 	std::array<audio_port, AUDIO_PORT_COUNT> ports;
 
 	std::vector<u64> keys;
 
-	~audio_config() noexcept = default;
+	semaphore<> mutex;
+
+	audio_config() = default;
+
+	~audio_config()
+	{
+		vm::dealloc_verbose_nothrow(m_buffer.addr());
+		vm::dealloc_verbose_nothrow(m_indexes.addr());
+	}
 
 	audio_port* open_port()
 	{

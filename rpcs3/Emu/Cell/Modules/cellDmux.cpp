@@ -2,13 +2,14 @@
 #include "Emu/System.h"
 #include "Emu/IdManager.h"
 #include "Emu/Cell/PPUModule.h"
+#include "Emu/Cell/lv2/sys_sync.h"
 
 #include "cellPamf.h"
 #include "cellDmux.h"
 
 #include <thread>
 
-logs::channel cellDmux("cellDmux", logs::level::notice);
+logs::channel cellDmux("cellDmux");
 
 /* Demuxer Thread Classes */
 
@@ -143,10 +144,14 @@ class ElementaryStream
 	bool is_full(u32 space);
 
 public:
+	static const u32 id_base = 1;
+	static const u32 id_step = 1;
+	static const u32 id_count = 1023;
+
 	ElementaryStream(Demuxer* dmux, u32 addr, u32 size, u32 fidMajor, u32 fidMinor, u32 sup1, u32 sup2, vm::ptr<CellDmuxCbEsMsg> cbFunc, u32 cbArg, u32 spec);
 
 	Demuxer* dmux;
-	const id_value<> id{};
+	const u32 id = idm::last_id();
 	const u32 memAddr;
 	const u32 memSize;
 	const u32 fidMajor;
@@ -238,6 +243,7 @@ public:
 					dmuxMsg->msgType = CELL_DMUX_MSG_TYPE_DEMUX_DONE;
 					dmuxMsg->supplementalInfo = stream.userdata;
 					cbFunc(*this, id, dmuxMsg, cbArg);
+					lv2_obj::sleep(*this);
 
 					is_working = false;
 
@@ -391,6 +397,7 @@ public:
 							esMsg->msgType = CELL_DMUX_ES_MSG_TYPE_AU_FOUND;
 							esMsg->supplementalInfo = stream.userdata;
 							es.cbFunc(*this, id, es.id, esMsg, es.cbArg);
+							lv2_obj::sleep(*this);
 						}
 					}
 					else
@@ -456,6 +463,7 @@ public:
 							esMsg->msgType = CELL_DMUX_ES_MSG_TYPE_AU_FOUND;
 							esMsg->supplementalInfo = stream.userdata;
 							es.cbFunc(*this, id, es.id, esMsg, es.cbArg);
+							lv2_obj::sleep(*this);
 						}
 						
 						if (pes.has_ts)
@@ -532,6 +540,7 @@ public:
 					dmuxMsg->msgType = CELL_DMUX_MSG_TYPE_DEMUX_DONE;
 					dmuxMsg->supplementalInfo = stream.userdata;
 					cbFunc(*this, id, dmuxMsg, cbArg);
+					lv2_obj::sleep(*this);
 
 					stream = {};
 
@@ -620,6 +629,7 @@ public:
 					esMsg->msgType = CELL_DMUX_ES_MSG_TYPE_AU_FOUND;
 					esMsg->supplementalInfo = stream.userdata;
 					es.cbFunc(*this, id, es.id, esMsg, es.cbArg);
+					lv2_obj::sleep(*this);
 				}
 				
 				if (es.raw_data.size())
@@ -632,6 +642,7 @@ public:
 				esMsg->msgType = CELL_DMUX_ES_MSG_TYPE_FLUSH_DONE;
 				esMsg->supplementalInfo = stream.userdata;
 				es.cbFunc(*this, id, es.id, esMsg, es.cbArg);
+				lv2_obj::sleep(*this);
 				break;
 			}
 
@@ -1362,6 +1373,8 @@ s32 cellDmuxFlushEs(u32 esHandle)
 
 DECLARE(ppu_module_manager::cellDmux)("cellDmux", []()
 {
+	static ppu_static_module cellDmuxPamf("cellDmuxPamf");
+
 	REG_FUNC(cellDmux, cellDmuxQueryAttr);
 	REG_FUNC(cellDmux, cellDmuxQueryAttr2);
 	REG_FUNC(cellDmux, cellDmuxOpen);

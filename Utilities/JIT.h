@@ -7,7 +7,9 @@
 #include <unordered_map>
 
 #include "types.h"
+#include "mutex.h"
 
+#include "restore_new.h"
 #ifdef _MSC_VER
 #pragma warning(push, 0)
 #endif
@@ -17,33 +19,61 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
-extern llvm::LLVMContext g_llvm_ctx;
+#include "define_new_memleakdetect.h"
 
 // Temporary compiler interface
 class jit_compiler final
 {
+	// Local LLVM context
+	llvm::LLVMContext m_context;
+
+	// JIT Event Listener
+	std::unique_ptr<struct EventListener> m_jit_el;
+
 	// Execution instance
 	std::unique_ptr<llvm::ExecutionEngine> m_engine;
 
-	// Compiled functions
-	std::unordered_map<std::string, std::uintptr_t> m_map;
+	// Link table
+	std::unordered_map<std::string, u64> m_link;
+
+	// Arch
+	std::string m_cpu;
 
 public:
-	jit_compiler(std::unique_ptr<llvm::Module>&&, std::unordered_map<std::string, std::uintptr_t>&&);
+	jit_compiler(const std::unordered_map<std::string, u64>& _link, std::string _cpu);
 	~jit_compiler();
 
-	// Get compiled function address
-	std::uintptr_t get(const std::string& name) const
+	// Get LLVM context
+	auto& get_context()
 	{
-		const auto found = m_map.find(name);
-		
-		if (found != m_map.end())
-		{
-			return found->second;
-		}
+		return m_context;
+	}
 
-		return 0;
+	// Add module (path to obj cache dir)
+	void add(std::unique_ptr<llvm::Module> module, const std::string& path);
+
+	// Add object (path to obj file)
+	void add(const std::string& path);
+
+	// Finalize
+	void fin();
+
+	// Get compiled function address
+	u64 get(const std::string& name);
+
+	// Add functions directly to the memory manager (name -> code)
+	static std::unordered_map<std::string, u64> add(std::unordered_map<std::string, std::string>);
+
+	// Get CPU info
+	const std::string& cpu() const
+	{
+		return m_cpu;
+	}
+
+	// Check JIT purpose
+	bool is_primary() const
+	{
+		return !m_link.empty();
 	}
 };
 

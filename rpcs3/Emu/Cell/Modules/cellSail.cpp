@@ -5,7 +5,7 @@
 #include "cellSail.h"
 #include "cellPamf.h"
 
-logs::channel cellSail("cellSail", logs::level::notice);
+logs::channel cellSail("cellSail");
 
 s32 cellSailMemAllocatorInitialize(vm::ptr<CellSailMemAllocator> pSelf, vm::ptr<CellSailMemAllocatorFuncs> pCallbacks)
 {
@@ -1032,6 +1032,8 @@ s32 cellSailPlayerUnregisterSource()
 
 DECLARE(ppu_module_manager::cellSail)("cellSail", []()
 {
+	static ppu_static_module cellSailAvi("cellSailAvi");
+
 	REG_FUNC(cellSail, cellSailMemAllocatorInitialize);
 
 	REG_FUNC(cellSail, cellSailFutureInitialize);

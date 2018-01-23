@@ -4,5 +4,10 @@
 
 namespace rpcs3
 {
-	const extern utils::version version{ 0, 0, 1, utils::version_type::pre_alpha, 1, RPCS3_GIT_VERSION };
+	std::string get_branch()
+	{
+		return RPCS3_GIT_BRANCH;
+	}
+
+	const extern utils::version version{ 0, 0, 4, utils::version_type::alpha, 1, RPCS3_GIT_VERSION };
 }

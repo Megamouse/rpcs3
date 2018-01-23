@@ -27,6 +27,15 @@ enum
 	CELL_PAD_PCLASS_TYPE_NAVIGATION = 0x05,
 };
 
+// Length returned in CellPadData struct
+enum
+{
+	CELL_PAD_LEN_NO_CHANGE = 0,
+	CELL_PAD_LEN_CHANGE_DEFAULT = 8,
+	CELL_PAD_LEN_CHANGE_PRESS_ON = 20,
+	CELL_PAD_LEN_CHANGE_SENSOR_ON = 24,
+};
+
 struct CellPadData
 {
 	be_t<s32> len;
@@ -67,7 +76,20 @@ struct CellPadPeriphInfo
 	be_t<u32> pclass_profile[CELL_PAD_MAX_PORT_NUM];
 };
 
+struct CellPadPeriphData
+{
+	be_t<u32> pclass_type;
+	be_t<u32> pclass_profile;
+	CellPadData cellpad_data;
+};
+
 struct CellCapabilityInfo
 {
 	be_t<u32> info[CELL_PAD_MAX_CAPABILITY_INFO];
+};
+
+struct CellPadActParam
+{
+	u8 motor[CELL_PAD_ACTUATOR_MAX];
+	u8 reserved[6];
 };

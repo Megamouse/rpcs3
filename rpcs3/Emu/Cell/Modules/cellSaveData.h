@@ -1,12 +1,10 @@
-#pragma once
+﻿#pragma once
 
 namespace vm { using namespace ps3; }
 
 // Return codes
 enum
 {
-	CELL_SAVEDATA_RET_OK                = 0,
-	CELL_SAVEDATA_RET_CANCEL            = 1,
 	CELL_SAVEDATA_ERROR_CBRESULT        = 0x8002b401,
 	CELL_SAVEDATA_ERROR_ACCESS_ERROR    = 0x8002b402,
 	CELL_SAVEDATA_ERROR_INTERNAL        = 0x8002b403,
@@ -284,15 +282,14 @@ struct SaveDataEntry
 	s64 atime;
 	s64 mtime;
 	s64 ctime;
-	//void* iconBuf;
-	//u32 iconBufSize;
+	std::vector<uchar> iconBuf;
 	bool isNew;
 };
 
 class SaveDialogBase
 {
 public:
-	virtual ~SaveDialogBase() = default;
+	virtual ~SaveDialogBase();
 
-	virtual s32 ShowSaveDataList(std::vector<SaveDataEntry>& save_entries, s32 focused, vm::ptr<CellSaveDataListSet> listSet) = 0;
+	virtual s32 ShowSaveDataList(std::vector<SaveDataEntry>& save_entries, s32 focused, u32 op, vm::ptr<CellSaveDataListSet> listSet) = 0;
 };

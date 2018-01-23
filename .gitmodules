@@ -1,7 +1,3 @@
-[submodule "wxWidgets"]
-	path = wxWidgets
-	url = https://github.com/wxWidgets/wxWidgets
-	ignore = dirty
 [submodule "rpcs3-ffmpeg"]
 	path = 3rdparty/ffmpeg
 	url = https://github.com/hrydgard/ppsspp-ffmpeg
@@ -12,10 +8,7 @@
 [submodule "llvm"]
 	path = llvm
 	url = https://github.com/llvm-mirror/llvm
-	branch = release_36
-[submodule "rsx_program_decompiler"]
-	path = rsx_program_decompiler
-	url = https://github.com/RPCS3/rsx_program_decompiler
+	branch = release_40
 [submodule "GSL"]
 	path = 3rdparty/GSL
 	url = https://github.com/Microsoft/GSL.git
@@ -32,12 +25,19 @@
 [submodule "Utilities/yaml-cpp"]
 	path = Utilities/yaml-cpp
 	url = https://github.com/RPCS3/yaml-cpp
-[submodule "3rdparty/pugixml"]
-	path = 3rdparty/pugixml
-	url = https://github.com/RPCS3/pugixml
 [submodule "3rdparty/cereal"]
 	path = 3rdparty/cereal
 	url = https://github.com/USCiLab/cereal.git
-[submodule "rsx-debugger"]
-	path = rsx-debugger
-	url = https://github.com/RPCS3/rsx-debugger.git
+[submodule "3rdparty/zlib"]
+	path = 3rdparty/zlib
+	url = https://github.com/madler/zlib
+[submodule "3rdparty/hidapi"]
+	path = 3rdparty/hidapi
+	url = https://github.com/RPCS3/hidapi
+	branch = master
+[submodule "3rdparty/Optional"]
+	path = 3rdparty/Optional
+	url = https://github.com/akrzemi1/Optional.git
+[submodule "3rdparty/pugixml"]
+	path = 3rdparty/pugixml
+	url = https://github.com/zeux/pugixml

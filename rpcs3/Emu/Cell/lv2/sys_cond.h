@@ -2,7 +2,7 @@
 
 #include "sys_sync.h"
 
-struct lv2_mutex_t;
+struct lv2_mutex;
 
 struct sys_cond_attribute_t
 {
@@ -17,28 +17,42 @@ struct sys_cond_attribute_t
 	};
 };
 
-struct lv2_cond_t
+struct lv2_cond final : lv2_obj
 {
+	static const u32 id_base = 0x86000000;
+
+	const u32 shared;
+	const s32 flags;
+	const u64 key;
 	const u64 name;
-	const std::shared_ptr<lv2_mutex_t> mutex; // associated mutex
 
-	sleep_queue<cpu_thread> sq;
+	std::shared_ptr<lv2_mutex> mutex; // Associated Mutex
+	atomic_t<u32> waiters{0};
+	std::deque<cpu_thread*> sq;
 
-	lv2_cond_t(const std::shared_ptr<lv2_mutex_t>& mutex, u64 name)
-		: mutex(mutex)
+	lv2_cond(u32 shared, s32 flags, u64 key, u64 name, std::shared_ptr<lv2_mutex> mutex)
+		: shared(shared)
+		, key(key)
+		, flags(flags)
 		, name(name)
+		, mutex(std::move(mutex))
 	{
+		this->mutex->cond_count++;
 	}
 
-	void notify(lv2_lock_t, cpu_thread* thread);
+	~lv2_cond()
+	{
+		this->mutex->cond_count--;
+	}
 };
 
 class ppu_thread;
 
-// SysCalls
-s32 sys_cond_create(vm::ptr<u32> cond_id, u32 mutex_id, vm::ptr<sys_cond_attribute_t> attr);
-s32 sys_cond_destroy(u32 cond_id);
-s32 sys_cond_wait(ppu_thread& ppu, u32 cond_id, u64 timeout);
-s32 sys_cond_signal(u32 cond_id);
-s32 sys_cond_signal_all(u32 cond_id);
-s32 sys_cond_signal_to(u32 cond_id, u32 thread_id);
+// Syscalls
+
+error_code sys_cond_create(vm::ps3::ptr<u32> cond_id, u32 mutex_id, vm::ps3::ptr<sys_cond_attribute_t> attr);
+error_code sys_cond_destroy(u32 cond_id);
+error_code sys_cond_wait(ppu_thread& ppu, u32 cond_id, u64 timeout);
+error_code sys_cond_signal(ppu_thread& ppu, u32 cond_id);
+error_code sys_cond_signal_all(ppu_thread& ppu, u32 cond_id);
+error_code sys_cond_signal_to(ppu_thread& ppu, u32 cond_id, u32 thread_id);

@@ -15,7 +15,7 @@ namespace fmt
 template <typename T, typename>
 struct fmt_unveil
 {
-	static_assert(sizeof(T) > 0, "fmt_unveil<>: cannot pass forward-declared object");
+	static_assert(sizeof(T) > 0, "fmt_unveil<> error: incomplete type");
 
 	using type = T;
 
@@ -59,10 +59,21 @@ struct fmt_unveil<T, std::enable_if_t<std::is_floating_point<T>::value && sizeof
 {
 	using type = T;
 
-	// Convert FP to f64 and reinterpret (TODO?)
-	static inline u64 get(f64 arg)
+	// Convert FP to f64 and reinterpret as u64
+	static inline u64 get(const f64& arg)
 	{
-		return reinterpret_cast<u64&>(arg);
+		return *reinterpret_cast<const u64*>(reinterpret_cast<const u8*>(&arg));
+	}
+};
+
+template <>
+struct fmt_unveil<f16, void>
+{
+	using type = f16;
+
+	static inline u64 get(const f16& arg)
+	{
+		return fmt_unveil<f64>::get(arg.operator float());
 	}
 };
 
@@ -126,15 +137,27 @@ struct fmt_class_string
 		return *reinterpret_cast<const T*>(static_cast<std::uintptr_t>(arg));
 	}
 
+	// Enum -> string function type
+	using convert_t = const char*(*)(T value);
+
+	// Enum -> string function registered
+	static convert_t convert_enum;
+
 	// Helper function (safely converts arg to enum value)
-	static SAFE_BUFFERS FORCE_INLINE void format_enum(std::string& out, u64 arg, const char* (*get)(T value))
+	static SAFE_BUFFERS FORCE_INLINE void format_enum(std::string& out, u64 arg, convert_t convert)
 	{
+		// Save convert function
+		if (convert_enum == nullptr)
+		{
+			convert_enum = convert;
+		}
+
 		const auto value = static_cast<std::underlying_type_t<T>>(arg);
 
 		// Check narrowing
 		if (static_cast<u64>(value) == arg)
 		{
-			if (const char* str = get(static_cast<T>(value)))
+			if (const char* str = convert(static_cast<T>(value)))
 			{
 				out += str;
 				return;
@@ -153,7 +176,7 @@ struct fmt_class_string
 
 		out += prefix;
 
-		for (u64 i = 0; i < 64; i++)
+		for (u64 i = 0; i < 63; i++)
 		{
 			const u64 mask = 1ull << i;
 
@@ -161,11 +184,16 @@ struct fmt_class_string
 			{
 				fmt(out, i);
 
-				if (arg > mask)
+				if (arg >> (i + 1))
 				{
 					out += delim;
 				}
 			}
+		}
+
+		if (arg & (1ull << 63))
+		{
+			fmt(out, 63);
 		}
 
 		out += suffix;
@@ -174,6 +202,9 @@ struct fmt_class_string
 	// Helper constant (may be used in format_enum as lambda return value)
 	static constexpr const char* unknown = nullptr;
 };
+
+template <typename T, typename V>
+const char*(*fmt_class_string<T, V>::convert_enum)(T) = nullptr;
 
 template <>
 struct fmt_class_string<const void*, void>

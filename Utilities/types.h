@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <type_traits>
 #include <utility>
+#include <chrono>
+#include <array>
 
 // Assume little-endian
 #define IS_LE_MACHINE 1
@@ -30,16 +32,12 @@
 #define SAFE_BUFFERS
 #define NEVER_INLINE __attribute__((noinline))
 #define FORCE_INLINE __attribute__((always_inline)) inline
-
-// Some platforms don't support thread_local well yet.
-#define thread_local __thread
 #endif
 
 #define CHECK_SIZE(type, size) static_assert(sizeof(type) == size, "Invalid " #type " type size")
 #define CHECK_ALIGN(type, align) static_assert(alignof(type) == align, "Invalid " #type " type alignment")
 #define CHECK_MAX_SIZE(type, size) static_assert(sizeof(type) <= size, #type " type size is too big")
 #define CHECK_SIZE_ALIGN(type, size, align) CHECK_SIZE(type, size); CHECK_ALIGN(type, align)
-#define CHECK_STORAGE(type, storage) static_assert(sizeof(type) <= sizeof(storage) && alignof(type) <= alignof(decltype(storage)), #type " is too small")
 
 // Return 32 bit sizeof() to avoid widening/narrowing conversions with size_t
 #define SIZE_32(...) static_cast<u32>(sizeof(__VA_ARGS__))
@@ -47,13 +45,10 @@
 // Return 32 bit alignof() to avoid widening/narrowing conversions with size_t
 #define ALIGN_32(...) static_cast<u32>(alignof(__VA_ARGS__))
 
-// Return 32 bit offsetof()
-#define OFFSET_32(type, x) static_cast<u32>(reinterpret_cast<std::uintptr_t>(&reinterpret_cast<const volatile char&>(reinterpret_cast<type*>(0ull)->x)))
-
 #define CONCATENATE_DETAIL(x, y) x ## y
 #define CONCATENATE(x, y) CONCATENATE_DETAIL(x, y)
 
-#define STRINGIZE_DETAIL(x) #x
+#define STRINGIZE_DETAIL(x) #x ""
 #define STRINGIZE(x) STRINGIZE_DETAIL(x)
 
 #define HERE "\n(in file " __FILE__ ":" STRINGIZE(__LINE__) ")"
@@ -74,6 +69,8 @@ using ulong  = unsigned long;
 using ullong = unsigned long long;
 using llong  = long long;
 
+using uptr = std::uintptr_t;
+
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
@@ -83,6 +80,10 @@ using s8  = std::int8_t;
 using s16 = std::int16_t;
 using s32 = std::int32_t;
 using s64 = std::int64_t;
+
+using steady_clock = std::conditional<
+    std::chrono::high_resolution_clock::is_steady,
+    std::chrono::high_resolution_clock, std::chrono::steady_clock>::type;
 
 namespace gsl
 {
@@ -448,6 +449,71 @@ constexpr T align(const T& value, ullong align)
 	return static_cast<T>((value + (align - 1)) & ~(align - 1));
 }
 
+template <typename T, typename T2>
+inline u32 offset32(T T2::*const mptr)
+{
+#ifdef _MSC_VER
+	static_assert(sizeof(mptr) == sizeof(u32), "Invalid pointer-to-member size");
+	return reinterpret_cast<const u32&>(mptr);
+#elif __GNUG__
+	static_assert(sizeof(mptr) == sizeof(std::size_t), "Invalid pointer-to-member size");
+	return static_cast<u32>(reinterpret_cast<const std::size_t&>(mptr));
+#else
+	static_assert(sizeof(mptr) == 0, "Invalid pointer-to-member size");
+#endif
+}
+
+template <typename T>
+struct offset32_array
+{
+	static_assert(std::is_array<T>::value, "Invalid pointer-to-member type (array expected)");
+
+	template <typename Arg>
+	static inline u32 index32(const Arg& arg)
+	{
+		return SIZE_32(std::remove_extent_t<T>) * static_cast<u32>(arg);
+	}
+};
+
+template <typename T, std::size_t N>
+struct offset32_array<std::array<T, N>>
+{
+	template <typename Arg>
+	static inline u32 index32(const Arg& arg)
+	{
+		return SIZE_32(T) * static_cast<u32>(arg);
+	}
+};
+
+template <typename Arg>
+struct offset32_detail;
+
+template <typename T, typename T2, typename Arg, typename... Args>
+inline u32 offset32(T T2::*const mptr, const Arg& arg, const Args&... args)
+{
+	return offset32_detail<Arg>::offset32(mptr, arg, args...);
+}
+
+template <typename Arg>
+struct offset32_detail
+{
+	template <typename T, typename T2, typename... Args>
+	static inline u32 offset32(T T2::*const mptr, const Arg& arg, const Args&... args)
+	{
+		return ::offset32(mptr, args...) + offset32_array<T>::index32(arg);
+	}
+};
+
+template <typename T3, typename T4>
+struct offset32_detail<T3 T4::*>
+{
+	template <typename T, typename T2, typename... Args>
+	static inline u32 offset32(T T2::*const mptr, T3 T4::*const mptr2, const Args&... args)
+	{
+		return ::offset32(mptr) + ::offset32(mptr2, args...);
+	}
+};
+
 inline u32 cntlz32(u32 arg, bool nonzero = false)
 {
 #ifdef _MSC_VER
@@ -465,6 +531,26 @@ inline u64 cntlz64(u64 arg, bool nonzero = false)
 	return _BitScanReverse64(&res, arg) || nonzero ? res ^ 63 : 64;
 #else
 	return arg || nonzero ? __builtin_clzll(arg) : 64;
+#endif
+}
+
+inline u32 cnttz32(u32 arg, bool nonzero = false)
+{
+#ifdef _MSC_VER
+	ulong res;
+	return _BitScanForward(&res, arg) || nonzero ? res : 32;
+#else
+	return arg || nonzero ? __builtin_ctzll(arg) : 32;
+#endif
+}
+
+inline u64 cnttz64(u64 arg, bool nonzero = false)
+{
+#ifdef _MSC_VER
+	ulong res;
+	return _BitScanForward64(&res, arg) || nonzero ? res : 64;
+#else
+	return arg || nonzero ? __builtin_ctzll(arg) : 64;
 #endif
 }
 
@@ -533,7 +619,7 @@ struct verify_impl
 		// Verification (can be safely disabled)
 		if (!verify_func()(std::forward<T>(value)))
 		{
-			fmt::raw_verify_error(cause, fmt::get_type_info<uint>(), N);
+			fmt::raw_verify_error(cause, nullptr, N);
 		}
 
 		return verify_impl<N + 1>{cause};
@@ -843,34 +929,6 @@ struct multicast<T, Value, void>
 	}
 };
 
-// Tagged ID type
-template <typename T = void, typename ID = u32>
-class id_value
-{
-	// Initial value
-	mutable ID m_value{static_cast<ID>(-1)};
-
-	// Allow access for ID manager
-	friend class idm;
-
-	// Update ID
-	void operator=(const ID& value) const
-	{
-		m_value = value;
-	}
-
-public:
-	constexpr id_value()
-	{
-	}
-
-	// Get the value
-	operator ID() const
-	{
-		return m_value;
-	}
-};
-
 // Error code type (return type), implements error reporting. Could be a template.
 struct error_code
 {
@@ -880,7 +938,7 @@ struct error_code
 	error_code() = default;
 
 	// Implementation must be provided specially
-	static s32 error_report(const fmt_type_info* sup, u64 arg);
+	static s32 error_report(const fmt_type_info* sup, u64 arg, const fmt_type_info* sup2, u64 arg2);
 
 	// Helper type
 	enum class not_an_error : s32
@@ -901,7 +959,7 @@ struct error_code
 
 	// Not an error constructor
 	template<typename ET, typename = decltype(ET::__not_an_error)>
-	error_code(const ET& value, int = 0)
+	error_code(const ET& value, std::nullptr_t = nullptr)
 		: value(static_cast<s32>(value))
 	{
 	}
@@ -909,7 +967,14 @@ struct error_code
 	// Error constructor
 	template<typename ET, typename = std::enable_if_t<is_error<ET>::value>>
 	error_code(const ET& value)
-		: value(error_report(fmt::get_type_info<fmt_unveil_t<ET>>(), fmt_unveil<ET>::get(value)))
+		: value(error_report(fmt::get_type_info<fmt_unveil_t<ET>>(), fmt_unveil<ET>::get(value), nullptr, 0))
+	{
+	}
+
+	// Error constructor (2 args)
+	template<typename ET, typename T2, typename = std::enable_if_t<is_error<ET>::value>>
+	error_code(const ET& value, const T2& value2)
+		: value(error_report(fmt::get_type_info<fmt_unveil_t<ET>>(), fmt_unveil<ET>::get(value), fmt::get_type_info<fmt_unveil_t<T2>>(), fmt_unveil<T2>::get(value2)))
 	{
 	}
 
@@ -926,13 +991,94 @@ constexpr FORCE_INLINE error_code::not_an_error not_an_error(const T& value)
 	return static_cast<error_code::not_an_error>(static_cast<s32>(value));
 }
 
-template <typename T, typename ID>
-struct fmt_unveil<id_value<T, ID>>
+// Synchronization helper (cache-friendly busy waiting)
+inline void busy_wait(std::size_t count = 100)
 {
-	using type = typename fmt_unveil<ID>::type;
+	while (count--) _mm_pause();
+}
 
-	static inline auto get(const id_value<T, ID>& value)
-	{
-		return fmt_unveil<ID>::get(value);
-	}
-};
+// Rotate helpers
+#if defined(__GNUG__)
+
+inline u8 rol8(u8 x, u8 n)
+{
+	u8 result = x;
+	__asm__("rolb %[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u8 ror8(u8 x, u8 n)
+{
+	u8 result = x;
+	__asm__("rorb %[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u16 rol16(u16 x, u16 n)
+{
+	u16 result = x;
+	__asm__("rolw %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u16 ror16(u16 x, u16 n)
+{
+	u16 result = x;
+	__asm__("rorw %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u32 rol32(u32 x, u32 n)
+{
+	u32 result = x;
+	__asm__("roll %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u32 ror32(u32 x, u32 n)
+{
+	u32 result = x;
+	__asm__("rorl %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u64 rol64(u64 x, u64 n)
+{
+	u64 result = x;
+	__asm__("rolq %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u64 ror64(u64 x, u64 n)
+{
+	u64 result = x;
+	__asm__("rorq %b[n], %[result]" : [result] "+g" (result) : [n] "c" (n));
+	return result;
+}
+
+inline u64 umulh64(u64 a, u64 b)
+{
+	u64 result;
+	__asm__("mulq %[b]" : "=d" (result) : [a] "a" (a), [b] "rm" (b));
+	return result;
+}
+
+inline s64 mulh64(s64 a, s64 b)
+{
+	s64 result;
+	__asm__("imulq %[b]" : "=d" (result) : [a] "a" (a), [b] "rm" (b));
+	return result;
+}
+
+#elif defined(_MSC_VER)
+inline u8 rol8(u8 x, u8 n) { return _rotl8(x, n); }
+inline u8 ror8(u8 x, u8 n) { return _rotr8(x, n); }
+inline u16 rol16(u16 x, u16 n) { return _rotl16(x, (u8)n); }
+inline u16 ror16(u16 x, u16 n) { return _rotr16(x, (u8)n); }
+inline u32 rol32(u32 x, u32 n) { return _rotl(x, (int)n); }
+inline u32 ror32(u32 x, u32 n) { return _rotr(x, (int)n); }
+inline u64 rol64(u64 x, u64 n) { return _rotl64(x, (int)n); }
+inline u64 ror64(u64 x, u64 n) { return _rotr64(x, (int)n); }
+inline u64 umulh64(u64 x, u64 y) { return __umulh(x, y); }
+inline s64 mulh64(s64 x, s64 y) { return __mulh(x, y); }
+#endif

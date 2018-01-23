@@ -4,7 +4,7 @@
 
 #include "cellAtracMulti.h"
 
-logs::channel cellAtracMulti("cellAtracMulti", logs::level::notice);
+logs::channel cellAtracMulti("cellAtracMulti");
 
 s32 cellAtracMultiSetDataAndGetMemSize(vm::ptr<CellAtracMultiHandle> pHandle, vm::ptr<u8> pucBufferAddr, u32 uiReadByte, u32 uiBufferByte, u32 uiOutputChNum, vm::ptr<s32> piTrackArray, vm::ptr<u32> puiWorkMemByte)
 {
@@ -203,6 +203,12 @@ s32 cellAtracMultiGetInternalErrorInfo(vm::ptr<CellAtracMultiHandle> pHandle, vm
 	return CELL_OK;
 }
 
+s32 cellAtracMultiGetSamplingRate()
+{
+	UNIMPLEMENTED_FUNC(cellAtracMulti);
+	return CELL_OK;
+}
+
 DECLARE(ppu_module_manager::cellAtracMulti)("cellAtracMulti", []()
 {
 	REG_FUNC(cellAtracMulti, cellAtracMultiSetDataAndGetMemSize);
@@ -236,4 +242,6 @@ DECLARE(ppu_module_manager::cellAtracMulti)("cellAtracMulti", []()
 	REG_FUNC(cellAtracMulti, cellAtracMultiResetPlayPosition);
 
 	REG_FUNC(cellAtracMulti, cellAtracMultiGetInternalErrorInfo);
+
+	REG_FUNC(cellAtracMulti, cellAtracMultiGetSamplingRate);
 });

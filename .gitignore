@@ -41,7 +41,10 @@
 /Vulkan/Vulkan-build
 /Vulkan/glslang-build
 
-/wxWidgets/lib
+# Themes
+!/bin/GuiConfigs/
+/bin/GuiConfigs/*.ini
+
 /bin/rpcs3.ini
 /bin/rpcs3.ipdb
 /bin/rpcs3.iobj
@@ -55,9 +58,11 @@
 rpcs3/git-version.h
 
 # Visual Studio Files
+.vs/*
 *.vspx
 *.psess
 *.VC.*
+*.vcxproj.user
 
 # Copyrighted files
 /bin/data/
@@ -69,6 +74,7 @@ rpcs3/git-version.h
 !/bin/dev_hdd0/game/
 /bin/dev_hdd0/game/*
 !/bin/dev_hdd0/game/TEST12345/
+/bin/dev_hdd0/disc/*
 
 # Ignore other system generated files
 bin/dev_hdd0/*.txt
@@ -85,3 +91,9 @@ CMakeCache.txt
 # cotire
 rpcs3/cotire/*
 rpcs3/rpcs3_*_cotire.cmake
+
+# Qt
+moc_*.cpp
+qrc_resources.cpp
+rpcs3_automoc.cpp
+ui_*.h

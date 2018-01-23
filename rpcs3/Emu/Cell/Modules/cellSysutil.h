@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 namespace vm { using namespace ps3; }
 
@@ -14,7 +14,7 @@ enum
 };
 
 // Parameter IDs
-enum
+enum CellSysutilParamId: s32
 {
 	// Integers
 	CELL_SYSUTIL_SYSTEMPARAM_ID_LANG                            = 0x0111,
@@ -38,7 +38,7 @@ enum
 	CELL_SYSUTIL_SYSTEMPARAM_ID_CURRENT_USERNAME                = 0x0131,
 };
 
-enum
+enum CellSysutilLang : s32
 {
 	CELL_SYSUTIL_LANG_JAPANESE       = 0,
 	CELL_SYSUTIL_LANG_ENGLISH_US     = 1,
@@ -57,8 +57,9 @@ enum
 	CELL_SYSUTIL_LANG_DANISH         = 14,
 	CELL_SYSUTIL_LANG_NORWEGIAN      = 15,
 	CELL_SYSUTIL_LANG_POLISH         = 16,
-	CELL_SYSUTIL_LANG_PORTUGUESE_BR  = 17,
-	CELL_SYSUTIL_LANG_ENGLISH_GB     = 18,
+	CELL_SYSUTIL_LANG_PORTUGUESE_BR  = 17, // FW 4.00
+	CELL_SYSUTIL_LANG_ENGLISH_GB     = 18, // FW 4.00
+	CELL_SYSUTIL_LANG_TURKISH        = 19, // FW 4.30
 };
 
 enum

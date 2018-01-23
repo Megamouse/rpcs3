@@ -70,6 +70,14 @@ namespace rsx
 		// Control1
 		u32 remap() const;
 
+		/**
+		 * returns a pair of arrays
+		 * First array is a redirection table into the channel indices
+		 * Second array is a lookup reference deciding whether to use the redirection table or use constants 0 and 1
+		 * Both arrays have components in A-R-G-B format
+		 */
+		std::pair<std::array<u8, 4>, std::array<u8, 4>> decoded_remap() const;
+
 		// Filter
 		float bias() const;
 		rsx::texture_minify_filter  min_filter() const;
@@ -120,6 +128,8 @@ namespace rsx
 		u8 gamma() const;
 		u8 aniso_bias() const;
 		u8 signed_remap() const;
+
+		std::pair<std::array<u8, 4>, std::array<u8, 4>> decoded_remap() const;
 
 		// Control0
 		bool enabled() const;

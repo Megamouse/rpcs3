@@ -7,7 +7,6 @@ extern std::string ppu_get_syscall_name(u64 code)
 	{
 	case 1: return "sys_process_getpid";
 	case 2: return "sys_process_wait_for_child";
-	case 3: return "sys_process_exit";
 	case 4: return "sys_process_get_status";
 	case 5: return "sys_process_detach_child";
 	case 12: return "sys_process_get_number_of_object";
@@ -16,10 +15,10 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 18: return "sys_process_getppid";
 	case 19: return "sys_process_kill";
 	case 21: return "_sys_process_spawn";
-	case 22: return "sys_process_exit";
+	case 22: return "_sys_process_exit";
 	case 23: return "sys_process_wait_for_child2";
 	case 25: return "sys_process_get_sdk_version";
-	case 26: return "_sys_process_exit";
+	case 26: return "_sys_process_exit2";
 	case 28: return "_sys_process_get_number_of_object";
 	case 29: return "sys_process_get_id";
 	case 30: return "_sys_process_get_paramsfo";
@@ -129,11 +128,11 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 152: return "sys_raw_spu_get_int_mask";
 	case 153: return "sys_raw_spu_set_int_stat";
 	case 154: return "sys_raw_spu_get_int_stat";
-	case 155: return "sys_spu_image_get_information?";
+	case 155: return "_sys_spu_image_get_information";
 	case 156: return "sys_spu_image_open";
-	case 157: return "sys_spu_image_import";
-	case 158: return "sys_spu_image_close";
-	case 159: return "sys_raw_spu_load";
+	case 157: return "_sys_spu_image_import";
+	case 158: return "_sys_spu_image_close";
+	case 159: return "_sys_spu_image_get_segments";
 	case 160: return "sys_raw_spu_create";
 	case 161: return "sys_raw_spu_destroy";
 	case 163: return "sys_raw_spu_read_puint_mb";
@@ -203,6 +202,7 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 310: return "sys_vm_sync";
 	case 311: return "sys_vm_test";
 	case 312: return "sys_vm_get_statistics";
+	case 313: return "sys_vm_memory_map_different";
 	case 324: return "sys_memory_container_create";
 	case 325: return "sys_memory_container_destroy";
 	case 326: return "sys_mmapper_allocate_fixed_address";
@@ -277,30 +277,30 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 457: return "sys_overlay_get_module_dbg_info";
 	case 458: return "sys_overlay_get_module_dbg_info";
 	case 460: return "sys_prx_dbg_get_module_id_list";
-	case 461: return "sys_prx_get_module_id_by_address";
-	case 463: return "sys_prx_load_module_by_fd";
-	case 464: return "sys_prx_load_module_on_memcontainer_by_fd";
-	case 465: return "sys_prx_load_module_list";
-	case 466: return "sys_prx_load_module_list_on_memcontainer";
+	case 461: return "_sys_prx_get_module_id_by_address";
+	case 463: return "_sys_prx_load_module_by_fd";
+	case 464: return "_sys_prx_load_module_on_memcontainer_by_fd";
+	case 465: return "_sys_prx_load_module_list";
+	case 466: return "_sys_prx_load_module_list_on_memcontainer";
 	case 467: return "sys_prx_get_ppu_guid";
-	case 480: return "sys_prx_load_module";
-	case 481: return "sys_prx_start_module";
-	case 482: return "sys_prx_stop_module";
-	case 483: return "sys_prx_unload_module";
-	case 484: return "sys_prx_register_module";
-	case 485: return "sys_prx_query_module";
-	case 486: return "sys_prx_register_library";
-	case 487: return "sys_prx_unregister_library";
-	case 488: return "sys_prx_link_library";
-	case 489: return "sys_prx_unlink_library";
-	case 490: return "sys_prx_query_library";
+	case 480: return "_sys_prx_load_module";
+	case 481: return "_sys_prx_start_module";
+	case 482: return "_sys_prx_stop_module";
+	case 483: return "_sys_prx_unload_module";
+	case 484: return "_sys_prx_register_module";
+	case 485: return "_sys_prx_query_module";
+	case 486: return "_sys_prx_register_library";
+	case 487: return "_sys_prx_unregister_library";
+	case 488: return "_sys_prx_link_library";
+	case 489: return "_sys_prx_unlink_library";
+	case 490: return "_sys_prx_query_library";
 	case 493: return "sys_prx_dbg_get_module_info";
-	case 494: return "sys_prx_get_module_list";
-	case 495: return "sys_prx_get_module_info";
-	case 496: return "sys_prx_get_module_id_by_name";
-	case 497: return "sys_prx_load_module_on_memcontainer";
-	case 498: return "sys_prx_start";
-	case 499: return "sys_prx_stop";
+	case 494: return "_sys_prx_get_module_list";
+	case 495: return "_sys_prx_get_module_info";
+	case 496: return "_sys_prx_get_module_id_by_name";
+	case 497: return "_sys_prx_load_module_on_memcontainer";
+	case 498: return "_sys_prx_start";
+	case 499: return "_sys_prx_stop";
 	case 500: return "sys_hid_manager_open";
 	case 501: return "sys_hid_manager_close";
 	case 502: return "sys_hid_manager_read";
@@ -388,6 +388,7 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 655: return "sys_rsxaudio_close_connection";
 	case 656: return "sys_rsxaudio_prepare_process";
 	case 657: return "sys_rsxaudio_start_process";
+	case 658: return "sys_rsxaudio_stop_process";
 	case 666: return "sys_rsx_device_open";
 	case 667: return "sys_rsx_device_close";
 	case 668: return "sys_rsx_memory_allocate";
@@ -412,16 +413,16 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 708: return "sys_net_bnet_recvmsg";
 	case 709: return "sys_net_bnet_sendmsg";
 	case 710: return "sys_net_bnet_sendto";
-	case 711: return "sys_net_bnet_setsockop";
+	case 711: return "sys_net_bnet_setsockopt";
 	case 712: return "sys_net_bnet_shutdown";
 	case 713: return "sys_net_bnet_socket";
 	case 714: return "sys_net_bnet_close";
 	case 715: return "sys_net_bnet_poll";
 	case 716: return "sys_net_bnet_select";
-	case 717: return "sys_net_open_dump";
-	case 718: return "sys_net_read_dump";
-	case 719: return "sys_net_close_dump";
-	case 720: return "sys_net_write_dump";
+	case 717: return "_sys_net_open_dump";
+	case 718: return "_sys_net_read_dump";
+	case 719: return "_sys_net_close_dump";
+	case 720: return "_sys_net_write_dump";
 	case 721: return "sys_net_abort";
 	case 722: return "sys_net_infoctl";
 	case 723: return "sys_net_control";
@@ -557,6 +558,15 @@ extern std::string ppu_get_syscall_name(u64 code)
 	case 970: return "sys_dbg_get_event_flag_list";
 	case 971: return "sys_dbg_get_event_flag_information";
 	case 975: return "sys_dbg_read_spu_thread_context2";
+	case 976: return "sys_crypto_engine_create";
+	case 977: return "sys_crypto_engine_destroy";
+	case 978: return "sys_crypto_engine_hasher_prepare";
+	case 979: return "sys_crypto_engine_hasher_run";
+	case 980: return "sys_crypto_engine_hasher_get_hash";
+	case 981: return "sys_crypto_engine_cipher_prepare";
+	case 982: return "sys_crypto_engine_cipher_run";
+	case 983: return "sys_crypto_engine_cipher_get_hash";
+	case 984: return "sys_crypto_engine_random_generate";
 	case 985: return "sys_dbg_get_console_type";
 	}
 
@@ -566,6 +576,16 @@ extern std::string ppu_get_syscall_name(u64 code)
 // Get function name by FNID
 extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 {
+	if (module == "") switch (fnid)
+	{
+	// these arent the actual hash, but its close enough 
+	case 0x0D10FD3F: return "module_prologue";
+	case 0x330F7005: return "module_epilogue";
+	case 0x3ab9a95e: return "module_exit";
+	case 0xBC9A0086: return "module_start";
+	case 0xAB779874: return "module_stop";
+	}
+
 	// Check known FNIDs
 	if (module == "sys_libc" || module == "sys_libm") switch (fnid)
 	{
@@ -2204,6 +2224,7 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 
 	if (module == "sysPrxForUser") switch (fnid)
 	{
+	case 0x02e20ec1: return "__sys_printf_basename";
 	case 0x0341bb97: return "sys_prx_get_module_id_by_address";
 	case 0x04e83d2c: return "_sys_strncmp";
 	case 0x052d29a6: return "_sys_strcat";
@@ -2231,7 +2252,9 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0x35168520: return "_sys_heap_malloc";
 	case 0x3bd53c7b: return "_sys_memchr";
 	case 0x3dd4a957: return "sys_ppu_thread_register_atexit";
+	case 0x3ef17f8c: return "__sys_look_ctype_table";
 	case 0x409ad939: return "sys_mmapper_free_memory";
+	case 0x4232b0db: return "_sys_panic";
 	case 0x42b23552: return "sys_prx_register_library";
 	case 0x44265c08: return "_sys_heap_memalign";
 	case 0x459b4393: return "_sys_strcmp";
@@ -2239,11 +2262,14 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0x4643ba6e: return "sys_mmapper_unmap_memory";
 	case 0x4a071d98: return "sys_interrupt_thread_disestablish";
 	case 0x4b2f301a: return "_sys_tolower";
+	case 0x4bbf59d0: return "_sys_net_eurus_post_command";
+	case 0x4f7172c9: return "sys_process_is_stack";
 	case 0x5267cb35: return "sys_spinlock_unlock";
 	case 0x52aadadf: return "sys_lwcond_signal_to";
 	case 0x5fdfb2fe: return "_sys_spu_printf_detach_group";
 	case 0x608212fc: return "sys_mempool_free_block";
 	case 0x620e35a7: return "sys_game_get_system_sw_version";
+	case 0x637bdaae: return "_proc_spawn";
 	case 0x67f9fedb: return "sys_game_process_exitspawn2";
 	case 0x68b9b011: return "_sys_memset";
 	case 0x6bf66ea7: return "_sys_memcpy";
@@ -2264,10 +2290,11 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0x8a561d92: return "_sys_heap_free";
 	case 0x8bb03ab8: return "sys_game_board_storage_write";
 	case 0x8c2bb498: return "sys_spinlock_initialize";
+	case 0x8cfef376: return "__tls_get_addr";
 	case 0x96328741: return "_sys_process_at_Exitspawn";
-	case 0x4f7172c9: return "sys_process_is_stack";
 	case 0x996f7cf8: return "_sys_strncat";
 	case 0x99c88692: return "_sys_strcpy";
+	case 0x9d2ec4ff: return "sys_process_spawn";
 	case 0x9d3c0f81: return "sys_mempool_destroy";
 	case 0x9e0623b5: return "sys_game_watchdog_start";
 	case 0x9f04f7af: return "_sys_printf";
@@ -2293,7 +2320,9 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0xb6369393: return "_sys_heap_get_total_free_size";
 	case 0xb995662e: return "sys_raw_spu_image_load";
 	case 0xb9bf1078: return "_sys_heap_alloc_heap_memory";
+	case 0xbab62b99: return "_sys_process_wait_for_game_process";
 	case 0xbdb18f83: return "_sys_malloc";
+	case 0xbf8ee5bb: return "sys_process_spawn_with_memory_budget";
 	case 0xc3476d0c: return "sys_lwmutex_destroy";
 	case 0xc4fd6121: return "_sys_qsort";
 	case 0xca9a60bf: return "sys_mempool_create";
@@ -2305,12 +2334,14 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0xdc578057: return "sys_mmapper_map_memory";
 	case 0xdd0c1e09: return "_sys_spu_printf_attach_group";
 	case 0xdd3b27ac: return "_sys_spu_printf_finalize";
+	case 0xde2f9c85: return "sys_process_atexit";
 	case 0xe0998dbf: return "sys_prx_get_module_id_by_name";
 	case 0xe0da8efd: return "sys_spu_image_close";
 	case 0xe66bac36: return "console_putc";
 	case 0xe6f2c1e7: return "sys_process_exit";
 	case 0xe76964f5: return "sys_game_board_storage_read";
 	case 0xe7ef3a80: return "sys_prx_load_module_list_on_memcontainer";
+	case 0xe95ffa0a: return "sys_process_wait_for_game_process";
 	case 0xe9a1bd84: return "sys_lwcond_signal_all";
 	case 0xebe5f72f: return "sys_spu_image_import";
 	case 0xeef75113: return "_sys_toupper";
@@ -2322,6 +2353,7 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 	case 0xfa7f693d: return "_sys_vprintf";
 	case 0xfb5db080: return "_sys_memcmp";
 	case 0xfc52a7a9: return "sys_game_process_exitspawn";
+	case 0xfecc05b6: return "__sys_time";
 	}
 
 	// Check registered functions
@@ -2341,6 +2373,78 @@ extern std::string ppu_get_function_name(const std::string& module, u32 fnid)
 // Get variable name by VNID
 extern std::string ppu_get_variable_name(const std::string& module, u32 vnid)
 {
+	if (module == "") switch (vnid)
+	{
+	// these arent the actual hash, but its close enough
+	case 0xD7F43016: return "module_info";
+	}
+	// Check known FNIDs
+	if (module == "sys_libc") switch (vnid)
+	{
+	case 0x071928B0: return "_LNan";
+	case 0x0A331920: return "_Clocale";
+	case 0x0B2E15ED: return "_malloc_limit";
+	case 0x0FBC732D: return "_Zero";
+	case 0x17667744: return "_LInf";
+	case 0x210B2F6E: return "_FNan";
+	case 0x2418F6C0: return "__TT800";
+	case 0x2470D3BC: return "_Hugeval";
+	case 0x26A34F81: return "_Flt";
+	case 0x277A84BB: return "_Mutex_attr";
+	case 0x29E76A6D: return "_LXbig";
+	case 0x2CF8B5D1: return "_Wctrans";
+	case 0x32E56B1A: return "_Stdin";
+	case 0x3916A06A: return "_FILE_P_Head";
+	case 0x45EC2DF6: return "_LEps";
+	case 0x529D4301: return "_Denorm";
+	case 0x57DBCF27: return "_Inf";
+	case 0x5FF11EB4: return "_FZero";
+	case 0x620967C9: return "_Mbcurmax";
+	case 0x6524499E: return "_FInf";
+	case 0x67D1406B: return "__ctype_ptr";
+	case 0x6A09DF41: return "_LRteps";
+	case 0x73898DB8: return "environ";
+	case 0x76628EFB: return "_FSnan";
+	case 0x790B0082: return "_Xbig";
+	case 0x7AFF3242: return "_Snan";
+	case 0x7BC88211: return "_Tolotab";
+	case 0x7F456AF2: return "_Rteps";
+	case 0x81ACF7C1: return "_LZero";
+	case 0x8F87ED0C: return "_Times";
+	case 0x92C43F6D: return "_Eps";
+	case 0x96E1E748: return "tls_mutex_attr";
+	case 0x985FC057: return "_Dbl";
+	case 0x9C8454C9: return "_LSnan";
+	case 0xAA860D4C: return "_Wctype";
+	case 0xB5B84F80: return "_LDenorm";
+	case 0xB5D2F53B: return "_Touptab";
+	case 0xB6F5F98C: return "_FRteps";
+	case 0xD59C193C: return "_Nan";
+	case 0xD698385D: return "_Ldbl";
+	case 0xD97B0687: return "_Ctype";
+	case 0xE0BC8D86: return "_Loctab";
+	case 0xEACE53D6: return "_FDenorm";
+	case 0xECA056DF: return "_Locale";
+	case 0xEF25075B: return "_FXbig";
+	case 0xFB2BD688: return "_Stdout";
+	case 0xFEFBE065: return "_Stderr";
+	case 0xFF2F0CC7: return "_FEps";
+	}
+
+	if (module == "sys_libm") switch (vnid)
+	{
+	case 0x1CF745BC: return "_LErf_one";
+	case 0x2259EF96: return "_LGamma_big";
+	case 0x3ACAD7F1: return "_Erf_small";
+	case 0x3FB8629D: return "_FErf_one";
+	case 0x42EB9508: return "_Fenv0";
+	case 0x4AF28F31: return "_FErf_small";
+	case 0xA8D907FF: return "_LErf_small";
+	case 0xAD443E79: return "_Erf_one";
+	case 0xE9892674: return "_FGamma_big";
+	case 0xF39005FC: return "_Gamma_big";
+	}
+
 	// Check registered variables
 	if (const auto sm = ppu_module_manager::get_module(module))
 	{
@@ -2359,8 +2463,17 @@ std::vector<ppu_function_t>& ppu_function_manager::access()
 {
 	static std::vector<ppu_function_t> list
 	{
-		nullptr,
-		[](ppu_thread& ppu) { ppu.state += cpu_flag::ret; },
+		[](ppu_thread& ppu) -> bool
+		{
+			LOG_ERROR(PPU, "Unregistered function called (LR=0x%x)", ppu.lr);
+			ppu.gpr[3] = 0;
+			return true;
+		},
+		[](ppu_thread& ppu) -> bool
+		{
+			ppu.state += cpu_flag::ret;
+			return true;
+		},
 	};
 
 	return list;
@@ -2374,3 +2487,5 @@ u32 ppu_function_manager::add_function(ppu_function_t function)
 
 	return ::size32(list) - 1;
 }
+
+DECLARE(ppu_function_manager::addr);

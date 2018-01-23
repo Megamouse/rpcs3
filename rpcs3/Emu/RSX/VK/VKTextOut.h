@@ -103,9 +103,11 @@ namespace vk
 			};
 
 			m_vertex_shader.shader = vs;
+			m_vertex_shader.id = 100000;
 			m_vertex_shader.Compile();
 
 			m_fragment_shader.shader = fs;
+			m_fragment_shader.id = 100001;
 			m_fragment_shader.Compile();
 
 			VkPipelineShaderStageCreateInfo shader_stages[2] = {};
@@ -198,7 +200,7 @@ namespace vk
 			m_program = std::make_unique<vk::glsl::program>((VkDevice)dev, pipeline, unused, unused);
 		}
 
-		void load_program(vk::command_buffer &cmd, float scale_x, float scale_y, float *offsets, int nb_offsets, std::array<float, 4> color)
+		void load_program(vk::command_buffer &cmd, float scale_x, float scale_y, float *offsets, size_t nb_offsets, std::array<float, 4> color)
 		{
 			verify(HERE), m_used_descriptors < 120;
 
@@ -216,7 +218,7 @@ namespace vk
 			float *dst = (float*)m_uniforms_buffer->map(m_uniform_buffer_offset, 8192);
 
 			//std140 spec demands that arrays be multiples of 16 bytes
-			for (int i = 0; i < nb_offsets; ++i)
+			for (size_t i = 0; i < nb_offsets; ++i)
 			{
 				dst[i * 4] = offsets[i * 2];
 				dst[i * 4 + 1] = offsets[i * 2 + 1];
@@ -265,7 +267,7 @@ namespace vk
 
 			GlyphManager glyph_source;
 			auto points = glyph_source.generate_point_map();
-			const u32 buffer_size = points.size() * sizeof(GlyphManager::glyph_point);
+			const size_t buffer_size = points.size() * sizeof(GlyphManager::glyph_point);
 			
 			u8 *dst = (u8*)m_vertex_buffer->map(0, buffer_size);
 			memcpy(dst, points.data(), buffer_size);
@@ -328,10 +330,14 @@ namespace vk
 				s++;
 			}
 
-			VkViewport vp = {0, 0, target_w, target_h, 0., 1.};
+			VkViewport vp{};
+			vp.width = (f32)target_w;
+			vp.height = (f32)target_h;
+			vp.minDepth = 0.f;
+			vp.maxDepth = 1.f;
 			vkCmdSetViewport(cmd, 0, 1, &vp);
 
-			VkRect2D vs = { {0, 0}, {target_w, target_h} };
+			VkRect2D vs = { {0, 0}, {0u+target_w, 0u+target_h} };
 			vkCmdSetScissor(cmd, 0, 1, &vs);
 
 			//TODO: Add drop shadow if deemed necessary for visibility
@@ -358,6 +364,9 @@ namespace vk
 
 		void reset_descriptors()
 		{
+			if (m_used_descriptors == 0)
+				return;
+
 			vkResetDescriptorPool(device, m_descriptor_pool, 0);
 			m_used_descriptors = 0;
 		}

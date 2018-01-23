@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Emu/System.h"
 #include "TRP.h"
+#include "Crypto/sha1.h"
 
 TRPLoader::TRPLoader(const fs::file& f)
 	: trp_f(f)
@@ -21,7 +22,7 @@ bool TRPLoader::Install(const std::string& dest, bool show)
 		return false;
 	}
 
-	std::vector<char> buffer; buffer.reserve(65536);
+	std::vector<char> buffer(65536);
 
 	for (const TRPEntry& entry : m_entries)
 	{
@@ -58,6 +59,31 @@ bool TRPLoader::LoadHeader(bool show)
 		LOG_NOTICE(LOADER, "TRP version: 0x%x", m_header.trp_version);
 	}
 
+	if (m_header.trp_version >= 2)
+	{
+		unsigned char hash[20];
+		std::vector<unsigned char> file_contents(m_header.trp_file_size);
+
+		trp_f.seek(0);
+		if (!trp_f.read(file_contents))
+		{
+			LOG_NOTICE(LOADER, "Failed verifying checksum");
+		}
+		else
+		{
+			memset(&(reinterpret_cast<TRPHeader*>(file_contents.data()))->sha1, 0, 20);
+			sha1(reinterpret_cast<const unsigned char*>(file_contents.data()), m_header.trp_file_size, hash);
+
+			if (memcmp(hash, m_header.sha1, 20) != 0)
+			{
+				LOG_ERROR(LOADER, "Invalid checksum of TROPHY.TRP file");
+				return false;
+			}
+		}
+
+		trp_f.seek(sizeof(m_header));
+	}
+
 	m_entries.clear();
 	m_entries.resize(m_header.trp_files_count);
 
@@ -75,6 +101,14 @@ bool TRPLoader::LoadHeader(bool show)
 	}
 
 	return true;
+}
+
+u64 TRPLoader::GetRequiredSpace() const
+{
+	const u64 file_size = m_header.trp_file_size;
+	const u64 file_element_size = u64{1} * m_header.trp_files_count * m_header.trp_element_size;
+
+	return file_size - sizeof(m_header) - file_element_size;
 }
 
 bool TRPLoader::ContainsEntry(const char *filename)

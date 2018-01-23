@@ -1,4 +1,4 @@
-#include "gcm_enums.h"
+﻿#include "gcm_enums.h"
 #include "Utilities/StrFmt.h"
 
 rsx::vertex_base_type rsx::to_vertex_base_type(u8 in)
@@ -77,27 +77,40 @@ rsx::comparison_function rsx::to_comparison_function(u16 in)
 {
 	switch (in)
 	{
-	case CELL_GCM_NEVER: return rsx::comparison_function::never;
-	case CELL_GCM_LESS: return rsx::comparison_function::less;
-	case CELL_GCM_EQUAL: return rsx::comparison_function::equal;
-	case CELL_GCM_LEQUAL: return rsx::comparison_function::less_or_equal;
-	case CELL_GCM_GREATER: return rsx::comparison_function::greater;
-	case CELL_GCM_NOTEQUAL: return rsx::comparison_function::not_equal;
-	case CELL_GCM_GEQUAL: return rsx::comparison_function::greater_or_equal;
-	case CELL_GCM_ALWAYS: return rsx::comparison_function::always;
+	case CELL_GCM_TEXTURE_ZFUNC_NEVER & CELL_GCM_SCULL_SFUNC_NEVER:
+	case CELL_GCM_NEVER:
+		return rsx::comparison_function::never;
+
+	case CELL_GCM_TEXTURE_ZFUNC_LESS & CELL_GCM_SCULL_SFUNC_LESS:
+	case CELL_GCM_LESS:
+		return rsx::comparison_function::less;
+
+	case CELL_GCM_TEXTURE_ZFUNC_EQUAL & CELL_GCM_SCULL_SFUNC_EQUAL:
+	case CELL_GCM_EQUAL:
+		return rsx::comparison_function::equal;
+
+	case CELL_GCM_TEXTURE_ZFUNC_LEQUAL & CELL_GCM_SCULL_SFUNC_LEQUAL:
+	case CELL_GCM_LEQUAL:
+		return rsx::comparison_function::less_or_equal;
+
+	case CELL_GCM_TEXTURE_ZFUNC_GREATER & CELL_GCM_SCULL_SFUNC_GREATER:
+	case CELL_GCM_GREATER:
+		return rsx::comparison_function::greater;
+
+	case CELL_GCM_TEXTURE_ZFUNC_NOTEQUAL & CELL_GCM_SCULL_SFUNC_NOTEQUAL:
+	case CELL_GCM_NOTEQUAL:
+		return rsx::comparison_function::not_equal;
+
+	case CELL_GCM_TEXTURE_ZFUNC_GEQUAL & CELL_GCM_SCULL_SFUNC_GEQUAL:
+	case CELL_GCM_GEQUAL:
+		return rsx::comparison_function::greater_or_equal;
+
+	case CELL_GCM_TEXTURE_ZFUNC_ALWAYS & CELL_GCM_SCULL_SFUNC_ALWAYS:
+	case CELL_GCM_ALWAYS:
+		return rsx::comparison_function::always;
 	}
 	fmt::throw_exception("Unknown comparison function 0x%x" HERE, in);
 }
-
-enum
-{
-	CELL_GCM_FOG_MODE_LINEAR = 0x2601,
-	CELL_GCM_FOG_MODE_EXP = 0x0800,
-	CELL_GCM_FOG_MODE_EXP2 = 0x0801,
-	CELL_GCM_FOG_MODE_EXP_ABS = 0x0802,
-	CELL_GCM_FOG_MODE_EXP2_ABS = 0x0803,
-	CELL_GCM_FOG_MODE_LINEAR_ABS = 0x0804,
-};
 
 rsx::fog_mode rsx::to_fog_mode(u32 in)
 {
@@ -144,7 +157,7 @@ namespace rsx
 		case comparison_function::greater_or_equal: return "Greater_equal";
 		case comparison_function::always: return "Always";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(stencil_op op)
@@ -160,7 +173,7 @@ namespace rsx
 		case stencil_op::decr_wrap: return "Decr_wrap";
 		case stencil_op::invert: return "Invert";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(fog_mode op)
@@ -174,7 +187,7 @@ namespace rsx
 		case fog_mode::linear: return "linear";
 		case fog_mode::linear_abs: return "linear(abs)";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(logic_op op)
@@ -198,7 +211,7 @@ namespace rsx
 		case logic_op::logic_or_inverted: return "Or_inverted";
 		case logic_op::logic_nand: return "Nand";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(front_face op)
@@ -208,7 +221,7 @@ namespace rsx
 		case front_face::ccw: return "counter clock wise";
 		case front_face::cw: return "clock wise";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(cull_face op)
@@ -219,7 +232,7 @@ namespace rsx
 		case cull_face::front: return "front";
 		case cull_face::front_and_back: return "front and back";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(surface_target target)
@@ -233,7 +246,7 @@ namespace rsx
 		case surface_target::surfaces_a_b_c: return "surfaces A, B and C";
 		case surface_target::surfaces_a_b_c_d: return "surfaces A,B, C and D";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(primitive_type draw_mode)
@@ -252,7 +265,7 @@ namespace rsx
 		case primitive_type::quad_strip: return "Quad_strip";
 		case primitive_type::polygon: return "Polygon";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::transfer_operation op)
@@ -266,7 +279,7 @@ namespace rsx
 		case blit_engine::transfer_operation::srccopy_and: return "srccopy_and";
 		case blit_engine::transfer_operation::srccopy_premult: return "srccopy_premult";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::transfer_source_format op)
@@ -287,7 +300,7 @@ namespace rsx
 		case blit_engine::transfer_source_format::y8: return "y8";
 		case blit_engine::transfer_source_format::yb8cr8ya8cb8: return "yb8cr8ya8cb8";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::context_surface op)
@@ -297,7 +310,7 @@ namespace rsx
 		case blit_engine::context_surface::surface2d: return "surface 2d";
 		case blit_engine::context_surface::swizzle2d: return "swizzle 2d";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::transfer_destination_format op)
@@ -308,7 +321,7 @@ namespace rsx
 		case blit_engine::transfer_destination_format::r5g6b5: return "r5g6b5";
 		case blit_engine::transfer_destination_format::y32: return "y32";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 
@@ -325,7 +338,7 @@ namespace rsx
 		case blend_equation::reverse_add_signed: return "Reverse_add_signed";
 		case blend_equation::reverse_substract_signed: return "Reverse_substract_signed";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blend_factor factor)
@@ -348,7 +361,7 @@ namespace rsx
 		case blend_factor::constant_alpha: return "const.a";
 		case blend_factor::one_minus_constant_alpha: return "(1 - const.a)";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(window_origin origin)
@@ -358,7 +371,7 @@ namespace rsx
 		case window_origin::bottom: return "bottom";
 		case window_origin::top: return "top";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(window_pixel_center in)
@@ -368,7 +381,7 @@ namespace rsx
 		case window_pixel_center::half: return "half";
 		case window_pixel_center::integer: return "integer";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(user_clip_plane_op op)
@@ -379,7 +392,7 @@ namespace rsx
 		case user_clip_plane_op::greater_or_equal: return "greater or equal";
 		case user_clip_plane_op::less_than: return "less than";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 
@@ -391,7 +404,7 @@ namespace rsx
 		case surface_depth_format::z16: return "CELL_GCM_SURFACE_Z16";
 		case surface_depth_format::z24s8: return "CELL_GCM_SURFACE_Z24S8";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(surface_antialiasing format)
@@ -403,7 +416,7 @@ namespace rsx
 		case surface_antialiasing::square_centered_4_samples: return "4 samples square centered";
 		case surface_antialiasing::square_rotated_4_samples: return "4 samples diagonal rotated";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(surface_color_format format)
@@ -425,7 +438,7 @@ namespace rsx
 		case surface_color_format::x8b8g8r8_o8b8g8r8: return "CELL_GCM_SURFACE_X8B8G8R8_O8B8G8R8";
 		case surface_color_format::a8b8g8r8: return "CELL_GCM_SURFACE_A8B8G8R8";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(index_array_type arg)
@@ -435,7 +448,7 @@ namespace rsx
 		case index_array_type::u16: return "unsigned short";
 		case index_array_type::u32: return "unsigned int";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::context_dma op)
@@ -444,8 +457,9 @@ namespace rsx
 		{
 		case blit_engine::context_dma::report_location_main: return "report location main";
 		case blit_engine::context_dma::to_memory_get_report: return "to memory get report";
+		case blit_engine::context_dma::memory_host_buffer: return "memory host buffer";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::transfer_origin op)
@@ -455,7 +469,7 @@ namespace rsx
 		case blit_engine::transfer_origin::center: return "center";
 		case blit_engine::transfer_origin::corner: return "corner";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(blit_engine::transfer_interpolator op)
@@ -465,7 +479,7 @@ namespace rsx
 		case blit_engine::transfer_interpolator::foh: return "foh";
 		case blit_engine::transfer_interpolator::zoh: return "zoh";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(shading_mode op)
@@ -475,7 +489,7 @@ namespace rsx
 		case shading_mode::flat: return "flat";
 		case shading_mode::smooth: return "smooth";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 	std::string to_string(polygon_mode op)
@@ -486,7 +500,7 @@ namespace rsx
 		case polygon_mode::line: return "line";
 		case polygon_mode::point: return "point";
 		}
-		throw;
+		fmt::throw_exception("Unexpected enum found" HERE);
 	}
 
 } // end namespace rsx
@@ -641,8 +655,6 @@ rsx::surface_depth_format rsx::to_surface_depth_format(u8 in)
 	fmt::throw_exception("Unknown surface depth format 0x%x" HERE, in);
 }
 
-
-
 rsx::surface_antialiasing rsx::to_surface_antialiasing(u8 in)
 {
 	switch (in)
@@ -677,20 +689,11 @@ rsx::surface_color_format rsx::to_surface_color_format(u8 in)
 	fmt::throw_exception("Unknown surface color format 0x%x" HERE, in);
 }
 
-enum
-{
-	CELL_GCM_KEEP = 0x1E00,
-	CELL_GCM_REPLACE = 0x1E01,
-	CELL_GCM_INCR = 0x1E02,
-	CELL_GCM_DECR = 0x1E03,
-	CELL_GCM_INCR_WRAP = 0x8507,
-	CELL_GCM_DECR_WRAP = 0x8508,
-};
-
 rsx::stencil_op rsx::to_stencil_op(u16 in)
 {
 	switch (in)
 	{
+	case CELL_GCM_INVERT: return rsx::stencil_op::invert;
 	case CELL_GCM_KEEP: return rsx::stencil_op::keep;
 	case CELL_GCM_REPLACE: return rsx::stencil_op::replace;
 	case CELL_GCM_INCR: return rsx::stencil_op::incr;
@@ -782,7 +785,6 @@ enum
 	CELL_GCM_OR = 0x1507,
 	CELL_GCM_NOR = 0x1508,
 	CELL_GCM_EQUIV = 0x1509,
-	CELL_GCM_INVERT = 0x150A,
 	CELL_GCM_OR_REVERSE = 0x150B,
 	CELL_GCM_COPY_INVERTED = 0x150C,
 	CELL_GCM_OR_INVERTED = 0x150D,
@@ -966,8 +968,9 @@ rsx::blit_engine::context_dma rsx::blit_engine::to_context_dma(u32 in)
 {
 	switch (in)
 	{
-	case CELL_GCM_CONTEXT_DMA_TO_MEMORY_GET_REPORT: return rsx::blit_engine::context_dma::to_memory_get_report;
+	case CELL_GCM_CONTEXT_DMA_REPORT_LOCATION_LOCAL: return rsx::blit_engine::context_dma::to_memory_get_report;
 	case CELL_GCM_CONTEXT_DMA_REPORT_LOCATION_MAIN: return rsx::blit_engine::context_dma::report_location_main;
+	case CELL_GCM_CONTEXT_DMA_MEMORY_HOST_BUFFER: return rsx::blit_engine::context_dma::memory_host_buffer;
 	}
 	fmt::throw_exception("Unknown context dma 0x%x" HERE, in);
 }

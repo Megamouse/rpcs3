@@ -21,6 +21,10 @@ gpu_formats_support get_optimal_tiling_supported_formats(VkPhysicalDevice physic
 		&& !!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
 		&& !!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT);
 
+	//Hide d24_s8 if force high precision z buffer is enabled
+	if (g_cfg.video.force_high_precision_z_buffer && result.d32_sfloat_s8)
+		result.d24_unorm_s8 = false;
+
 	return result;
 }
 
@@ -67,12 +71,11 @@ VkFilter get_mag_filter(rsx::texture_magnify_filter mag_filter)
 
 VkBorderColor get_border_color(u8 color)
 {
+	// TODO: Handle simulated alpha tests and modify texture operations accordingly
 	if ((color / 0x10) >= 0x8) 
 		return VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 	else
-		return VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-		
-	// TODO: VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+		return VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
 }
 
 VkSamplerAddressMode vk_wrap_mode(rsx::texture_wrap_mode gcm_wrap)
@@ -109,13 +112,8 @@ float max_aniso(rsx::texture_max_anisotropy gcm_aniso)
 }
 
 
-VkComponentMapping get_component_mapping(u32 format, u8 swizzle_mask)
+std::array<VkComponentSwizzle, 4> get_component_mapping(u32 format)
 {
-	const u8 remap_a = swizzle_mask & 0x3;
-	const u8 remap_r = (swizzle_mask >> 2) & 0x3;
-	const u8 remap_g = (swizzle_mask >> 4) & 0x3;
-	const u8 remap_b = (swizzle_mask >> 6) & 0x3;
-
 	//Component map in ARGB format
 	std::array<VkComponentSwizzle, 4> mapping = {};
 
@@ -140,28 +138,36 @@ VkComponentMapping get_component_mapping(u32 format, u8 swizzle_mask)
 		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }; break;
 
 	case CELL_GCM_TEXTURE_G8B8:
-		mapping = { VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R }; break;
+		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G }; break;
 
 	case CELL_GCM_TEXTURE_B8:
+		mapping = { VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R }; break;
+
 	case CELL_GCM_TEXTURE_X16:
+		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_ONE }; break;
+
 	case CELL_GCM_TEXTURE_X32_FLOAT:
 		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_R }; break;
 
 	case CELL_GCM_TEXTURE_Y16_X16:
-	case CELL_GCM_TEXTURE_Y16_X16_FLOAT:
 		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G }; break;
+
+	case CELL_GCM_TEXTURE_Y16_X16_FLOAT:
+		mapping = { VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R }; break;
 
 	case CELL_GCM_TEXTURE_W16_Z16_Y16_X16_FLOAT:
 	case CELL_GCM_TEXTURE_W32_Z32_Y32_X32_FLOAT:
 		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_G }; break;
 				
 	case CELL_GCM_TEXTURE_D8R8G8B8:
+		mapping = { VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A }; break;
+
 	case CELL_GCM_TEXTURE_D1R5G5B5:
 		mapping = { VK_COMPONENT_SWIZZLE_ONE, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B }; break;
 
 	case CELL_GCM_TEXTURE_COMPRESSED_HILO8:
 	case CELL_GCM_TEXTURE_COMPRESSED_HILO_S8:
-		mapping = { VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R }; break;
+		mapping = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G }; break;
 
 	case ~(CELL_GCM_TEXTURE_LN | CELL_GCM_TEXTURE_UN) & CELL_GCM_TEXTURE_COMPRESSED_B8R8_G8R8:
 	case ~(CELL_GCM_TEXTURE_LN | CELL_GCM_TEXTURE_UN) & CELL_GCM_TEXTURE_COMPRESSED_R8B8_R8G8:
@@ -174,7 +180,7 @@ VkComponentMapping get_component_mapping(u32 format, u8 swizzle_mask)
 		fmt::throw_exception("Invalid or unsupported component mapping for texture format (0x%x)" HERE, format);
 	}
 	
-	return {mapping[remap_r], mapping[remap_g], mapping[remap_b], mapping[remap_a]};
+	return mapping;
 }
 
 }

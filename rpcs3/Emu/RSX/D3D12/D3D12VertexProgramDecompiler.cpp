@@ -28,14 +28,17 @@ std::string D3D12VertexProgramDecompiler::compareFunction(COMPARE f, const std::
 
 void D3D12VertexProgramDecompiler::insertHeader(std::stringstream &OS)
 {
-	OS << "cbuffer SCALE_OFFSET : register(b0)" << std::endl;
-	OS << "{" << std::endl;
-	OS << "	float4x4 scaleOffsetMat;" << std::endl;
-	OS << "	int isAlphaTested;" << std::endl;
-	OS << "	float alphaRef;" << std::endl;
+	OS << "cbuffer SCALE_OFFSET : register(b0)\n";
+	OS << "{\n";
+	OS << "	float4x4 scaleOffsetMat;\n";
+	OS << "	int4 userClipEnabled[2];\n";
+	OS << "	float4 userClipFactor[2];\n";
 	OS << "	float fog_param0;\n";
 	OS << "	float fog_param1;\n";
-	OS << "};" << std::endl;
+	OS << "	int isAlphaTested;\n";
+	OS << "	float alphaRef;\n";
+	OS << "	float4 texture_parameters[16];\n";
+	OS << "};\n";
 }
 
 namespace
@@ -76,64 +79,53 @@ void D3D12VertexProgramDecompiler::insertInputs(std::stringstream & OS, const st
 
 void D3D12VertexProgramDecompiler::insertConstants(std::stringstream & OS, const std::vector<ParamType> & constants)
 {
-	OS << "cbuffer CONSTANT_BUFFER : register(b1)" << std::endl;
-	OS << "{" << std::endl;
-	for (const ParamType PT : constants)
-	{
-		for (const ParamItem &PI : PT.items)
-			OS << "	" << PT.type << " " << PI.name << ";" << std::endl;
-	}
-	OS << "};" << std::endl;
+	OS << "cbuffer CONSTANT_BUFFER : register(b1)\n";
+	OS << "{\n";
+	OS << "	float4 vc[468];\n";
+	OS << "	uint transform_branch_bits;\n";
+	OS << "};\n";
 }
 
 void D3D12VertexProgramDecompiler::insertOutputs(std::stringstream & OS, const std::vector<ParamType> & outputs)
 {
-	OS << "struct PixelInput" << std::endl;
-	OS << "{" << std::endl;
-	OS << "	float4 dst_reg0 : SV_POSITION;" << std::endl;
-	OS << "	float4 dst_reg1 : COLOR0;" << std::endl;
-	OS << "	float4 dst_reg2 : COLOR1;" << std::endl;
-	OS << "	float4 dst_reg3 : COLOR2;" << std::endl;
-	OS << "	float4 dst_reg4 : COLOR3;" << std::endl;
-	OS << "	float dst_reg5 : FOG;" << std::endl;
-	OS << "	float4 dst_reg6 : TEXCOORD9;" << std::endl;
-	OS << "	float4 dst_reg7 : TEXCOORD0;" << std::endl;
-	OS << "	float4 dst_reg8 : TEXCOORD1;" << std::endl;
-	OS << "	float4 dst_reg9 : TEXCOORD2;" << std::endl;
-	OS << "	float4 dst_reg10 : TEXCOORD3;" << std::endl;
-	OS << "	float4 dst_reg11 : TEXCOORD4;" << std::endl;
-	OS << "	float4 dst_reg12 : TEXCOORD5;" << std::endl;
-	OS << "	float4 dst_reg13 : TEXCOORD6;" << std::endl;
-	OS << "	float4 dst_reg14 : TEXCOORD7;" << std::endl;
-	OS << "	float4 dst_reg15 : TEXCOORD8;" << std::endl;
-	OS << "};" << std::endl;
+	OS << "struct PixelInput\n";
+	OS << "{\n";
+	OS << "	float4 dst_reg0 : SV_POSITION;\n";
+	OS << "	float4 dst_reg1 : COLOR0;\n";
+	OS << "	float4 dst_reg2 : COLOR1;\n";
+	OS << "	float4 dst_reg3 : COLOR2;\n";
+	OS << "	float4 dst_reg4 : COLOR3;\n";
+	OS << "	float4 dst_reg5 : FOG;\n";
+	OS << "	float4 dst_reg6 : TEXCOORD9;\n";
+	OS << "	float4 dst_reg7 : TEXCOORD0;\n";
+	OS << "	float4 dst_reg8 : TEXCOORD1;\n";
+	OS << "	float4 dst_reg9 : TEXCOORD2;\n";
+	OS << "	float4 dst_reg10 : TEXCOORD3;\n";
+	OS << "	float4 dst_reg11 : TEXCOORD4;\n";
+	OS << "	float4 dst_reg12 : TEXCOORD5;\n";
+	OS << "	float4 dst_reg13 : TEXCOORD6;\n";
+	OS << "	float4 dst_reg14 : TEXCOORD7;\n";
+	OS << "	float4 dst_reg15 : TEXCOORD8;\n";
+	OS << "	float4 dst_userClip0 : SV_ClipDistance0;\n";
+	OS << "	float4 dst_userClip1 : SV_ClipDistance1;\n";
+	OS << "};\n";
 }
 
-struct reg_info
-{
-	std::string name;
-	bool need_declare;
-	std::string src_reg;
-	std::string src_reg_mask;
-	bool need_cast;
-};
-
-static const reg_info reg_table[] =
+static const vertex_reg_info reg_table[] =
 {
 	{ "gl_Position", false, "dst_reg0", "", false },
 	{ "diff_color", true, "dst_reg1", "", false },
 	{ "spec_color", true, "dst_reg2", "", false },
 	{ "front_diff_color", true, "dst_reg3", "", false },
 	{ "front_spec_color", true, "dst_reg4", "", false },
-	{ "fogc", true, "dst_reg5", ".x", true },
-	{ "gl_ClipDistance[0]", false, "dst_reg5", ".y", false },
-	{ "gl_ClipDistance[1]", false, "dst_reg5", ".z", false },
-	{ "gl_ClipDistance[2]", false, "dst_reg5", ".w", false },
-	// TODO: Handle user clip distance properly
-/*	{ "gl_PointSize", false, "dst_reg6", ".x", false },
-	{ "gl_ClipDistance[3]", false, "dst_reg6", ".y", false },
-	{ "gl_ClipDistance[4]", false, "dst_reg6", ".z", false },
-	{ "gl_ClipDistance[5]", false, "dst_reg6", ".w", false },*/
+	{ "fogc", true, "dst_reg5", ".xxxx", true },
+	{ "gl_ClipDistance[0]", false, "dst_reg5", ".y * userClipFactor[0].x", false, "userClipEnabled[0].x > 0", "0.5", "Out.dst_userClip0.x" },
+	{ "gl_ClipDistance[0]", false, "dst_reg5", ".z * userClipFactor[0].y", false, "userClipEnabled[0].y > 0", "0.5", "Out.dst_userClip0.y" },
+	{ "gl_ClipDistance[0]", false, "dst_reg5", ".w * userClipFactor[0].z", false, "userClipEnabled[0].z > 0", "0.5", "Out.dst_userClip0.z" },
+	//{ "gl_PointSize", false, "dst_reg6", ".x", false },
+	{ "gl_ClipDistance[0]", false, "dst_reg6", ".y * userClipFactor[0].w", false, "userClipEnabled[0].w > 0", "0.5", "Out.dst_userClip0.w" },
+	{ "gl_ClipDistance[0]", false, "dst_reg6", ".z * userClipFactor[1].x", false, "userClipEnabled[1].x > 0", "0.5", "Out.dst_userClip1.x" },
+	{ "gl_ClipDistance[0]", false, "dst_reg6", ".w * userClipFactor[1].y", false, "userClipEnabled[1].y > 0", "0.5", "Out.dst_userClip1.y" },
 	{ "tc9", false, "dst_reg6", "", false },
 	{ "tc0", true, "dst_reg7", "", false },
 	{ "tc1", true, "dst_reg8", "", false },
@@ -178,10 +170,10 @@ namespace
 
 void D3D12VertexProgramDecompiler::insertMainStart(std::stringstream & OS)
 {
-	insert_d3d12_legacy_function(OS);
+	insert_d3d12_legacy_function(OS, false);
 
-	OS << "PixelInput main(uint vertex_id : SV_VertexID)" << std::endl;
-	OS << "{" << std::endl;
+	OS << "PixelInput main(uint vertex_id : SV_VertexID)\n";
+	OS << "{\n";
 
 	// Declare inside main function
 	for (const ParamType PT : m_parr.params[PF_PARAM_NONE])
@@ -193,7 +185,7 @@ void D3D12VertexProgramDecompiler::insertMainStart(std::stringstream & OS)
 				OS << " = " << PI.value;
 			else
 				OS << " = " << "float4(0., 0., 0., 0.);";
-			OS << ";" << std::endl;
+			OS << ";\n";
 		}
 	}
 
@@ -209,13 +201,13 @@ void D3D12VertexProgramDecompiler::insertMainStart(std::stringstream & OS)
 
 void D3D12VertexProgramDecompiler::insertMainEnd(std::stringstream & OS)
 {
-	OS << "	PixelInput Out = (PixelInput)0;" << std::endl;
+	OS << "	PixelInput Out = (PixelInput)0;\n";
 
-	bool insert_front_diffuse = (rsx_vertex_program.output_mask & 1);
-	bool insert_front_specular = (rsx_vertex_program.output_mask & 2);
+	bool insert_front_diffuse = (rsx_vertex_program.output_mask & CELL_GCM_ATTRIB_OUTPUT_MASK_FRONTDIFFUSE) != 0;
+	bool insert_front_specular = (rsx_vertex_program.output_mask & CELL_GCM_ATTRIB_OUTPUT_MASK_FRONTSPECULAR) != 0;
 
-	bool insert_back_diffuse = (rsx_vertex_program.output_mask & 4);
-	bool insert_back_specular = (rsx_vertex_program.output_mask & 8);
+	bool insert_back_diffuse = (rsx_vertex_program.output_mask & CELL_GCM_ATTRIB_OUTPUT_MASK_BACKDIFFUSE) != 0;
+	bool insert_back_specular = (rsx_vertex_program.output_mask & CELL_GCM_ATTRIB_OUTPUT_MASK_BACKSPECULAR) != 0;
 
 	// Declare inside main function
 	for (auto &i : reg_table)
@@ -228,7 +220,19 @@ void D3D12VertexProgramDecompiler::insertMainEnd(std::stringstream & OS)
 			if (i.name == "front_spec_color")
 				insert_front_specular = false;
 
-			OS << "	Out." << i.src_reg << " = " << i.src_reg << ";" << std::endl;
+			std::string condition = (!i.cond.empty()) ? "(" + i.cond + ") " : "";
+			std::string output_name = i.dst_alias.empty() ? "Out." + i.src_reg : i.dst_alias;
+
+			if (condition.empty() || i.default_val.empty())
+			{
+				if (!condition.empty()) condition = "if " + condition;
+				OS << "	" << condition << output_name << " = " << i.src_reg << i.src_reg_mask << ";\n";
+			}
+			else
+			{
+				//Condition and fallback values provided
+				OS << "	" << output_name << " = " << condition << "? " << i.src_reg << i.src_reg_mask << ": " << i.default_val << ";\n";
+			}
 		}
 	}
 
@@ -241,9 +245,9 @@ void D3D12VertexProgramDecompiler::insertMainEnd(std::stringstream & OS)
 		if (m_parr.HasParam(PF_PARAM_NONE, "float4", "dst_reg2"))
 			OS << "	Out.dst_reg4 = dst_reg2;\n";
 
-	OS << "	Out.dst_reg0 = mul(Out.dst_reg0, scaleOffsetMat);" << std::endl;
-	OS << "	return Out;" << std::endl;
-	OS << "}" << std::endl;
+	OS << "	Out.dst_reg0 = mul(Out.dst_reg0, scaleOffsetMat);\n";
+	OS << "	return Out;\n";
+	OS << "}\n";
 }
 
 D3D12VertexProgramDecompiler::D3D12VertexProgramDecompiler(const RSXVertexProgram &prog) :

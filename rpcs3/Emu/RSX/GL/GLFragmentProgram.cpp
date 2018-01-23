@@ -3,18 +3,19 @@
 #include "Emu/Memory/Memory.h"
 #include "Emu/System.h"
 #include "GLFragmentProgram.h"
-
+#include "../Common/ProgramStateCache.h"
 #include "GLCommonDecompiler.h"
 #include "../GCM.h"
 
+
 std::string GLFragmentDecompilerThread::getFloatTypeName(size_t elementCount)
 {
-	return getFloatTypeNameImpl(elementCount);
+	return glsl::getFloatTypeNameImpl(elementCount);
 }
 
 std::string GLFragmentDecompilerThread::getFunction(FUNCTION f)
 {
-	return getFunctionImpl(f);
+	return glsl::getFunctionImpl(f);
 }
 
 std::string GLFragmentDecompilerThread::saturate(const std::string & code)
@@ -24,26 +25,18 @@ std::string GLFragmentDecompilerThread::saturate(const std::string & code)
 
 std::string GLFragmentDecompilerThread::compareFunction(COMPARE f, const std::string &Op0, const std::string &Op1)
 {
-	return compareFunctionImpl(f, Op0, Op1);
+	return glsl::compareFunctionImpl(f, Op0, Op1);
 }
 
 void GLFragmentDecompilerThread::insertHeader(std::stringstream & OS)
 {
-	OS << "#version 420" << std::endl;
-
-	OS << "layout(std140, binding = 0) uniform ScaleOffsetBuffer\n";
-	OS << "{\n";
-	OS << "	mat4 scaleOffsetMat;\n";
-	OS << "	float fog_param0;\n";
-	OS << "	float fog_param1;\n";
-	OS << "	uint alpha_test;\n";
-	OS << "	float alpha_ref;\n";
-	OS << "};\n";
+	OS << "#version 430\n";
 }
 
 void GLFragmentDecompilerThread::insertIntputs(std::stringstream & OS)
 {
 	bool two_sided_enabled = m_prog.front_back_color_enabled && (m_prog.back_color_diffuse_output || m_prog.back_color_specular_output);
+	std::vector<std::string> inputs_to_declare;
 
 	for (const ParamType& PT : m_parr.params[PF_PARAM_IN])
 	{
@@ -66,7 +59,7 @@ void GLFragmentDecompilerThread::insertIntputs(std::stringstream & OS)
 			if (var_name == "fogc")
 				var_name = "fog_c";
 
-			OS << "in " << PT.type << " " << var_name << ";" << std::endl;
+			inputs_to_declare.push_back(var_name);
 		}
 	}
 
@@ -74,13 +67,18 @@ void GLFragmentDecompilerThread::insertIntputs(std::stringstream & OS)
 	{
 		if (m_prog.front_color_diffuse_output && m_prog.back_color_diffuse_output)
 		{
-			OS << "in vec4 front_diff_color;" << std::endl;
+			inputs_to_declare.push_back("front_diff_color");
 		}
 
 		if (m_prog.front_color_specular_output && m_prog.back_color_specular_output)
 		{
-			OS << "in vec4 front_spec_color;" << std::endl;
+			inputs_to_declare.push_back("front_spec_color");
 		}
+	}
+
+	for (auto &name: inputs_to_declare)
+	{
+		OS << "layout(location=" << gl::get_varying_register_location(name) << ") in vec4 " << name << ";\n";
 	}
 }
 
@@ -97,7 +95,7 @@ void GLFragmentDecompilerThread::insertOutputs(std::stringstream & OS)
 	for (int i = 0; i < sizeof(table) / sizeof(*table); ++i)
 	{
 		if (m_parr.HasParam(PF_PARAM_NONE, "vec4", table[i].second))
-			OS << "out vec4 " << table[i].first << ";" << std::endl;
+			OS << "layout(location=" << i << ") out vec4 " << table[i].first << ";\n";
 	}
 }
 
@@ -116,13 +114,26 @@ void GLFragmentDecompilerThread::insertConstants(std::stringstream & OS)
 			std::string samplerType = PT.type;
 			int index = atoi(&PI.name.data()[3]);
 
-			OS << "uniform " << samplerType << " " << PI.name << ";" << std::endl;
+			const auto mask = (1 << index);
+
+			if (m_prog.shadow_textures & mask)
+			{
+				if (m_shadow_sampled_textures & mask)
+				{
+					if (m_2d_sampled_textures & mask)
+						LOG_ERROR(RSX, "Texture unit %d is sampled as both a shadow texture and a depth texture", index);
+					else
+						samplerType = "sampler2DShadow";
+				}
+			}
+
+			OS << "uniform " << samplerType << " " << PI.name << ";\n";
 		}
 	}
 
-	OS << std::endl;
-	OS << "layout(std140, binding = 2) uniform FragmentConstantsBuffer" << std::endl;
-	OS << "{" << std::endl;
+	OS << "\n";
+	OS << "layout(std140, binding = 2) uniform FragmentConstantsBuffer\n";
+	OS << "{\n";
 
 	for (const ParamType& PT : m_parr.params[PF_PARAM_UNIFORM])
 	{
@@ -133,49 +144,24 @@ void GLFragmentDecompilerThread::insertConstants(std::stringstream & OS)
 			continue;
 
 		for (const ParamItem& PI : PT.items)
-			OS << "	" << PT.type << " " << PI.name << ";" << std::endl;
+			OS << "	" << PT.type << " " << PI.name << ";\n";
 	}
 
-	// A dummy value otherwise it's invalid to create an empty uniform buffer
-	OS << "	vec4 void_value;" << std::endl;
-	OS << "};" << std::endl;
+	// Fragment state parameters
+	OS << "	float fog_param0;\n";
+	OS << "	float fog_param1;\n";
+	OS << "	uint alpha_test;\n";
+	OS << "	float alpha_ref;\n";
+	OS << "	uint alpha_func;\n";
+	OS << "	uint fog_mode;\n";
+	OS << "	float wpos_scale;\n";
+	OS << "	float wpos_bias;\n";
+	OS << "	vec4 texture_parameters[16];\n";	//sampling: x,y scaling and (unused) offsets data
+	OS << "};\n";
 }
-
 
 namespace
 {
-	// Note: It's not clear whether fog is computed per pixel or per vertex.
-	// But it makes more sense to compute exp of interpoled value than to interpolate exp values.
-	void insert_fog_declaration(std::stringstream & OS, rsx::fog_mode mode)
-	{
-		std::string fog_func = {};
-		switch (mode)
-		{
-		case rsx::fog_mode::linear:
-			fog_func = "fog_param1 * fog_c.x + (fog_param0 - 1.), fog_param1 * fog_c.x + (fog_param0 - 1.)";
-			break;
-		case rsx::fog_mode::exponential:
-			fog_func = "11.084 * (fog_param1 * fog_c.x + fog_param0 - 1.5), exp(11.084 * (fog_param1 * fog_c.x + fog_param0 - 1.5))";
-			break;
-		case rsx::fog_mode::exponential2:
-			fog_func = "4.709 * (fog_param1 * fog_c.x + fog_param0 - 1.5), exp(-pow(4.709 * (fog_param1 * fog_c.x + fog_param0 - 1.5)), 2.)";
-			break;
-		case rsx::fog_mode::linear_abs:
-			fog_func = "fog_param1 * abs(fog_c.x) + (fog_param0 - 1.), fog_param1 * abs(fog_c.x) + (fog_param0 - 1.)";
-			break;
-		case rsx::fog_mode::exponential_abs:
-			fog_func = "11.084 * (fog_param1 * abs(fog_c.x) + fog_param0 - 1.5), exp(11.084 * (fog_param1 * abs(fog_c.x) + fog_param0 - 1.5))";
-			break;
-		case rsx::fog_mode::exponential2_abs:
-			fog_func = "4.709 * (fog_param1 * abs(fog_c.x) + fog_param0 - 1.5), exp(-pow(4.709 * (fog_param1 * abs(fog_c.x) + fog_param0 - 1.5)), 2.)";
-			break;
-
-		default: fog_func = "0.0, 0.0";
-		}
-
-		OS << "	vec4 fogc = clamp(vec4(" << fog_func << ", 0., 0.), 0., 1.);\n";
-	}
-
 	void insert_texture_scale(std::stringstream & OS, const RSXFragmentProgram& prog, int index)
 	{
 		std::string vec_type = "vec2";
@@ -187,31 +173,44 @@ namespace
 		case rsx::texture_dimension_extended::texture_dimension_3d:
 		case rsx::texture_dimension_extended::texture_dimension_cubemap: vec_type = "vec3";
 		}
-
-		if (prog.unnormalized_coords & (1 << index))
-			OS << "\t" << vec_type << " tex" << index << "_coord_scale = 1. / textureSize(tex" << index << ", 0);\n";
-		else
-			OS << "\t" << vec_type << " tex" << index << "_coord_scale = " << vec_type << "(1.);\n";
 	}
 
 	std::string insert_texture_fetch(const RSXFragmentProgram& prog, int index)
 	{
 		std::string tex_name = "tex" + std::to_string(index);
-		std::string coord_name = "tc" + std::to_string(index);
+		std::string coord_name = "(tc" + std::to_string(index) + " * texture_parameters[" + std::to_string(index) + "])";
 
 		switch (prog.get_texture_dimension(index))
 		{
-		case rsx::texture_dimension_extended::texture_dimension_1d: return "texture(" + tex_name + ", (" + coord_name + ".x * " + tex_name + "_coord_scale))";
-		case rsx::texture_dimension_extended::texture_dimension_2d: return "texture(" + tex_name + ", (" + coord_name + ".xy * " + tex_name + "_coord_scale))";
+		case rsx::texture_dimension_extended::texture_dimension_1d: return "texture(" + tex_name + ", " + coord_name + ".x)";
+		case rsx::texture_dimension_extended::texture_dimension_2d: return "texture(" + tex_name + ", " + coord_name + ".xy)";
 		case rsx::texture_dimension_extended::texture_dimension_3d:
-		case rsx::texture_dimension_extended::texture_dimension_cubemap: return "texture(" + tex_name + ", (" + coord_name + ".xyz * " + tex_name + "_coord_scale))";
+		case rsx::texture_dimension_extended::texture_dimension_cubemap: return "texture(" + tex_name + ", " + coord_name + ".xyz)";
 		}
+
+		fmt::throw_exception("Invalid texture dimension %d" HERE, (u32)prog.get_texture_dimension(index));
 	}
+}
+
+void GLFragmentDecompilerThread::insertGlobalFunctions(std::stringstream &OS)
+{
+	glsl::insert_glsl_legacy_function(OS, glsl::glsl_fragment_program);
 }
 
 void GLFragmentDecompilerThread::insertMainStart(std::stringstream & OS)
 {
-	insert_glsl_legacy_function(OS);
+	//TODO: Generate input mask during parse stage to avoid this
+	for (const ParamType& PT : m_parr.params[PF_PARAM_IN])
+	{
+		for (const ParamItem& PI : PT.items)
+		{
+			if (PI.name == "fogc")
+			{
+				glsl::insert_fog_declaration(OS);
+				break;
+			}
+		}
+	}
 
 	const std::set<std::string> output_values =
 	{
@@ -231,8 +230,8 @@ void GLFragmentDecompilerThread::insertMainStart(std::stringstream & OS)
 		}
 	}
 
-	OS << "void fs_main(" << parameters << ")" << std::endl;
-	OS << "{" << std::endl;
+	OS << "void fs_main(" << parameters << ")\n";
+	OS << "{\n";
 
 	for (const ParamType& PT : m_parr.params[PF_PARAM_NONE])
 	{
@@ -245,17 +244,12 @@ void GLFragmentDecompilerThread::insertMainStart(std::stringstream & OS)
 			if (!PI.value.empty())
 				OS << " = " << PI.value;
 
-			OS << ";" << std::endl;
+			OS << ";\n";
 		}
 	}
 
 	OS << "	vec4 ssa = gl_FrontFacing ? vec4(1.) : vec4(-1.);\n";
-	OS << "	vec4 wpos = gl_FragCoord;\n";
-
-	//Flip wpos in Y
-	//We could optionally export wpos from the VS, but this is so much easier
-	if (m_prog.origin_mode == rsx::window_origin::bottom)
-		OS << "	wpos.y = " << std::to_string(m_prog.height) << " - wpos.y;\n";
+	OS << "	vec4 wpos = get_wpos();\n";
 
 	for (const ParamType& PT : m_parr.params[PF_PARAM_UNIFORM])
 	{
@@ -316,7 +310,7 @@ void GLFragmentDecompilerThread::insertMainStart(std::stringstream & OS)
 
 			if (PI.name == "fogc")
 			{
-				insert_fog_declaration(OS, m_prog.fog_equation);
+				OS << "	vec4 fogc = fetch_fog_value(fog_mode);\n";
 				continue;
 			}
 		}
@@ -375,18 +369,22 @@ void GLFragmentDecompilerThread::insertMainEnd(std::stringstream & OS)
 		{
 			if (m_prog.textures_alpha_kill[index])
 			{
-				std::string fetch_texture = insert_texture_fetch(m_prog, index) + ".a";
-				OS << make_comparison_test((rsx::comparison_function)m_prog.textures_zfunc[index], "", "0", fetch_texture);
+				const std::string texture_name = "tex" + std::to_string(index);
+				if (m_parr.HasParamTypeless(PF_PARAM_UNIFORM, texture_name))
+				{
+					std::string fetch_texture = insert_texture_fetch(m_prog, index) + ".a";
+					OS << make_comparison_test((rsx::comparison_function)m_prog.textures_zfunc[index], "", "0", fetch_texture);
+				}
 			}
 		}
 
-		OS << make_comparison_test(m_prog.alpha_func, "alpha_test != 0 && ", first_output_name + ".a", "alpha_ref");
+		OS << "	if (alpha_test != 0 && !comparison_passes(" << first_output_name << ".a, alpha_ref, alpha_func)) discard;\n";
 	}
 
-	OS << "}" << std::endl << std::endl;
+	OS << "}\n\n";
 
-	OS << "void main()" << std::endl;
-	OS << "{" << std::endl;
+	OS << "void main()\n";
+	OS << "{\n";
 
 	std::string parameters = "";
 	for (auto &reg_name : output_values)
@@ -397,28 +395,34 @@ void GLFragmentDecompilerThread::insertMainEnd(std::stringstream & OS)
 				parameters += ", ";
 
 			parameters += reg_name;
-			OS << "	vec4 " << reg_name << " = vec4(0.);" << std::endl;
+			OS << "	vec4 " << reg_name << " = vec4(0.);\n";
 		}
 	}
 
-	OS << std::endl << "	fs_main(" + parameters + ");" << std::endl << std::endl;
+	OS << "\n" << "	fs_main(" + parameters + ");\n\n";
 
 	//Append the color output assignments
 	OS << color_output_block;
 
 	if (m_ctrl & CELL_GCM_SHADER_CONTROL_DEPTH_EXPORT)
 	{
+		if (m_parr.HasParam(PF_PARAM_NONE, "vec4", "r1"))
 		{
 			/** Note: Naruto Shippuden : Ultimate Ninja Storm 2 sets CELL_GCM_SHADER_CONTROL_32_BITS_EXPORTS in a shader
 			* but it writes depth in r1.z and not h2.z.
 			* Maybe there's a different flag for depth ?
 			*/
-			//OS << ((m_ctrl & CELL_GCM_SHADER_CONTROL_32_BITS_EXPORTS) ? "\tgl_FragDepth = r1.z;\n" : "\tgl_FragDepth = h0.z;\n") << std::endl;
+			//OS << ((m_ctrl & CELL_GCM_SHADER_CONTROL_32_BITS_EXPORTS) ? "\tgl_FragDepth = r1.z;\n" : "\tgl_FragDepth = h0.z;\n") << "\n";
 			OS << "	gl_FragDepth = r1.z;\n";
+		}
+		else
+		{
+			//Input not declared. Leave commented to assist in debugging the shader
+			OS << "	//gl_FragDepth = r1.z;\n";
 		}
 	}
 
-	OS << "}" << std::endl;
+	OS << "}\n";
 }
 
 void GLFragmentDecompilerThread::Task()

@@ -2,16 +2,21 @@
 #include "Emu/Memory/Memory.h"
 #include "Emu/System.h"
 #include "Emu/IdManager.h"
+#include "Emu/IPC.h"
 
 #include "Emu/Cell/ErrorCodes.h"
 #include "Emu/Cell/PPUThread.h"
 #include "sys_semaphore.h"
 
-logs::channel sys_semaphore("sys_semaphore", logs::level::notice);
+namespace vm { using namespace ps3; }
+
+logs::channel sys_semaphore("sys_semaphore");
+
+template<> DECLARE(ipc_manager<lv2_sema, u64>::g_ipc) {};
 
 extern u64 get_system_time();
 
-s32 sys_semaphore_create(vm::ptr<u32> sem_id, vm::ptr<sys_semaphore_attribute_t> attr, s32 initial_val, s32 max_val)
+error_code sys_semaphore_create(vm::ptr<u32> sem_id, vm::ptr<sys_semaphore_attribute_t> attr, s32 initial_val, s32 max_val)
 {
 	sys_semaphore.warning("sys_semaphore_create(sem_id=*0x%x, attr=*0x%x, initial_val=%d, max_val=%d)", sem_id, attr, initial_val, max_val);
 
@@ -28,181 +33,241 @@ s32 sys_semaphore_create(vm::ptr<u32> sem_id, vm::ptr<sys_semaphore_attribute_t>
 
 	const u32 protocol = attr->protocol;
 
+	if (protocol == SYS_SYNC_PRIORITY_INHERIT)
+		sys_semaphore.todo("sys_semaphore_create(): SYS_SYNC_PRIORITY_INHERIT");
+
 	if (protocol != SYS_SYNC_FIFO && protocol != SYS_SYNC_PRIORITY && protocol != SYS_SYNC_PRIORITY_INHERIT)
 	{
 		sys_semaphore.error("sys_semaphore_create(): unknown protocol (0x%x)", protocol);
 		return CELL_EINVAL;
 	}
 
-	if (attr->pshared != SYS_SYNC_NOT_PROCESS_SHARED || attr->ipc_key || attr->flags)
+	if (auto error = lv2_obj::create<lv2_sema>(attr->pshared, attr->ipc_key, attr->flags, [&]
 	{
-		sys_semaphore.error("sys_semaphore_create(): unknown attributes (pshared=0x%x, ipc_key=0x%x, flags=0x%x)", attr->pshared, attr->ipc_key, attr->flags);
-		return CELL_EINVAL;
+		return std::make_shared<lv2_sema>(protocol, attr->pshared, attr->ipc_key, attr->flags, attr->name_u64, max_val, initial_val);
+	}))
+	{
+		return error;
 	}
 
-	*sem_id = idm::make<lv2_sema_t>(protocol, max_val, attr->name_u64, initial_val);
-
+	*sem_id = idm::last_id();
 	return CELL_OK;
 }
 
-s32 sys_semaphore_destroy(u32 sem_id)
+error_code sys_semaphore_destroy(u32 sem_id)
 {
 	sys_semaphore.warning("sys_semaphore_destroy(sem_id=0x%x)", sem_id);
 
-	LV2_LOCK;
+	const auto sem = idm::withdraw<lv2_obj, lv2_sema>(sem_id, [](lv2_sema& sema) -> CellError
+	{
+		if (sema.val < 0)
+		{
+			return CELL_EBUSY;
+		}
 
-	const auto sem = idm::get<lv2_sema_t>(sem_id);
+		return {};
+	});
 
 	if (!sem)
 	{
 		return CELL_ESRCH;
 	}
 	
-	if (sem->sq.size())
+	if (sem.ret)
 	{
-		return CELL_EBUSY;
+		return sem.ret;
 	}
-
-	idm::remove<lv2_sema_t>(sem_id);
 
 	return CELL_OK;
 }
 
-s32 sys_semaphore_wait(ppu_thread& ppu, u32 sem_id, u64 timeout)
+error_code sys_semaphore_wait(ppu_thread& ppu, u32 sem_id, u64 timeout)
 {
 	sys_semaphore.trace("sys_semaphore_wait(sem_id=0x%x, timeout=0x%llx)", sem_id, timeout);
 
-	const u64 start_time = get_system_time();
+	const auto sem = idm::get<lv2_obj, lv2_sema>(sem_id, [&](lv2_sema& sema)
+	{
+		const s32 val = sema.val;
+		
+		if (val > 0)
+		{
+			if (sema.val.compare_and_swap_test(val, val - 1))
+			{
+				return true;
+			}
+		}
 
-	LV2_LOCK;
+		semaphore_lock lock(sema.mutex);
 
-	const auto sem = idm::get<lv2_sema_t>(sem_id);
+		if (sema.val-- <= 0)
+		{
+			sema.sq.emplace_back(&ppu);
+			sema.sleep(ppu, timeout);
+			return false;
+		}
+
+		return true;
+	});
 
 	if (!sem)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (sem->value > 0)
+	if (sem.ret)
 	{
-		sem->value--;
-		
 		return CELL_OK;
 	}
 
-	// add waiter; protocol is ignored in current implementation
-	sleep_entry<cpu_thread> waiter(sem->sq, ppu);
+	ppu.gpr[3] = CELL_OK;
 
 	while (!ppu.state.test_and_reset(cpu_flag::signal))
 	{
-		CHECK_EMU_STATUS;
-
 		if (timeout)
 		{
-			const u64 passed = get_system_time() - start_time;
+			const u64 passed = get_system_time() - ppu.start_time;
 
 			if (passed >= timeout)
 			{
-				return CELL_ETIMEDOUT;
+				semaphore_lock lock(sem->mutex);
+
+				if (!sem->unqueue(sem->sq, &ppu))
+				{
+					timeout = 0;
+					continue;
+				}
+
+				verify(HERE), 0 > sem->val.fetch_op([](s32& val)
+				{
+					if (val < 0)
+					{
+						val++;
+					}
+				});
+
+				ppu.gpr[3] = CELL_ETIMEDOUT;
+				break;
 			}
 
-			get_current_thread_cv().wait_for(lv2_lock, std::chrono::microseconds(timeout - passed));
+			thread_ctrl::wait_for(timeout - passed);
 		}
 		else
 		{
-			get_current_thread_cv().wait(lv2_lock);
+			thread_ctrl::wait();
 		}
 	}
 
-	return CELL_OK;
+	return not_an_error(ppu.gpr[3]);
 }
 
-s32 sys_semaphore_trywait(u32 sem_id)
+error_code sys_semaphore_trywait(u32 sem_id)
 {
 	sys_semaphore.trace("sys_semaphore_trywait(sem_id=0x%x)", sem_id);
 
-	LV2_LOCK;
+	const auto sem = idm::check<lv2_obj, lv2_sema>(sem_id, [&](lv2_sema& sema)
+	{
+		const s32 val = sema.val;
+		
+		if (val > 0)
+		{
+			if (sema.val.compare_and_swap_test(val, val - 1))
+			{
+				return true;
+			}
+		}
 
-	const auto sem = idm::get<lv2_sema_t>(sem_id);
+		return false;
+	});
 
 	if (!sem)
 	{
 		return CELL_ESRCH;
 	}
 
-	if (sem->value <= 0 || sem->sq.size())
+	if (!sem.ret)
 	{
-		return CELL_EBUSY;
+		return not_an_error(CELL_EBUSY);
 	}
-
-	sem->value--;
 
 	return CELL_OK;
 }
 
-s32 sys_semaphore_post(u32 sem_id, s32 count)
+error_code sys_semaphore_post(ppu_thread& ppu, u32 sem_id, s32 count)
 {
 	sys_semaphore.trace("sys_semaphore_post(sem_id=0x%x, count=%d)", sem_id, count);
-
-	LV2_LOCK;
-
-	const auto sem = idm::get<lv2_sema_t>(sem_id);
-
-	if (!sem)
-	{
-		return CELL_ESRCH;
-	}
 
 	if (count < 0)
 	{
 		return CELL_EINVAL;
 	}
 
-	// get comparable values considering waiting threads
-	const u64 new_value = sem->value + count;
-	const u64 max_value = sem->max + sem->sq.size();
-
-	if (new_value > max_value)
+	const auto sem = idm::get<lv2_obj, lv2_sema>(sem_id, [&](lv2_sema& sema)
 	{
-		return CELL_EBUSY;
-	}
+		const s32 val = sema.val;
 
-	// wakeup as much threads as possible
-	while (count && !sem->sq.empty())
-	{
-		count--;
+		if (val >= 0 && count <= sema.max - val)
+		{
+			if (sema.val.compare_and_swap_test(val, val + count))
+			{
+				return true;
+			}
+		}
 
-		const auto thread = sem->sq.front();
-		thread->set_signal();
-
-		sem->sq.pop_front();
-	}
-
-	// add the rest to the value
-	sem->value += count;
-
-	return CELL_OK;
-}
-
-s32 sys_semaphore_get_value(u32 sem_id, vm::ptr<s32> count)
-{
-	sys_semaphore.trace("sys_semaphore_get_value(sem_id=0x%x, count=*0x%x)", sem_id, count);
-
-	LV2_LOCK;
-
-	if (!count)
-	{
-		return CELL_EFAULT;
-	}
-
-	const auto sem = idm::get<lv2_sema_t>(sem_id);
+		return false;
+	});
 
 	if (!sem)
 	{
 		return CELL_ESRCH;
 	}
 
-	*count = sem->value;
+	if (sem.ret)
+	{
+		return CELL_OK;
+	}
+	else
+	{
+		semaphore_lock lock(sem->mutex);
+
+		const s32 val = sem->val.fetch_op([=](s32& val)
+		{
+			if (val + s64{count} <= sem->max)
+			{
+				val += count;
+			}
+		});
+
+		if (val + s64{count} > sem->max)
+		{
+			return not_an_error(CELL_EBUSY);
+		}
+
+		// Wake threads
+		for (s32 i = std::min<s32>(-std::min<s32>(val, 0), count); i > 0; i--)
+		{
+			sem->awake(*verify(HERE, sem->schedule<ppu_thread>(sem->sq, sem->protocol)));
+		}
+	}
+
+	return CELL_OK;
+}
+
+error_code sys_semaphore_get_value(u32 sem_id, vm::ptr<s32> count)
+{
+	sys_semaphore.trace("sys_semaphore_get_value(sem_id=0x%x, count=*0x%x)", sem_id, count);
+
+	if (!count)
+	{
+		return CELL_EFAULT;
+	}
+
+	if (!idm::check<lv2_obj, lv2_sema>(sem_id, [=](lv2_sema& sema)
+	{
+		*count = std::max<s32>(0, sema.val);
+	}))
+	{
+		return CELL_ESRCH;
+	}
 
 	return CELL_OK;
 }

@@ -3,6 +3,7 @@
 #include "rsx_methods.h"
 #include "Emu/RSX/GCM.h"
 #include "Common/BufferUtils.h"
+#include "overlays.h"
 
 extern "C"
 {
@@ -30,12 +31,15 @@ namespace rsx
 
 	void clip_image(u8 *dst, const u8 *src, int clip_x, int clip_y, int clip_w, int clip_h, int bpp, int src_pitch, int dst_pitch)
 	{
+		u8 *pixels_src = (u8*)src + clip_y * src_pitch + clip_x * bpp;
+		u8 *pixels_dst = dst;
+		const u32 row_length = clip_w * bpp;
+
 		for (int y = 0; y < clip_h; ++y)
 		{
-			u8 *dst_row = dst + y * dst_pitch;
-			const u8 *src_row = src + (y + clip_y) * src_pitch + clip_x * bpp;
-
-			std::memmove(dst_row, src_row, clip_w * bpp);
+			std::memmove(pixels_dst, pixels_src, row_length);
+			pixels_src += src_pitch;
+			pixels_dst += dst_pitch;
 		}
 	}
 
@@ -104,5 +108,259 @@ namespace rsx
 		f32 scale_z = method_registers.viewport_scale_z();
 
 		fill_scale_offset_matrix(buffer, transpose, offset_x, offset_y, offset_z, scale_x, scale_y, scale_z);
+	}
+
+	//Convert decoded integer values for CONSTANT_BLEND_FACTOR into f32 array in 0-1 range
+	std::array<float, 4> get_constant_blend_colors()
+	{
+		//TODO: check another color formats (probably all integer formats with > 8-bits wide channels)
+		if (rsx::method_registers.surface_color() == rsx::surface_color_format::w16z16y16x16)
+		{
+			u16 blend_color_r = rsx::method_registers.blend_color_16b_r();
+			u16 blend_color_g = rsx::method_registers.blend_color_16b_g();
+			u16 blend_color_b = rsx::method_registers.blend_color_16b_b();
+			u16 blend_color_a = rsx::method_registers.blend_color_16b_a();
+
+			return { blend_color_r / 65535.f, blend_color_g / 65535.f, blend_color_b / 65535.f, blend_color_a / 65535.f };
+		}
+		else
+		{
+			u8 blend_color_r = rsx::method_registers.blend_color_8b_r();
+			u8 blend_color_g = rsx::method_registers.blend_color_8b_g();
+			u8 blend_color_b = rsx::method_registers.blend_color_8b_b();
+			u8 blend_color_a = rsx::method_registers.blend_color_8b_a();
+
+			return { blend_color_r / 255.f, blend_color_g / 255.f, blend_color_b / 255.f, blend_color_a / 255.f };
+		}
+	}
+
+	/* Fast image scaling routines
+	* Only uses fast nearest scaling and integral scaling factors
+	* T - Dst type
+	* U - Src type
+	* N - Sample count
+	*/
+	template <typename T, typename U>
+	void scale_image_fallback_impl(T* dst, const U* src, u16 src_width, u16 src_height, u16 dst_pitch, u16 src_pitch, u8 pixel_size, u8 samples_u, u8 samples_v)
+	{
+		u32 dst_offset = 0;
+		u32 src_offset = 0;
+
+		u32 padding = (dst_pitch - (src_pitch * samples_u)) / sizeof(T);
+
+		for (u16 h = 0; h < src_height; ++h)
+		{
+			const auto row_start = dst_offset;
+			for (u16 w = 0; w < src_width; ++w)
+			{
+				for (u8 n = 0; n < samples_u; ++n)
+				{
+					dst[dst_offset++] = src[src_offset];
+				}
+
+				src_offset++;
+			}
+
+			dst_offset += padding;
+
+			for (int n = 1; n < samples_v; ++n)
+			{
+				memcpy(&dst[dst_offset], &dst[row_start], dst_pitch);
+				dst_offset += dst_pitch;
+			}
+		}
+	}
+
+	void scale_image_fallback(void* dst, const void* src, u16 src_width, u16 src_height, u16 dst_pitch, u16 src_pitch, u8 pixel_size, u8 samples_u, u8 samples_v)
+	{
+		switch (pixel_size)
+		{
+		case 1:
+			scale_image_fallback_impl<u8, u8>((u8*)dst, (const u8*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 2:
+			scale_image_fallback_impl<u16, u16>((u16*)dst, (const u16*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 4:
+			scale_image_fallback_impl<u32, u32>((u32*)dst, (const u32*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 8:
+			scale_image_fallback_impl<u64, u64>((u64*)dst, (const u64*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 16:
+			scale_image_fallback_impl<u128, u128>((u128*)dst, (const u128*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		default:
+			fmt::throw_exception("unsupported pixel size %d" HERE, pixel_size);
+		}
+	}
+
+	void scale_image_fallback_with_byte_swap(void* dst, const void* src, u16 src_width, u16 src_height, u16 dst_pitch, u16 src_pitch, u8 pixel_size, u8 samples_u, u8 samples_v)
+	{
+		switch (pixel_size)
+		{
+		case 1:
+			scale_image_fallback_impl<u8, u8>((u8*)dst, (const u8*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 2:
+			scale_image_fallback_impl<u16, be_t<u16>>((u16*)dst, (const be_t<u16>*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 4:
+			scale_image_fallback_impl<u32, be_t<u32>>((u32*)dst, (const be_t<u32>*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 8:
+			scale_image_fallback_impl<u64, be_t<u64>>((u64*)dst, (const be_t<u64>*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		case 16:
+			scale_image_fallback_impl<u128, be_t<u128>>((u128*)dst, (const be_t<u128>*)src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			break;
+		default:
+			fmt::throw_exception("unsupported pixel size %d" HERE, pixel_size);
+		}
+	}
+
+	template <typename T, typename U, int N>
+	void scale_image_impl(T* dst, const U* src, u16 src_width, u16 src_height, u16 padding)
+	{
+		u32 dst_offset = 0;
+		u32 src_offset = 0;
+
+		for (u16 h = 0; h < src_height; ++h)
+		{
+			for (u16 w = 0; w < src_width; ++w)
+			{
+				for (u8 n = 0; n < N; ++n)
+				{
+					dst[dst_offset++] = src[src_offset];
+				}
+
+				//Fetch next pixel
+				src_offset++;
+			}
+
+			//Pad this row
+			dst_offset += padding;
+		}
+	}
+
+	template <int N>
+	void scale_image_fast(void *dst, const void *src, u8 pixel_size, u16 src_width, u16 src_height, u16 padding)
+	{
+		switch (pixel_size)
+		{
+		case 1:
+			scale_image_impl<u8, u8, N>((u8*)dst, (const u8*)src, src_width, src_height, padding);
+			break;
+		case 2:
+			scale_image_impl<u16, u16, N>((u16*)dst, (const u16*)src, src_width, src_height, padding);
+			break;
+		case 4:
+			scale_image_impl<u32, u32, N>((u32*)dst, (const u32*)src, src_width, src_height, padding);
+			break;
+		case 8:
+			scale_image_impl<u64, u64, N>((u64*)dst, (const u64*)src, src_width, src_height, padding);
+			break;
+		default:
+			fmt::throw_exception("unsupported pixel size %d" HERE, pixel_size);
+		}
+	}
+
+	template <int N>
+	void scale_image_fast_with_byte_swap(void *dst, const void *src, u8 pixel_size, u16 src_width, u16 src_height, u16 padding)
+	{
+		switch (pixel_size)
+		{
+		case 1:
+			scale_image_impl<u8, u8, N>((u8*)dst, (const u8*)src, src_width, src_height, padding);
+			break;
+		case 2:
+			scale_image_impl<u16, be_t<u16>, N>((u16*)dst, (const be_t<u16>*)src, src_width, src_height, padding);
+			break;
+		case 4:
+			scale_image_impl<u32, be_t<u32>, N>((u32*)dst, (const be_t<u32>*)src, src_width, src_height, padding);
+			break;
+		case 8:
+			scale_image_impl<u64, be_t<u64>, N>((u64*)dst, (const be_t<u64>*)src, src_width, src_height, padding);
+			break;
+		default:
+			fmt::throw_exception("unsupported pixel size %d" HERE, pixel_size);
+		}
+	}
+
+	void scale_image_nearest(void* dst, const void* src, u16 src_width, u16 src_height, u16 dst_pitch, u16 src_pitch, u8 pixel_size, u8 samples_u, u8 samples_v, bool swap_bytes)
+	{
+		//Scale this image by repeating pixel data n times
+		//n = expected_pitch / real_pitch
+		//Use of fixed argument templates for performance reasons
+
+		const u16 dst_width = dst_pitch / pixel_size;
+		const u16 padding = dst_width - (src_width * samples_u);
+
+		if (!swap_bytes)
+		{
+			if (samples_v == 1)
+			{
+				switch (samples_u)
+				{
+				case 1:
+					scale_image_fast<1>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 2:
+					scale_image_fast<2>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 3:
+					scale_image_fast<3>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 4:
+					scale_image_fast<4>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 8:
+					scale_image_fast<8>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 16:
+					scale_image_fast<16>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				default:
+					scale_image_fallback(dst, src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, 1);
+				}
+			}
+			else
+			{
+				scale_image_fallback(dst, src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			}
+		}
+		else
+		{
+			if (samples_v == 1)
+			{
+				switch (samples_u)
+				{
+				case 1:
+					scale_image_fast_with_byte_swap<1>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 2:
+					scale_image_fast_with_byte_swap<2>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 3:
+					scale_image_fast_with_byte_swap<3>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 4:
+					scale_image_fast_with_byte_swap<4>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 8:
+					scale_image_fast_with_byte_swap<8>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				case 16:
+					scale_image_fast_with_byte_swap<16>(dst, src, pixel_size, src_width, src_height, padding);
+					break;
+				default:
+					scale_image_fallback_with_byte_swap(dst, src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, 1);
+				}
+			}
+			else
+			{
+				scale_image_fallback_with_byte_swap(dst, src, src_width, src_height, dst_pitch, src_pitch, pixel_size, samples_u, samples_v);
+			}
+		}
 	}
 }

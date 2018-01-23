@@ -11,6 +11,18 @@
 #include <errno.h>
 #endif
 
+template <>
+void fmt_class_string<std::pair<const fmt_type_info*, u64>>::format(std::string& out, u64 arg)
+{
+	// Dynamic format arg
+	const auto& pair = get_object(arg);
+
+	if (pair.first)
+	{
+		pair.first->fmt_string(out, pair.second);
+	}
+}
+
 void fmt_class_string<const void*>::format(std::string& out, u64 arg)
 {
 	if (arg)
@@ -154,12 +166,12 @@ namespace fmt
 #ifdef _WIN32
 		if (DWORD error = GetLastError())
 		{
-			fmt::append(out, " (e%#x)", error);
+			fmt::append(out, " (e=%#x)", error);
 		}
 #else
 		if (int error = errno)
 		{
-			fmt::append(out, " (e%d)", error);
+			fmt::append(out, " (e=%d)", error);
 		}
 #endif
 
@@ -240,13 +252,13 @@ struct fmt::cfmt_src
 	template <typename T>
 	T get(std::size_t index) const
 	{
-		return reinterpret_cast<const T&>(args[index]);
+		return *reinterpret_cast<const T*>(reinterpret_cast<const u8*>(args + index));
 	}
 
 	void skip(std::size_t extra)
 	{
-		++sup += extra;
-		++args += extra;
+		sup += extra + 1;
+		args += extra + 1;
 	}
 
 	std::size_t fmt_string(std::string& out, std::size_t extra) const
@@ -274,6 +286,15 @@ struct fmt::cfmt_src
 
 		return 0;
 	}
+
+	static constexpr std::size_t size_char  = 1;
+	static constexpr std::size_t size_short = 2;
+	static constexpr std::size_t size_int   = 0;
+	static constexpr std::size_t size_long  = sizeof(ulong);
+	static constexpr std::size_t size_llong = sizeof(ullong);
+	static constexpr std::size_t size_size  = sizeof(std::size_t);
+	static constexpr std::size_t size_max   = sizeof(std::uintmax_t);
+	static constexpr std::size_t size_diff  = sizeof(std::ptrdiff_t);
 };
 
 void fmt::raw_append(std::string& out, const char* fmt, const fmt_type_info* sup, const u64* args) noexcept

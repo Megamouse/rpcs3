@@ -189,6 +189,7 @@ enum CellKbMappingType
 	CELL_KB_MAPPING_BELGIAN_BELGIUM,
 	CELL_KB_MAPPING_POLISH_POLAND,
 	CELL_KB_MAPPING_PORTUGUESE_BRAZIL,
+	CELL_KB_MAPPING_TURKISH_TURKEY
 };
 
 static const u32 KB_MAX_KEYBOARDS = 127;
@@ -266,6 +267,7 @@ protected:
 
 public:
 	virtual void Init(const u32 max_connect) = 0;
+
 	virtual ~KeyboardHandlerBase() = default;
 
 	void Key(const u32 code, bool pressed)

@@ -1,8 +1,11 @@
 #include "stdafx.h"
 #include "GLHelpers.h"
+#include "Utilities/Log.h"
 
 namespace gl
 {
+	blitter *g_hw_blitter = nullptr;
+	capabilities g_driver_caps;
 	const fbo screen{};
 
 	GLenum draw_mode(rsx::primitive_type in)
@@ -17,10 +20,11 @@ namespace gl
 		case rsx::primitive_type::triangle_strip: return GL_TRIANGLE_STRIP;
 		case rsx::primitive_type::triangle_fan: return GL_TRIANGLE_FAN;
 		case rsx::primitive_type::quads: return GL_TRIANGLES;
-		case rsx::primitive_type::quad_strip: return GL_TRIANGLES;
+		case rsx::primitive_type::quad_strip: return GL_TRIANGLE_STRIP;
 		case rsx::primitive_type::polygon: return GL_TRIANGLES;
+		default:
+			fmt::throw_exception("unknown primitive type" HERE);
 		}
-		fmt::throw_exception("unknow primitive type" HERE);
 	}
 
 #ifdef WIN32
@@ -46,6 +50,14 @@ namespace gl
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 		glDebugMessageCallback(static_cast<GLDEBUGPROC>(dbgFunc), nullptr);
 #endif
+	}
+
+	capabilities &get_driver_caps()
+	{
+		if (!g_driver_caps.initialized)
+			g_driver_caps.initialize();
+
+		return g_driver_caps;
 	}
 
 	void fbo::create()
@@ -84,15 +96,18 @@ namespace gl
 		return m_id != 0;
 	}
 
-	void fbo::check() const
+	bool fbo::check() const
 	{
 		save_binding_state save(*this);
 		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
-			fmt::throw_exception<std::logic_error>("0x%04x", status);
+			LOG_ERROR(RSX, "FBO check failed: 0x%04x", status);
+			return false;
 		}
+
+		return true;
 	}
 
 	void fbo::recreate()
@@ -305,6 +320,9 @@ namespace gl
 				case texture::internal_format::compressed_rgba_s3tc_dxt3:
 				case texture::internal_format::compressed_rgba_s3tc_dxt5:
 					compressed_image_size = ((m_width + 3) / 4) * ((m_height + 3) / 4) * 16;
+					break;
+				default:
+					fmt::throw_exception("Tried to load unimplemented internal_format type." HERE);
 					break;
 				}
 			}
@@ -530,12 +548,18 @@ namespace gl
 		case rsx::primitive_type::triangles:
 		case rsx::primitive_type::triangle_strip:
 		case rsx::primitive_type::triangle_fan:
+		case rsx::primitive_type::quad_strip:
 			return true;
 		case rsx::primitive_type::quads:
-		case rsx::primitive_type::quad_strip:
 		case rsx::primitive_type::polygon:
 			return false;
+		default:
+			fmt::throw_exception("unknown primitive type" HERE);
 		}
-		fmt::throw_exception("unknown primitive type" HERE);
+	}
+
+	attrib_t vao::operator[](u32 index) const noexcept
+	{
+		return attrib_t(index);
 	}
 }

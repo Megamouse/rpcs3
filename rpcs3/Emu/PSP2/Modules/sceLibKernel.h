@@ -21,7 +21,7 @@ public:
 	u32 alloc();
 
 	// Deallocate by address
-	void free(u32 addr);
+	void dealloc(u32 addr);
 };
 
 // Error Codes
@@ -496,6 +496,10 @@ struct SceKernelSemaInfo
 
 struct psp2_semaphore
 {
+	static const u32 id_base = 1;
+	static const u32 id_step = 2;
+	static const u32 id_count = 8192;
+
 	const std::string name; // IPC Name
 
 	atomic_t<u32> ref{}; // IPC Ref Counter
@@ -536,6 +540,10 @@ struct SceKernelMutexInfo
 
 struct psp2_mutex
 {
+	static const u32 id_base = 1;
+	static const u32 id_step = 2;
+	static const u32 id_count = 8192;
+
 	const std::string name; // IPC Name
 
 	atomic_t<u32> ref{}; // IPC Ref Counter
@@ -596,6 +604,10 @@ struct SceKernelCondInfo
 
 struct psp2_cond
 {
+	static const u32 id_base = 1;
+	static const u32 id_step = 2;
+	static const u32 id_count = 8192;
+
 	const std::string name; // IPC Name
 
 	atomic_t<u32> ref{}; // IPC Ref Counter

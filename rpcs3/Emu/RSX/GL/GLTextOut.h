@@ -66,14 +66,14 @@ namespace gl
 			m_program.make();
 		}
 
-		void load_program(float scale_x, float scale_y, float *offsets, int nb_offsets, color4f color)
+		void load_program(float scale_x, float scale_y, float *offsets, size_t nb_offsets, color4f color)
 		{
 			float scale[] = { scale_x, scale_y };
 
 			m_program.use();
 
 			m_program.uniforms["draw_color"] = color;
-			glProgramUniform2fv(m_program.id(), m_program.uniforms["offsets"].location(), nb_offsets, offsets);
+			glProgramUniform2fv(m_program.id(), m_program.uniforms["offsets"].location(), (GLsizei)nb_offsets, offsets);
 			glProgramUniform2fv(m_program.id(), m_program.uniforms["scale"].location(), 1, scale);
 		}
 
@@ -85,35 +85,13 @@ namespace gl
 
 		void init()
 		{
-			//Check for ARB_shader_draw_parameters
-			//While it is possible to draw text without full multidraw support, issuing separate draw calls per character is not effecient
-
-			int ext_count;
-			glGetIntegerv(GL_NUM_EXTENSIONS, &ext_count);
-			
-			for (int i = 0; i < ext_count; i++)
-			{
-				const char *ext = (const char*)glGetStringi(GL_EXTENSIONS, i);
-				if (std::string(ext) == "GL_ARB_shader_draw_parameters")
-				{
-					enabled = true;
-					break;
-				}
-			}
-
-			if (!enabled)
-			{
-				LOG_ERROR(RSX, "Debug overlay could not start because ARB_shader_draw_parameters is not supported by your GPU");
-				return;
-			}
-
 			m_text_buffer.create();
 			m_scale_offsets_buffer.create();
 
 			GlyphManager glyph_source;
 			auto points = glyph_source.generate_point_map();
 
-			const u32 buffer_size = points.size() * sizeof(GlyphManager::glyph_point);
+			const size_t buffer_size = points.size() * sizeof(GlyphManager::glyph_point);
 
 			m_text_buffer.data(buffer_size, points.data());
 			m_offsets = glyph_source.get_glyph_offsets();
@@ -136,6 +114,11 @@ namespace gl
 
 			init_program();
 			initialized = true;
+		}
+
+		void set_enabled(bool state)
+		{
+			enabled = state;
 		}
 
 		void print_text(int x, int y, int target_w, int target_h, const std::string &text, color4f color = { 0.3f, 1.f, 0.3f, 1.f })
@@ -201,7 +184,7 @@ namespace gl
 
 			m_vao.bind();
 
-			glMultiDrawArrays(GL_POINTS, offsets.data(), counts.data(), counts.size());
+			glMultiDrawArrays(GL_POINTS, (const GLint*)offsets.data(), (const GLsizei*)counts.data(), (GLsizei)counts.size());
 			glBindVertexArray(old_vao);
 		}
 

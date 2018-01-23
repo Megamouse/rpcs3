@@ -1,152 +1,120 @@
 #include "stdafx.h"
 #include "Emu/Cell/PPUModule.h"
+#include "Utilities/cfmt.h"
+#include <string.h>
+#include <ctype.h>
+
+namespace vm { using namespace ps3; }
 
 extern logs::channel sysPrxForUser;
 
 extern fs::file g_tty;
 
-// TODO
+// cfmt implementation (TODO)
+
+struct ps3_fmt_src
+{
+	ppu_thread* ctx;
+	u32 g_count;
+
+	bool test(std::size_t index) const
+	{
+		return true;
+	}
+
+	template <typename T>
+	T get(std::size_t index) const
+	{
+		const u32 i = (u32)index + g_count;
+		return ppu_gpr_cast<T>(i < 8 ? ctx->gpr[3 + i] : +*ctx->get_stack_arg(i));
+	}
+
+	void skip(std::size_t extra)
+	{
+		g_count += (u32)extra + 1;
+	}
+
+	std::size_t fmt_string(std::string& out, std::size_t extra) const
+	{
+		const std::size_t start = out.size();
+		out += vm::ps3::_ptr<const char>(get<u32>(extra));
+		return out.size() - start;
+	}
+
+	std::size_t type(std::size_t extra) const
+	{
+		return 0;
+	}
+
+	static constexpr std::size_t size_char  = 1;
+	static constexpr std::size_t size_short = 2;
+	static constexpr std::size_t size_int   = 4;
+	static constexpr std::size_t size_long  = 4;
+	static constexpr std::size_t size_llong = 8;
+	static constexpr std::size_t size_size  = 4;
+	static constexpr std::size_t size_max   = 8;
+	static constexpr std::size_t size_diff  = 4;
+};
+
+template <>
+f64 ps3_fmt_src::get<f64>(std::size_t index) const
+{
+	const u64 value = get<u64>(index);
+	return *reinterpret_cast<const f64*>(reinterpret_cast<const u8*>(&value));
+}
+
 static std::string ps3_fmt(ppu_thread& context, vm::cptr<char> fmt, u32 g_count)
 {
 	std::string result;
 
-	for (char c = *fmt++; c; c = *fmt++)
-	{
-		switch (c)
-		{
-		case '%':
-		{
-			const auto start = fmt - 1;
-
-			// read flags
-			const bool plus_sign = *fmt == '+' ? fmt++, true : false;
-			const bool minus_sign = *fmt == '-' ? fmt++, true : false;
-			const bool space_sign = *fmt == ' ' ? fmt++, true : false;
-			const bool number_sign = *fmt == '#' ? fmt++, true : false;
-			const bool zero_padding = *fmt == '0' ? fmt++, true : false;
-
-			// read width
-			const u32 width = [&]() -> u32
-			{
-				u32 width = 0;
-
-				if (*fmt == '*')
-				{
-					fmt++;
-					return context.get_next_arg(g_count);
-				}
-
-				while (*fmt - '0' < 10)
-				{
-					width = width * 10 + (*fmt++ - '0');
-				}
-
-				return width;
-			}();
-
-			// read precision
-			const u32 prec = [&]() -> u32
-			{
-				u32 prec = 0;
-
-				if (*fmt != '.')
-				{
-					return 0;
-				}
-
-				if (*++fmt == '*')
-				{
-					fmt++;
-					return context.get_next_arg(g_count);
-				}
-
-				while (*fmt - '0' < 10)
-				{
-					prec = prec * 10 + (*fmt++ - '0');
-				}
-
-				return prec;
-			}();
-
-			switch (char cf = *fmt++)
-			{
-			case '%':
-			{
-				if (plus_sign || minus_sign || space_sign || number_sign || zero_padding || width || prec) break;
-
-				result += '%';
-				continue;
-			}
-			case 'd':
-			case 'i':
-			{
-				// signed decimal
-				const s64 value = context.get_next_arg(g_count);
-
-				if (plus_sign || minus_sign || space_sign || number_sign || zero_padding || width || prec) break;
-
-				result += fmt::format("%lld", value);
-				continue;
-			}
-			case 'x':
-			case 'X':
-			{
-				// hexadecimal
-				const u64 value = context.get_next_arg(g_count);
-
-				if (plus_sign || minus_sign || space_sign || prec) break;
-
-				if (number_sign && value)
-				{
-					result += cf == 'x' ? "0x" : "0X";
-				}
-
-				const std::string& hex = fmt::format(cf == 'x' ? "%llx" : "%llX", value);
-
-				if (hex.length() >= width)
-				{
-					result += hex;
-				}
-				else if (zero_padding)
-				{
-					result += std::string(width - hex.length(), '0') + hex;
-				}
-				else
-				{
-					result += hex + std::string(width - hex.length(), ' ');
-				}
-				continue;
-			}
-			case 's':
-			{
-				// string
-				auto string = vm::cptr<char, u64>::make(context.get_next_arg(g_count));
-
-				if (plus_sign || minus_sign || space_sign || number_sign || zero_padding || width || prec) break;
-
-				result += string.get_ptr();
-				continue;
-			}
-			case 'u':
-			{
-				// unsigned decimal
-				const u64 value = context.get_next_arg(g_count);
-
-				if (plus_sign || minus_sign || space_sign || number_sign || zero_padding || width || prec) break;
-
-				result += fmt::format("%llu", value);
-				continue;
-			}
-			}
-
-			fmt::throw_exception("Unknown formatting: '%s'" HERE, start.get_ptr());
-		}
-		}
-
-		result += c;
-	}
+	cfmt_append(result, fmt.get_ptr(), ps3_fmt_src{&context, g_count});
 
 	return result;
+}
+
+static const std::array<s16, 129> s_ctype_table
+{
+	0,
+	0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x408,
+	8, 8, 8, 8,
+	0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+	0x18,
+	0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+	0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+	0x42, 0x42, 0x42, 0x42, 0x42, 0x42,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	0x10, 0x10, 0x10, 0x10, 0x20,
+};
+
+s16 __sys_look_ctype_table(s32 ch)
+{
+	sysPrxForUser.trace("__sys_look_ctype_table(ch=%d)", ch);
+
+	verify("__sys_look_ctype_table" HERE), ch >= -1 && ch <= 127;
+
+	return s_ctype_table[ch + 1];
+}
+
+s32 _sys_tolower(s32 ch)
+{
+	sysPrxForUser.trace("_sys_tolower(ch=%d)", ch);
+
+	verify("_sys_tolower" HERE), ch >= -1 && ch <= 127;
+
+	return s_ctype_table[ch + 1] & 1 ? ch + 0x20 : ch;
+}
+
+s32 _sys_toupper(s32 ch)
+{
+	sysPrxForUser.trace("_sys_toupper(ch=%d)", ch);
+
+	verify("_sys_toupper" HERE), ch >= -1 && ch <= 127;
+
+	return s_ctype_table[ch + 1] & 2 ? ch - 0x20 : ch;
 }
 
 vm::ptr<void> _sys_memset(vm::ptr<void> dst, s32 value, u32 size)
@@ -167,16 +135,49 @@ vm::ptr<void> _sys_memcpy(vm::ptr<void> dst, vm::cptr<void> src, u32 size)
 	return dst;
 }
 
-s32 _sys_memcmp(vm::cptr<void> buf1, vm::cptr<void> buf2, u32 size)
+s32 _sys_memcmp(vm::cptr<u8> buf1, vm::cptr<u8> buf2, u32 size)
 {
 	sysPrxForUser.trace("_sys_memcmp(buf1=*0x%x, buf2=*0x%x, size=%d)", buf1, buf2, size);
 
-	return std::memcmp(buf1.get_ptr(), buf2.get_ptr(), size);
+	for (u32 i = 0; i < size; i++)
+	{
+		const u8 b1 = buf1[i], b2 = buf2[i];
+
+		if (b1 < b2)
+		{
+			return -1;
+		}
+
+		if (b1 > b2)
+		{
+			return 1;
+		}
+	}
+
+	return 0;
 }
 
-s32 _sys_memchr()
+vm::ptr<u8> _sys_memchr(vm::ptr<u8> buf, u8 ch, s32 size)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	sysPrxForUser.trace("_sys_memchr(buf=*0x%x, ch=0x%x, size=0x%x)", buf, ch, size);
+
+	if (!buf)
+	{
+		return vm::null;
+	}
+
+	while (size > 0)
+	{
+		if (*buf == ch)
+		{
+			return buf;
+		}
+
+		buf++;
+		size--;
+	}
+
+	return vm::null;
 }
 
 vm::ptr<void> _sys_memmove(vm::ptr<void> dst, vm::cptr<void> src, u32 size)
@@ -188,93 +189,186 @@ vm::ptr<void> _sys_memmove(vm::ptr<void> dst, vm::cptr<void> src, u32 size)
 	return dst;
 }
 
-s64 _sys_strlen(vm::cptr<char> str)
+u32 _sys_strlen(vm::cptr<char> str)
 {
 	sysPrxForUser.trace("_sys_strlen(str=%s)", str);
 
-	return std::strlen(str.get_ptr());
+	if (!str)
+	{
+		return 0;
+	}
+
+	for (u32 i = 0;; i++)
+	{
+		if (str[i] == '\0')
+		{
+			return i;
+		}
+	}
 }
 
 s32 _sys_strcmp(vm::cptr<char> str1, vm::cptr<char> str2)
 {
 	sysPrxForUser.trace("_sys_strcmp(str1=%s, str2=%s)", str1, str2);
 
-	return std::strcmp(str1.get_ptr(), str2.get_ptr());
+	for (u32 i = 0;; i++)
+	{
+		const u8 ch1 = str1[i], ch2 = str2[i];
+		if (ch1 < ch2)
+			return -1;
+		if (ch1 > ch2)
+			return 1;
+		if (ch1 == '\0')
+			return 0;
+	}
 }
 
-s32 _sys_strncmp(vm::cptr<char> str1, vm::cptr<char> str2, s32 max)
+s32 _sys_strncmp(vm::cptr<char> str1, vm::cptr<char> str2, u32 max)
 {
 	sysPrxForUser.trace("_sys_strncmp(str1=%s, str2=%s, max=%d)", str1, str2, max);
 
-	return std::strncmp(str1.get_ptr(), str2.get_ptr(), max);
+	for (u32 i = 0; i < max; i++)
+	{
+		const u8 ch1 = str1[i], ch2 = str2[i];
+		if (ch1 < ch2)
+			return -1;
+		if (ch1 > ch2)
+			return 1;
+		if (ch1 == '\0')
+			break;
+	}
+
+	return 0;
 }
 
-vm::ptr<char> _sys_strcat(vm::ptr<char> dest, vm::cptr<char> source)
+vm::ptr<char> _sys_strcat(vm::ptr<char> dst, vm::cptr<char> src)
 {
-	sysPrxForUser.trace("_sys_strcat(dest=*0x%x, source=%s)", dest, source);
+	sysPrxForUser.trace("_sys_strcat(dst=*0x%x %s, src=%s)", dst, dst, src);
 
-	verify(HERE), std::strcat(dest.get_ptr(), source.get_ptr()) == dest.get_ptr();
+	auto str = dst;
 
-	return dest;
+	while (*str)
+	{
+		str++;
+	}
+
+	for (u32 i = 0;; i++)
+	{
+		if (!(str[i] = src[i]))
+		{
+			return dst;
+		}
+	}
 }
 
-vm::cptr<char> _sys_strchr(vm::cptr<char> str, s32 ch)
+vm::cptr<char> _sys_strchr(vm::cptr<char> str, char ch)
 {
-	sysPrxForUser.trace("_sys_strchr(str=%s, ch=0x%x)", str, ch);
+	sysPrxForUser.trace("_sys_strchr(str=%s, ch=%d)", str, ch);
 
-	return vm::cptr<char>::make(vm::get_addr(strchr(str.get_ptr(), ch)));
+	for (u32 i = 0;; i++)
+	{
+		const char ch1 = str[i];
+		if (ch1 == ch)
+			return str + i;
+		if (ch1 == '\0')
+			return vm::null;
+	}
 }
 
-vm::ptr<char> _sys_strncat(vm::ptr<char> dest, vm::cptr<char> source, u32 len)
+vm::ptr<char> _sys_strncat(vm::ptr<char> dst, vm::cptr<char> src, u32 max)
 {
-	sysPrxForUser.trace("_sys_strncat(dest=*0x%x, source=%s, len=%d)", dest, source, len);
+	sysPrxForUser.trace("_sys_strncat(dst=*0x%x %s, src=%s, max=%u)", dst, dst, src, max);
 
-	verify(HERE), std::strncat(dest.get_ptr(), source.get_ptr(), len) == dest.get_ptr();
+	auto str = dst;
 
-	return dest;
+	while (*str)
+	{
+		str++;
+	}
+
+	for (u32 i = 0; i < max; i++)
+	{
+		if (!(str[i] = src[i]))
+		{
+			return dst;
+		}
+	}
+
+	str[max] = '\0';
+	return dst;
 }
 
-vm::ptr<char> _sys_strcpy(vm::ptr<char> dest, vm::cptr<char> source)
+vm::ptr<char> _sys_strcpy(vm::ptr<char> dst, vm::cptr<char> src)
 {
-	sysPrxForUser.trace("_sys_strcpy(dest=*0x%x, source=%s)", dest, source);
+	sysPrxForUser.trace("_sys_strcpy(dst=*0x%x, src=%s)", dst, src);
 
-	verify(HERE), std::strcpy(dest.get_ptr(), source.get_ptr()) == dest.get_ptr();
-
-	return dest;
+	for (u32 i = 0;; i++)
+	{
+		if (!(dst[i] = src[i]))
+		{
+			return dst;
+		}
+	}
 }
 
-vm::ptr<char> _sys_strncpy(vm::ptr<char> dest, vm::cptr<char> source, u32 len)
+vm::ptr<char> _sys_strncpy(vm::ptr<char> dst, vm::cptr<char> src, s32 len)
 {
-	sysPrxForUser.trace("_sys_strncpy(dest=*0x%x, source=%s, len=%d)", dest, source, len);
+	sysPrxForUser.trace("_sys_strncpy(dst=*0x%x %s, src=%s, len=%d)", dst, dst, src, len);
 
-	if (!dest || !source)
+	if (!dst || !src)
 	{
 		return vm::null;
 	}
 
-	verify(HERE), std::strncpy(dest.get_ptr(), source.get_ptr(), len) == dest.get_ptr();
+	for (s32 i = 0; i < len; i++)
+	{
+		if (!(dst[i] = src[i]))
+		{
+			for (++i; i < len; i++)
+			{
+				dst[i] = '\0';
+			}
 
-	return dest;
+			return dst;
+		}
+	}
+
+	return dst;
 }
 
-s32 _sys_strncasecmp()
+s32 _sys_strncasecmp(vm::cptr<char> str1, vm::cptr<char> str2, u32 n)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	sysPrxForUser.trace("_sys_strncasecmp(str1=%s, str2=%s, n=%d)", str1, str2, n);
+	
+	for (u32 i = 0; i < n; i++)
+	{
+		const int ch1 = _sys_tolower(str1[i]), ch2 = _sys_tolower(str2[i]);
+		if (ch1 < ch2)
+			return -1;
+		if (ch1 > ch2)
+			return 1;
+		if (ch1 == '\0')
+			break;
+	}
+	return 0;
 }
 
-s32 _sys_strrchr()
+vm::cptr<char> _sys_strrchr(vm::cptr<char> str, char ch)
 {
-	fmt::throw_exception("Unimplemented" HERE);
-}
+	sysPrxForUser.trace("_sys_strrchr(str=%s, ch=%d)", str, ch);
+	
+	vm::cptr<char> res = vm::null;
 
-s32 _sys_tolower()
-{
-	fmt::throw_exception("Unimplemented" HERE);
-}
+	for (u32 i = 0;; i++)
+	{
+		const char ch1 = str[i];
+		if (ch1 == ch)
+			res = str + i;
+		if (ch1 == '\0')
+			break;
+	}
 
-s32 _sys_toupper()
-{
-	fmt::throw_exception("Unimplemented" HERE);
+	return res;
 }
 
 u32 _sys_malloc(u32 size)
@@ -314,7 +408,7 @@ s32 _sys_snprintf(ppu_thread& ppu, vm::ptr<char> dst, u32 count, vm::cptr<char> 
 	{
 		count = (u32)std::min<size_t>(count - 1, result.size());
 
-		memcpy(dst.get_ptr(), result.c_str(), count);
+		std::memcpy(dst.get_ptr(), result.c_str(), count);
 		dst[count] = 0;
 		return count;
 	}
@@ -332,9 +426,15 @@ s32 _sys_printf(ppu_thread& ppu, vm::cptr<char> fmt, ppu_va_args_t va_args)
 	return CELL_OK;
 }
 
-s32 _sys_sprintf()
+s32 _sys_sprintf(ppu_thread& ppu, vm::ptr<char> buffer, vm::cptr<char> fmt, ppu_va_args_t va_args)
 {
-	fmt::throw_exception("Unimplemented" HERE);
+	sysPrxForUser.warning("_sys_sprintf(buffer=*0x%x, fmt=%s, ...)", buffer, fmt);
+
+	std::string result = ps3_fmt(ppu, fmt, va_args.count);
+
+	std::memcpy(buffer.get_ptr(), result.c_str(), result.size() + 1);
+
+	return static_cast<s32>(result.size());
 }
 
 s32 _sys_vprintf()
@@ -359,6 +459,10 @@ s32 _sys_qsort()
 
 void sysPrxForUser_sys_libc_init()
 {
+	REG_FUNC(sysPrxForUser, __sys_look_ctype_table);
+	REG_FUNC(sysPrxForUser, _sys_tolower);
+	REG_FUNC(sysPrxForUser, _sys_toupper);
+
 	REG_FUNC(sysPrxForUser, _sys_memset);
 	REG_FUNC(sysPrxForUser, _sys_memcpy);
 	REG_FUNC(sysPrxForUser, _sys_memcmp);
@@ -375,8 +479,6 @@ void sysPrxForUser_sys_libc_init()
 	REG_FUNC(sysPrxForUser, _sys_strncpy);
 	REG_FUNC(sysPrxForUser, _sys_strncasecmp);
 	REG_FUNC(sysPrxForUser, _sys_strrchr);
-	REG_FUNC(sysPrxForUser, _sys_tolower);
-	REG_FUNC(sysPrxForUser, _sys_toupper);
 
 	REG_FUNC(sysPrxForUser, _sys_malloc);
 	REG_FUNC(sysPrxForUser, _sys_memalign);

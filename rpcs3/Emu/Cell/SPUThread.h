@@ -5,9 +5,9 @@
 #include "Emu/Cell/SPUInterpreter.h"
 #include "MFC.h"
 
-class lv2_event_queue_t;
-struct lv2_spu_group_t;
-struct lv2_int_tag_t;
+struct lv2_event_queue;
+struct lv2_spu_group;
+struct lv2_int_tag;
 
 // SPU Channels
 enum : u32
@@ -63,11 +63,14 @@ enum : u32
 	SPU_EVENT_SN = 0x2,    // MFC List Command stall-and-notify event
 	SPU_EVENT_TG = 0x1,    // MFC Tag Group status update event
 
-	SPU_EVENT_IMPLEMENTED  = SPU_EVENT_LR, // Mask of implemented events
+	SPU_EVENT_IMPLEMENTED  = SPU_EVENT_LR | SPU_EVENT_TM | SPU_EVENT_SN, // Mask of implemented events
+	SPU_EVENT_INTR_IMPLEMENTED = SPU_EVENT_SN,
 
 	SPU_EVENT_WAITING      = 0x80000000, // Originally unused, set when SPU thread starts waiting on ch_event_stat
 	//SPU_EVENT_AVAILABLE  = 0x40000000, // Originally unused, channel count of the SPU_RdEventStat channel
-	SPU_EVENT_INTR_ENABLED = 0x20000000, // Originally unused, represents "SPU Interrupts Enabled" status
+	//SPU_EVENT_INTR_ENABLED = 0x20000000, // Originally unused, represents "SPU Interrupts Enabled" status
+
+	SPU_EVENT_INTR_TEST = SPU_EVENT_INTR_IMPLEMENTED
 };
 
 // SPU Class 0 Interrupts
@@ -180,7 +183,17 @@ public:
 			data.value |= value;
 		});
 
-		if (old.wait) spu.lock_notify();
+		if (old.wait) spu.notify();
+	}
+
+	bool push_and(u32 value)
+	{
+		const auto old = data.fetch_op([=](sync_var_t& data)
+		{
+			data.value &= ~value;
+		});
+
+		return (old.value & value) != 0;
 	}
 
 	// push unconditionally (overwriting previous value), may require notification
@@ -193,7 +206,7 @@ public:
 			data.value = value;
 		});
 
-		if (old.wait) spu.lock_notify();
+		if (old.wait) spu.notify();
 	}
 
 	// returns true on success
@@ -228,7 +241,7 @@ public:
 			// value is not cleared and may be read again
 		});
 
-		if (old.wait) spu.lock_notify();
+		if (old.wait) spu.notify();
 
 		return old.value;
 	}
@@ -295,7 +308,7 @@ public:
 			return false;
 		}))
 		{
-			spu.lock_notify();
+			spu.notify();
 		}
 	}
 
@@ -343,7 +356,7 @@ struct spu_int_ctrl_t
 	atomic_t<u64> mask;
 	atomic_t<u64> stat;
 
-	std::shared_ptr<struct lv2_int_tag_t> tag;
+	std::shared_ptr<struct lv2_int_tag> tag;
 
 	void set(u64 ints);
 
@@ -491,6 +504,8 @@ public:
 class SPUThread : public cpu_thread
 {
 public:
+	virtual void on_spawn() override;
+	virtual void on_init(const std::shared_ptr<void>&) override;
 	virtual std::string get_name() const override;
 	virtual std::string dump() const override;
 	virtual void cpu_task() override;
@@ -501,23 +516,41 @@ protected:
 	SPUThread(const std::string& name);
 
 public:
-	SPUThread(const std::string& name, u32 index);
+	static const u32 id_base = 0x02000000; // TODO (used to determine thread type)
+	static const u32 id_step = 1;
+	static const u32 id_count = 2048;
 
-	std::array<v128, 128> gpr; // General-Purpose Registers
+	SPUThread(const std::string& name, u32 index, lv2_spu_group* group);
+
+	// General-Purpose Registers
+	std::array<v128, 128> gpr;
 	SPU_FPSCR fpscr;
 
-	std::unordered_map<u32, std::function<bool(SPUThread& SPU)>> m_addr_to_hle_function_map;
+	// MFC command data
+	spu_mfc_cmd ch_mfc_cmd;
 
-	spu_mfc_arg_t ch_mfc_args;
+	// MFC command queue (consumer: MFC thread)
+	lf_spsc<spu_mfc_cmd, 16> mfc_queue;
 
-	std::vector<std::pair<u32, spu_mfc_arg_t>> mfc_queue; // Only used for stalled list transfers
+	// MFC command proxy queue (consumer: MFC thread)
+	lf_mpsc<spu_mfc_cmd, 8> mfc_proxy;
 
-	u32 ch_tag_mask;
+	// Reservation Data
+	u64 rtime = 0;
+	std::array<u128, 8> rdata{};
+	u32 raddr = 0;
+
+	u32 srr0;
+	atomic_t<u32> ch_tag_upd;
+	atomic_t<u32> ch_tag_mask;
 	spu_channel_t ch_tag_stat;
+	atomic_t<u32> ch_stall_mask;
 	spu_channel_t ch_stall_stat;
 	spu_channel_t ch_atomic_stat;
 
 	spu_channel_4_t ch_in_mbox;
+
+	atomic_t<u32> mfc_prxy_mask;
 
 	spu_channel_t ch_out_mbox;
 	spu_channel_t ch_out_intr_mbox;
@@ -529,7 +562,7 @@ public:
 
 	atomic_t<u32> ch_event_mask;
 	atomic_t<u32> ch_event_stat;
-	u32 last_raddr; // Last Reservation Address (0 if not set)
+	atomic_t<bool> interrupts_enabled;
 
 	u64 ch_dec_start_timestamp; // timestamp of writing decrementer value
 	u32 ch_dec_value; // written decrementer value
@@ -540,29 +573,27 @@ public:
 
 	std::array<spu_int_ctrl_t, 3> int_ctrl; // SPU Class 0, 1, 2 Interrupt Management
 
-	std::weak_ptr<lv2_spu_group_t> tg; // SPU Thread Group
-
-	std::array<std::pair<u32, std::weak_ptr<lv2_event_queue_t>>, 32> spuq; // Event Queue Keys for SPU Thread
-	std::weak_ptr<lv2_event_queue_t> spup[64]; // SPU Ports
+	std::array<std::pair<u32, std::weak_ptr<lv2_event_queue>>, 32> spuq; // Event Queue Keys for SPU Thread
+	std::weak_ptr<lv2_event_queue> spup[64]; // SPU Ports
 
 	u32 pc = 0; // 
 	const u32 index; // SPU index
 	const u32 offset; // SPU LS offset
+	lv2_spu_group* const group; // SPU Thread Group
 
 	const std::string m_name; // Thread name
 
-	std::function<void(SPUThread&)> custom_task;
 	std::exception_ptr pending_exception;
 
+	std::array<struct spu_function_t*, 65536> compiled_cache{};
 	std::shared_ptr<class SPUDatabase> spu_db;
 	std::shared_ptr<class spu_recompiler_base> spu_rec;
 	u32 recursion_level = 0;
 
 	void push_snr(u32 number, u32 value);
-	void do_dma_transfer(u32 cmd, spu_mfc_arg_t args);
-	void do_dma_list_cmd(u32 cmd, spu_mfc_arg_t args);
-	void process_mfc_cmd(u32 cmd);
+	void do_dma_transfer(const spu_mfc_cmd& args, bool from_mfc = true);
 
+	void process_mfc_cmd();
 	u32 get_events(bool waiting = false);
 	void set_events(u32 mask);
 	void set_interrupt_status(bool enable);
@@ -587,8 +618,4 @@ public:
 	{
 		return *_ptr<T>(lsa);
 	}
-
-	void RegisterHleFunction(u32 addr, std::function<bool(SPUThread&)> function);
-	void UnregisterHleFunction(u32 addr);
-	void UnregisterHleFunctions(u32 start_addr, u32 end_addr);
 };

@@ -147,7 +147,7 @@ union SRC1
 		u32 swizzle_w        : 2;
 		u32 neg              : 1;
 		u32 abs              : 1;
-		u32 input_mod_src0   : 3;
+		u32 input_prec_mod   : 3; // Looks to be a precision clamping modifier affecting all inputs (tested with Dark Souls II)
 		u32                  : 6;
 		u32 scale            : 3;
 		u32 opcode_is_branch : 1;
@@ -222,20 +222,19 @@ struct RSXFragmentProgram
 	u32 ctrl;
 	u16 unnormalized_coords;
 	u16 redirected_textures;
-	rsx::comparison_function alpha_func;
+	u16 shadow_textures;
 	bool front_back_color_enabled : 1;
 	bool back_color_diffuse_output : 1;
 	bool back_color_specular_output : 1;
 	bool front_color_diffuse_output : 1;
 	bool front_color_specular_output : 1;
 	u32 texture_dimensions;
-	rsx::window_origin origin_mode;
-	rsx::window_pixel_center pixel_center_mode;
-	rsx::fog_mode fog_equation;
-	u16 height;
 
+	std::array<float, 4> texture_scale[16];
 	u8 textures_alpha_kill[16];
-	u32 textures_zfunc[16];
+	u8 textures_zfunc[16];
+
+	bool valid;
 
 	rsx::texture_dimension_extended get_texture_dimension(u8 id) const
 	{
@@ -244,23 +243,15 @@ struct RSXFragmentProgram
 
 	void set_texture_dimension(const std::array<rsx::texture_dimension_extended, 16> &dimensions)
 	{
-		size_t id = 0;
-		for (const rsx::texture_dimension_extended &dim : dimensions)
+		texture_dimensions = 0;
+		for (u32 i = 0, offset = 0; i < 16; ++i, offset += 2)
 		{
-			texture_dimensions &= ~(0x3 << (id * 2));
-			u8 d = (u8)dim;
-			texture_dimensions |= ((d & 0x3) << (id * 2));
-			id++;
+			texture_dimensions |= (u32)dimensions[i] << offset;
 		}
 	}
 
 	RSXFragmentProgram()
-		: size(0)
-		, addr(0)
-		, offset(0)
-		, ctrl(0)
-		, unnormalized_coords(0)
-		, texture_dimensions(0)
 	{
+		memset(this, 0, sizeof(RSXFragmentProgram));
 	}
 };

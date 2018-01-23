@@ -52,6 +52,8 @@ std::string getFunctionImp(FUNCTION f)
 		return "$t.SampleLevel($tsampler, $0.x, $1)";
 	case FUNCTION::FUNCTION_TEXTURE_SAMPLE1D_GRAD:
 		return "$t.SampleGrad($tsampler, $0.x, $1, $2)";
+	case FUNCTION::FUNCTION_TEXTURE_SHADOW2D: //TODO
+	case FUNCTION::FUNCTION_TEXTURE_SHADOW2D_PROJ:
 	case FUNCTION::FUNCTION_TEXTURE_SAMPLE2D:
 		return "$t.Sample($tsampler, $0.xy * $t_scale)";
 	case FUNCTION::FUNCTION_TEXTURE_SAMPLE2D_PROJ:
@@ -81,7 +83,7 @@ std::string getFunctionImp(FUNCTION f)
 	case FUNCTION::FUNCTION_DFDY:
 		return "ddy($0)";
 	case FUNCTION::FUNCTION_TEXTURE_SAMPLE2D_DEPTH_RGBA:
-		return "texture2DReconstruct($t.Sample($tsampler, $0.xy * $t_scale))";
+		return "texture2DReconstruct($t.Sample($tsampler, $0.xy * $t_scale), texture_parameters[$_i].z)";
 	}
 }
 
@@ -106,28 +108,8 @@ std::string compareFunctionImp(COMPARE f, const std::string &Op0, const std::str
 	}
 }
 
-void insert_d3d12_legacy_function(std::ostream& OS)
+void insert_d3d12_legacy_function(std::ostream& OS, bool is_fragment_program)
 {
-	OS << "float4 divsq_legacy(float4 num, float4 denum)\n";
-	OS << "{\n";
-	OS << "	return num / sqrt(max(denum.xxxx, 1.E-10));\n";
-	OS << "}\n";
-
-	OS << "float4 rcp_legacy(float4 denum)\n";
-	OS << "{\n";
-	OS << "	return 1. / denum;\n";
-	OS << "}\n";
-
-	OS << "float4 rsq_legacy(float4 val)\n";
-	OS << "{\n";
-	OS << "	return float(1.0 / sqrt(max(val.x, 1.E-10))).xxxx;\n";
-	OS << "}\n\n";
-
-	OS << "float4 log2_legacy(float4 val)\n";
-	OS << "{\n";
-	OS << "	return log2(max(val.x, 1.E-10)).xxxx;\n";
-	OS << "}\n\n";
-
 	OS << "float4 lit_legacy(float4 val)";
 	OS << "{\n";
 	OS << "	float4 clamped_val = val;\n";
@@ -140,6 +122,11 @@ void insert_d3d12_legacy_function(std::ostream& OS)
 	OS << "	result.z = clamped_val.x > 0.0 ? exp(clamped_val.w * log(max(clamped_val.y, 1.E-10))) : 0.0;\n";
 	OS << "	return result;\n";
 	OS << "}\n\n";
+
+	if (!is_fragment_program)
+		return;
+
+	program_common::insert_compare_op(OS);
 
 	OS << "uint packSnorm2x16(float2 val)";
 	OS << "{\n";
@@ -197,21 +184,44 @@ void insert_d3d12_legacy_function(std::ostream& OS)
 	**/
 	OS << "uint packHalf2x16(float2 val)";
 	OS << "{\n";
-	OS << "	return packSnorm2x16(val / 6.1E+5);\n";
+	OS << "	return packSnorm2x16(val / 65504.);\n";
 	OS << "}\n\n";
 
 	OS << "float2 unpackHalf2x16(uint val)";
 	OS << "{\n";
-	OS << "	return unpackSnorm2x16(val) * 6.1E+5;\n";
+	OS << "	return unpackSnorm2x16(val) * 65504.;\n";
 	OS << "}\n\n";
 
-	OS << "float4 texture2DReconstruct(float depth_value)\n";
+	OS << "float read_value(float4 src, uint remap_index)\n";
+	OS << "{\n";
+	OS << "	switch (remap_index)\n";
+	OS << "	{\n";
+	OS << "		case 0: return src.a;\n";
+	OS << "		case 1: return src.r;\n";
+	OS << "		case 2: return src.g;\n";
+	OS << "		case 3: return src.b;\n";
+	OS << "	}\n";
+	OS << "}\n\n";
+
+	OS << "float4 texture2DReconstruct(float depth_value, float remap)\n";
 	OS << "{\n";
 	OS << "	uint value = round(depth_value * 16777215);\n";
 	OS << "	uint b = (value & 0xff);\n";
 	OS << "	uint g = (value >> 8) & 0xff;\n";
 	OS << "	uint r = (value >> 16) & 0xff;\n";
-	OS << "	return float4(r/255., g/255., b/255., 1.);\n";
+	OS << "	float4 result = float4(g/255., b/255., 1., r/255.);\n\n";
+	OS << "	uint remap_vector = asuint(remap) & 0xFF;\n";
+	OS << "	if (remap_vector == 0xE4) return result;\n\n";
+	OS << "	float4 tmp;\n";
+	OS << "	uint remap_a = remap_vector & 0x3;\n";
+	OS << "	uint remap_r = (remap_vector >> 2) & 0x3;\n";
+	OS << "	uint remap_g = (remap_vector >> 4) & 0x3;\n";
+	OS << "	uint remap_b = (remap_vector >> 6) & 0x3;\n";
+	OS << "	tmp.a = read_value(result, remap_a);\n";
+	OS << "	tmp.r = read_value(result, remap_r);\n";
+	OS << "	tmp.g = read_value(result, remap_g);\n";
+	OS << "	tmp.b = read_value(result, remap_b);\n";
+	OS << "	return tmp;\n";
 	OS << "}\n\n";
 }
 #endif

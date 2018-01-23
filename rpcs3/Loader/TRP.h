@@ -7,7 +7,7 @@ struct TRPHeader
 	be_t<u64> trp_file_size;
 	be_t<u32> trp_files_count;
 	be_t<u32> trp_element_size;
-	be_t<u32> trp_unknown;
+	be_t<u32> trp_dev_flag;
 	unsigned char sha1[20];
 	unsigned char padding[16];
 };
@@ -32,6 +32,7 @@ public:
 
 	bool Install(const std::string& dest, bool show = false);
 	bool LoadHeader(bool show = false);
+	u64 GetRequiredSpace() const;
 
 	bool ContainsEntry(const char *filename);
 	void RemoveEntry(const char *filename);

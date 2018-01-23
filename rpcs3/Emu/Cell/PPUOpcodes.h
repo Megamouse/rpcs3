@@ -62,8 +62,7 @@ union ppu_opcode_t
 
 inline u64 ppu_rotate_mask(u32 mb, u32 me)
 {
-	const u64 mask = ~0ull << (63 ^ (me - mb));
-	return mask >> mb | mask << (64 - mb); // Rotate
+	return ror64(~0ull << (63 ^ (me - mb)), mb);
 }
 
 inline u32 ppu_decode(u32 inst)
@@ -72,7 +71,7 @@ inline u32 ppu_decode(u32 inst)
 }
 
 // PPU decoder object. D provides functions. T is function pointer type returned.
-template<typename D, typename T = decltype(&D::UNK)>
+template <typename D, typename T = decltype(&D::UNK)>
 class ppu_decoder
 {
 	// Fast lookup table
@@ -122,7 +121,6 @@ public:
 		// Main opcodes (field 0..5)
 		fill_table(0x00, 6, -1,
 		{
-			{ 0x01, &D::HACK },
 			{ 0x02, &D::TDI },
 			{ 0x03, &D::TWI },
 			{ 0x07, &D::MULLI },
@@ -557,6 +555,12 @@ public:
 		});
 	}
 
+	template <typename F>
+	ppu_decoder(F&& init) : ppu_decoder()
+	{
+		init(m_table);
+	}
+
 	const std::array<T, 0x20000>& get_table() const
 	{
 		return m_table;
@@ -577,6 +581,20 @@ namespace ppu_instructions
 			r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11,
 			r12, r13, r14, r15, r16, r17, r18, r19, r20, r21,
 			r22, r23, r24, r25, r26, r27, r28, r29, r30, r31,
+		};
+
+		enum
+		{
+			f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11,
+			f12, f13, f14, f15, F16, f17, f18, f19, f20, f21,
+			f22, f23, f24, f25, f26, f27, f28, f29, f30, f31,
+		};
+
+		enum
+		{
+			v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11,
+			v12, v13, v14, v15, v16, v17, v18, v19, v20, v21,
+			v22, v23, v24, v25, v26, v27, v28, v29, v30, v31,
 		};
 
 		enum
@@ -607,10 +625,14 @@ namespace ppu_instructions
 	inline u32 CMPI(u32 bf, u32 l, u32 ra, u32 ui) { ppu_opcode_t op{ 0xbu << 26 }; op.crfd = bf; op.l10 = l; op.ra = ra; op.uimm16 = ui; return op.opcode; }
 	inline u32 CMPLI(u32 bf, u32 l, u32 ra, u32 ui) { ppu_opcode_t op{ 0xau << 26 }; op.crfd = bf; op.l10 = l; op.ra = ra; op.uimm16 = ui; return op.opcode; }
 	inline u32 RLDICL(u32 ra, u32 rs, u32 sh, u32 mb, bool rc = false) { ppu_opcode_t op{ 30 << 26 }; op.ra = ra; op.rs = rs; op.sh64 = sh; op.mbe64 = mb; op.rc = rc; return op.opcode; }
+	inline u32 RLDICR(u32 ra, u32 rs, u32 sh, u32 mb, bool rc = false) { return RLDICL(ra, rs, sh, mb, rc) | 1 << 2; }
+	inline u32 STFD(u32 frs, u32 ra, s32 si) { ppu_opcode_t op{ 54u << 26 }; op.frs = frs; op.ra = ra; op.simm16 = si; return op.opcode; }
+	inline u32 STVX(u32 vs, u32 ra, u32 rb) { ppu_opcode_t op{ 31 << 26 | 231 << 1 }; op.vs = vs; op.ra = ra; op.rb = rb; return op.opcode; }
+	inline u32 LFD(u32 frd, u32 ra, s32 si) { ppu_opcode_t op{ 50u << 26 }; op.frd = frd; op.ra = ra; op.simm16 = si; return op.opcode; }
+	inline u32 LVX(u32 vd, u32 ra, u32 rb) { ppu_opcode_t op{ 31 << 26 | 103 << 1 }; op.vd = vd; op.ra = ra; op.rb = rb; return op.opcode; }
 
 	namespace implicts
 	{
-		inline u32 HACK(u32 index) { return 0x01 << 26 | index; }
 		inline u32 NOP() { return ORI(r0, r0, 0); }
 		inline u32 MR(u32 rt, u32 ra) { return OR(rt, ra, ra, false); }
 		inline u32 LI(u32 rt, u32 imm) { return ADDI(rt, r0, imm); }
@@ -643,6 +665,9 @@ namespace ppu_instructions
 		inline u32 EXTRDI(u32 x, u32 y, u32 n, u32 b) { return RLDICL(x, y, b + n, 64 - b, false); }
 		inline u32 SRDI(u32 x, u32 y, u32 n) { return RLDICL(x, y, 64 - n, n, false); }
 		inline u32 CLRLDI(u32 x, u32 y, u32 n) { return RLDICL(x, y, 0, n, false); }
+		inline u32 CLRRDI(u32 x, u32 y, u32 n) { return RLDICR(x, y, 0, 63 - n, false); }
+
+		inline u32 TRAP() { return 0x7FE00008; } // tw 31,r0,r0
 	}
 
 	using namespace implicts;

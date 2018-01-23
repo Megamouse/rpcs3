@@ -3,7 +3,9 @@
 #include "Emu/System.h"
 #include "Emu/IdManager.h"
 
+#include "Crypto/unedat.h"
 #include "Emu/Cell/ErrorCodes.h"
+#include "Emu/Cell/PPUThread.h"
 #include "sys_lwmutex.h"
 #include "sys_lwcond.h"
 #include "sys_mutex.h"
@@ -21,9 +23,9 @@
 #include "sys_fs.h"
 #include "sys_process.h"
 
-#include <thread>
+namespace vm { using namespace ps3; }
 
-logs::channel sys_process("sys_process", logs::level::notice);
+logs::channel sys_process("sys_process");
 
 u32 g_ps3_sdk_version;
 
@@ -45,29 +47,10 @@ s32 sys_process_getppid()
 	return 0;
 }
 
-s32 sys_process_exit(s32 status)
+template <typename T, typename Get>
+u32 idm_get_count()
 {
-	sys_process.warning("sys_process_exit(status=0x%x)", status);
-
-	LV2_LOCK;
-
-	CHECK_EMU_STATUS;
-	
-	sys_process.success("Process finished");
-
-	Emu.CallAfter([]()
-	{
-		Emu.Stop();
-	});
-
-	while (true)
-	{
-		CHECK_EMU_STATUS;
-
-		std::this_thread::sleep_for(1ms);
-	}
-
-	return CELL_OK;
+	return idm::select<T, Get>([&](u32, Get&) {});
 }
 
 s32 sys_process_get_number_of_object(u32 object, vm::ptr<u32> nump)
@@ -76,24 +59,24 @@ s32 sys_process_get_number_of_object(u32 object, vm::ptr<u32> nump)
 
 	switch(object)
 	{
-	case SYS_MEM_OBJECT: *nump = idm::get_count<lv2_memory>(); break;
-	case SYS_MUTEX_OBJECT: *nump = idm::get_count<lv2_mutex_t>(); break;
-	case SYS_COND_OBJECT: *nump = idm::get_count<lv2_cond_t>(); break;
-	case SYS_RWLOCK_OBJECT: *nump = idm::get_count<lv2_rwlock_t>(); break;
-	case SYS_INTR_TAG_OBJECT: *nump = idm::get_count<lv2_int_tag_t>(); break;
-	case SYS_INTR_SERVICE_HANDLE_OBJECT: *nump = idm::get_count<lv2_int_serv_t>(); break;
-	case SYS_EVENT_QUEUE_OBJECT: *nump = idm::get_count<lv2_event_queue_t>(); break;
-	case SYS_EVENT_PORT_OBJECT: *nump = idm::get_count<lv2_event_port_t>(); break;
+	case SYS_MEM_OBJECT: *nump = idm_get_count<lv2_obj, lv2_memory>(); break;
+	case SYS_MUTEX_OBJECT: *nump = idm_get_count<lv2_obj, lv2_mutex>(); break;
+	case SYS_COND_OBJECT: *nump = idm_get_count<lv2_obj, lv2_cond>(); break;
+	case SYS_RWLOCK_OBJECT: *nump = idm_get_count<lv2_obj, lv2_rwlock>(); break;
+	case SYS_INTR_TAG_OBJECT: *nump = idm_get_count<lv2_obj, lv2_int_tag>(); break;
+	case SYS_INTR_SERVICE_HANDLE_OBJECT: *nump = idm_get_count<lv2_obj, lv2_int_serv>(); break;
+	case SYS_EVENT_QUEUE_OBJECT: *nump = idm_get_count<lv2_obj, lv2_event_queue>(); break;
+	case SYS_EVENT_PORT_OBJECT: *nump = idm_get_count<lv2_obj, lv2_event_port>(); break;
 	case SYS_TRACE_OBJECT: fmt::throw_exception("SYS_TRACE_OBJECT" HERE);
 	case SYS_SPUIMAGE_OBJECT: fmt::throw_exception("SYS_SPUIMAGE_OBJECT" HERE);
-	case SYS_PRX_OBJECT: *nump = idm::get_count<lv2_prx_t>(); break;
+	case SYS_PRX_OBJECT: *nump = idm_get_count<lv2_obj, lv2_prx>(); break;
 	case SYS_SPUPORT_OBJECT: fmt::throw_exception("SYS_SPUPORT_OBJECT" HERE);
-	case SYS_LWMUTEX_OBJECT: *nump = idm::get_count<lv2_lwmutex_t>(); break;
-	case SYS_TIMER_OBJECT: *nump = idm::get_count<lv2_timer_t>(); break;
-	case SYS_SEMAPHORE_OBJECT: *nump = idm::get_count<lv2_sema_t>(); break;
-	case SYS_FS_FD_OBJECT: *nump = idm::get_count<lv2_fs_object>(); break;
-	case SYS_LWCOND_OBJECT: *nump = idm::get_count<lv2_lwcond_t>(); break;
-	case SYS_EVENT_FLAG_OBJECT: *nump = idm::get_count<lv2_event_flag_t>(); break;
+	case SYS_LWMUTEX_OBJECT: *nump = idm_get_count<lv2_obj, lv2_lwmutex>(); break;
+	case SYS_TIMER_OBJECT: *nump = idm_get_count<lv2_obj, lv2_timer>(); break;
+	case SYS_SEMAPHORE_OBJECT: *nump = idm_get_count<lv2_obj, lv2_sema>(); break;
+	case SYS_FS_FD_OBJECT: *nump = idm_get_count<lv2_fs_object, lv2_fs_object>(); break;
+	case SYS_LWCOND_OBJECT: *nump = idm_get_count<lv2_obj, lv2_lwcond>(); break;
+	case SYS_EVENT_FLAG_OBJECT: *nump = idm_get_count<lv2_obj, lv2_event_flag>(); break;
 
 	default:
 	{
@@ -106,10 +89,10 @@ s32 sys_process_get_number_of_object(u32 object, vm::ptr<u32> nump)
 
 #include <set>
 
-template<typename T>
+template <typename T, typename Get>
 void idm_get_set(std::set<u32>& out)
 {
-	idm::select<T>([&](u32 id, T&)
+	idm::select<T, Get>([&](u32 id, Get&)
 	{
 		out.emplace(id);
 	});
@@ -123,24 +106,24 @@ s32 sys_process_get_id(u32 object, vm::ptr<u32> buffer, u32 size, vm::ptr<u32> s
 
 	switch (object)
 	{
-	case SYS_MEM_OBJECT: idm_get_set<lv2_memory>(objects); break;
-	case SYS_MUTEX_OBJECT: idm_get_set<lv2_mutex_t>(objects); break;
-	case SYS_COND_OBJECT: idm_get_set<lv2_cond_t>(objects); break;
-	case SYS_RWLOCK_OBJECT: idm_get_set<lv2_rwlock_t>(objects); break;
-	case SYS_INTR_TAG_OBJECT: idm_get_set<lv2_int_tag_t>(objects); break;
-	case SYS_INTR_SERVICE_HANDLE_OBJECT: idm_get_set<lv2_int_serv_t>(objects); break;
-	case SYS_EVENT_QUEUE_OBJECT: idm_get_set<lv2_event_queue_t>(objects); break;
-	case SYS_EVENT_PORT_OBJECT: idm_get_set<lv2_event_port_t>(objects); break;
+	case SYS_MEM_OBJECT: idm_get_set<lv2_obj, lv2_memory>(objects); break;
+	case SYS_MUTEX_OBJECT: idm_get_set<lv2_obj, lv2_mutex>(objects); break;
+	case SYS_COND_OBJECT: idm_get_set<lv2_obj, lv2_cond>(objects); break;
+	case SYS_RWLOCK_OBJECT: idm_get_set<lv2_obj, lv2_rwlock>(objects); break;
+	case SYS_INTR_TAG_OBJECT: idm_get_set<lv2_obj, lv2_int_tag>(objects); break;
+	case SYS_INTR_SERVICE_HANDLE_OBJECT: idm_get_set<lv2_obj, lv2_int_serv>(objects); break;
+	case SYS_EVENT_QUEUE_OBJECT: idm_get_set<lv2_obj, lv2_event_queue>(objects); break;
+	case SYS_EVENT_PORT_OBJECT: idm_get_set<lv2_obj, lv2_event_port>(objects); break;
 	case SYS_TRACE_OBJECT: fmt::throw_exception("SYS_TRACE_OBJECT" HERE);
 	case SYS_SPUIMAGE_OBJECT: fmt::throw_exception("SYS_SPUIMAGE_OBJECT" HERE);
-	case SYS_PRX_OBJECT: idm_get_set<lv2_prx_t>(objects); break;
+	case SYS_PRX_OBJECT: idm_get_set<lv2_obj, lv2_prx>(objects); break;
 	case SYS_SPUPORT_OBJECT: fmt::throw_exception("SYS_SPUPORT_OBJECT" HERE);
-	case SYS_LWMUTEX_OBJECT: idm_get_set<lv2_lwmutex_t>(objects); break;
-	case SYS_TIMER_OBJECT: idm_get_set<lv2_timer_t>(objects); break;
-	case SYS_SEMAPHORE_OBJECT: idm_get_set<lv2_sema_t>(objects); break;
-	case SYS_FS_FD_OBJECT: idm_get_set<lv2_fs_object>(objects); break;
-	case SYS_LWCOND_OBJECT: idm_get_set<lv2_lwcond_t>(objects); break;
-	case SYS_EVENT_FLAG_OBJECT: idm_get_set<lv2_event_flag_t>(objects); break;
+	case SYS_LWMUTEX_OBJECT: idm_get_set<lv2_obj, lv2_lwmutex>(objects); break;
+	case SYS_TIMER_OBJECT: idm_get_set<lv2_obj, lv2_timer>(objects); break;
+	case SYS_SEMAPHORE_OBJECT: idm_get_set<lv2_obj, lv2_sema>(objects); break;
+	case SYS_FS_FD_OBJECT: idm_get_set<lv2_fs_object, lv2_fs_object>(objects); break;
+	case SYS_LWCOND_OBJECT: idm_get_set<lv2_obj, lv2_lwcond>(objects); break;
+	case SYS_EVENT_FLAG_OBJECT: idm_get_set<lv2_obj, lv2_event_flag>(objects); break;
 
 	default:
 	{
@@ -249,4 +232,87 @@ s32 sys_process_detach_child(u64 unk)
 {
 	sys_process.todo("sys_process_detach_child(unk=0x%llx)", unk);
 	return CELL_OK;
+}
+
+void _sys_process_exit(ppu_thread& ppu, s32 status, u32 arg2, u32 arg3)
+{
+	vm::temporary_unlock(ppu);
+
+	sys_process.warning("_sys_process_exit(status=%d, arg2=0x%x, arg3=0x%x)", status, arg2, arg3);
+
+	Emu.CallAfter([]()
+	{
+		sys_process.success("Process finished");
+		Emu.Stop();
+	});
+
+	thread_ctrl::eternalize();
+}
+
+void _sys_process_exit2(ppu_thread& ppu, s32 status, vm::ptr<sys_exit2_param> arg, u32 arg_size, u32 arg4)
+{
+	sys_process.warning("_sys_process_exit2(status=%d, arg=*0x%x, arg_size=0x%x, arg4=0x%x)", status, arg, arg_size, arg4);
+
+	auto pstr = +arg->args;
+
+	std::vector<std::string> argv;
+	std::vector<std::string> envp;
+
+	while (auto ptr = *pstr++)
+	{
+		argv.emplace_back(ptr.get_ptr());
+		sys_process.notice(" *** arg: %s", ptr);
+	}
+
+	while (auto ptr = *pstr++)
+	{
+		envp.emplace_back(ptr.get_ptr());
+		sys_process.notice(" *** env: %s", ptr);
+	}
+
+	std::vector<u8> data;
+
+	if (arg_size > 0x1030)
+	{
+		data.resize(0x1000);
+		std::memcpy(data.data(), vm::base(arg.addr() + arg_size - 0x1000), 0x1000);
+	}
+
+	if (argv.empty())
+	{
+		return _sys_process_exit(ppu, status, 0, 0);
+	}
+
+	// TODO: set prio, flags
+
+	std::string path = vfs::get(argv[0]);
+	std::string disc;
+
+	if (Emu.GetCat() == "DG" || Emu.GetCat() == "GD")
+		disc = vfs::get("/dev_bdvd/");
+	else if (Emu.GetTitleID().size())
+		disc = vfs::get("/dev_hdd0/game/" + Emu.GetTitleID() + "/");
+
+	vm::temporary_unlock(ppu);
+
+	Emu.CallAfter([path = std::move(path), argv = std::move(argv), envp = std::move(envp), data = std::move(data), disc = std::move(disc), klic = fxm::get_always<LoadedNpdrmKeys_t>()->devKlic]() mutable
+	{
+		sys_process.success("Process finished -> %s", argv[0]);
+		Emu.SetForceBoot(true);
+		Emu.Stop();
+		Emu.argv = std::move(argv);
+		Emu.envp = std::move(envp);
+		Emu.data = std::move(data);
+		Emu.disc = std::move(disc);
+
+		if (klic != std::array<u8, 16>{})
+		{
+			Emu.klic.assign(klic.begin(), klic.end());
+		}
+
+		Emu.SetForceBoot(true);
+		Emu.BootGame(path, true);
+	});
+
+	thread_ctrl::eternalize();
 }
