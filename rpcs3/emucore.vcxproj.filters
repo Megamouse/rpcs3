@@ -492,6 +492,9 @@
     <ClCompile Include="Emu\Cell\Modules\cellPrint.cpp">
       <Filter>Emu\Cell\Modules</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\Cell\Modules\cellPerf.cpp">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClCompile>
     <ClCompile Include="Emu\Cell\Modules\cellRec.cpp">
       <Filter>Emu\Cell\Modules</Filter>
     </ClCompile>
@@ -1879,6 +1882,9 @@
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\cellJpgEnc.h">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\Modules\cellPerf.h">
       <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
     <ClInclude Include="Emu\RSX\Capture\rsx_replay.h">

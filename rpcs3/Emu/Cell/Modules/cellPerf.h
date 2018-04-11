@@ -1,0 +1,236 @@
+#pragma once
+
+enum
+{
+	CELL_PERF_LV2_TRACE_HEADER_SIZE     = 128,
+	CELL_PERF_LV2_TRACE_MAX_BACKTRACE   = 255,
+	CELL_PERF_LV2_TRACE_MAX_THREAD_NAME = 255+1,
+};
+
+enum
+{
+	CELL_PERF_ERROR_NOT_OPENED,
+	CELL_PERF_ERROR_INVALID_SIGNAL,
+	CELL_PERF_ERROR_TRACE_BUS_BUSY,
+	CELL_PERF_ERROR_SIGNAL_CONTROL_FULL,
+	CELL_PERF_ERROR_INVALID_PARAMETER,
+	CELL_PERF_ERROR_ADDED_ALREADY,
+	CELL_PERF_ERROR_LV1_NO_PRIVILEGE,
+	CELL_PERF_ERROR_LV1_DENIED_BY_POLICY,
+	CELL_PERF_ERROR_LV1_NO_ENTRY,
+	CELL_PERF_ERROR_LV1_DUPLICATE_ENTRY,
+	CELL_PERF_ERROR_LV1_BUSY,
+	CELL_PERF_ERROR_LV1_RESOURCE_SHORTAGE,
+	CELL_PERF_ERROR_LV1_WRONG_STATE,
+	CELL_PERF_ERROR_LV1_ALIGNMENT_ERROR,
+	CELL_PERF_ERROR_LV1_ILLEGAL_PARAMETER_VALID,
+	CELL_PERF_ERROR_LV2_BUSY,
+	CELL_PERF_ERROR_LV2_NO_RESOURCE,
+	CELL_PERF_ERROR_LV2_NOT_IMPLEMENTED,
+	CELL_PERF_ERROR_LV2_INVALID_PARAMETER,
+	CELL_PERF_ERROR_LV2_UNSUPPORTED_HARDWARE,
+	CELL_PERF_ERROR_LV2_NOT_ALLOWED,
+	CELL_PERF_ERROR_UNDEFINED,
+};
+
+enum
+{
+	CELL_PERF_SETUP_CONF_BUFFER_TYPE_NA       = 0x00000000,
+	CELL_PERF_SETUP_CONF_BUFFER_TYPE_INTERNAL = 0x00000001,
+	CELL_PERF_SETUP_CONF_BUFFER_TYPE_EXTERNAL = 0x00000002,
+	CELL_PERF_SETUP_CONF_BUFFER_OVERWRITE     = 0x00000010,
+	CELL_PERF_SETUP_CONF_COUNTER8             = 0x00000200,
+	CELL_PERF_SETUP_CONF_COUNTER16            = 0x00000400,
+	CELL_PERF_SETUP_CONF_COUNTER32            = 0x00000800,
+	CELL_PERF_SETUP_CONF_PPU_BOOKMARK_EN      = 0x00002000,
+	CELL_PERF_SETUP_CONF_SPU_ADDR_TRACE_EN_0  = 0x00010000,
+	CELL_PERF_SETUP_CONF_SPU_ADDR_TRACE_EN_1  = 0x00020000,
+	CELL_PERF_SETUP_CONF_SPU_BOOKMARK_EN_0    = 0x00040000,
+	CELL_PERF_SETUP_CONF_SPU_BOOKMARK_EN_1    = 0x00080000,
+	CELL_PERF_SETUP_CONF_NO_TRACE_MODE        = 0x20000000,
+	CELL_PERF_SETUP_CONF_VERBOSE_MODE         = 0x80000000,
+};
+
+enum
+{
+	CELL_PERF_LV2OS_TRACE_THREAD_CREATED = 0x00,
+	CELL_PERF_LV2OS_TRACE_THREAD_DELETED = 0x01,
+	CELL_PERF_LV2OS_TRACE_THREAD_EXISTS  = 0x02,
+};
+
+enum
+{
+	CELL_PERF_LV2_TRACE_TYPE_PPU_SCHEDULER = 0x00,
+	CELL_PERF_LV2_TRACE_TYPE_PPU_THREAD    = 0x03,
+	CELL_PERF_LV2_TRACE_TYPE_SPU_SCHEDULER = 0x10,
+	CELL_PERF_LV2_TRACE_TYPE_SPU_THREAD    = 0x13,
+	CELL_PERF_LV2_TRACE_TYPE_SYSTEM_CALL   = 0x33,
+};
+
+enum
+{
+	CELL_PERF_LV2_TRACE_MODE_STOP_AT_END = 0x00,
+	CELL_PERF_LV2_TRACE_MODE_OVERWRITE   = 0x01,
+};
+
+enum
+{
+	CELL_PERF_LV2_TRACE_CONTROL_START = 0x00000001,
+	CELL_PERF_LV2_TRACE_CONTROL_STOP  = 0x00000002,
+};
+
+enum
+{
+	CELL_PERF_LV2_TRACE_SCHED_DISPATCHED      = 0x01,
+	CELL_PERF_LV2_TRACE_SCHED_PREEMPTED       = 0x02,
+	CELL_PERF_LV2_TRACE_SCHED_YEILD           = 0x03,
+	CELL_PERF_LV2_TRACE_SCHED_SLEEP           = 0x04,
+	CELL_PERF_LV2_TRACE_SCHED_EXIT            = 0x05,
+	CELL_PERF_LV2_TRACE_SCHED_SET_PRIO        = 0x10,
+	CELL_PERF_LV2_TRACE_SCHED_INHERIT_PRIO    = 0x20,
+	CELL_PERF_LV2_TRACE_SCHED_DISINHERIT_PRIO = 0x30,
+};
+
+enum
+{
+	CELL_PERF_LV2OS_TRACE_SYSCALL_TYPE_ENTRY = 0x00,
+	CELL_PERF_LV2OS_TRACE_SYSCALL_TYPE_EXIT  = 0x10,
+};
+
+enum
+{
+	CELL_PERF_LV2OS_TRACE_SYSCALL_CTX_PPU     = 0x00,
+	CELL_PERF_LV2OS_TRACE_SYSCALL_CTX_HANDLER = 0x01,
+	CELL_PERF_LV2OS_TRACE_SYSCALL_CTX_SPU     = 0x10,
+};
+
+enum
+{
+	CELL_PERF_SPU_TARGET_TYPE_THREAD_ID   = 0,
+	CELL_PERF_SPU_TARGET_TYPE_THREAD_NAME = 1,
+	CELL_PERF_SPU_TARGET_TYPE_LOGICAL_ID  = 2,
+	CELL_PERF_SPU_TARGET_TYPE_PHYSICAL_ID = 3,
+};
+
+enum
+{
+	CELL_PERF_SIGNAL_SETUP_DISABLE  = 0x00000000,
+	CELL_PERF_SIGNAL_SETUP_ENABLE   = 0x00400000,
+	CELL_PERF_SIGNAL_SETUP_CYCLE    = 0x00800000,
+	CELL_PERF_SIGNAL_SETUP_POSITIVE = 0x01000000,
+};
+
+struct CellPerfCBEpmSetup
+{
+	u32 conf;
+	u32 interval;
+	//CellPerfSignal signal[CELL_PERF_NUM_16BIT_COUNTERS];
+	//CellPerfSpuTarget spuTraceTarget[CELL_PERF_MAX_SPU_TARGET];
+};
+
+struct CellPerfSignal
+{
+	//CellPerfSignalName name;
+	//CellPerfSignalSetup setup;
+	u32 targetSpuId;
+	u32 mask;
+};
+
+struct CellPerfSpuTarget
+{
+	//CellPerfSpuTargetType type;
+	//sys_spu_thread_t threadId;
+	//char threadName[CELL_PERF_MAX_THREAD_NAME_LENGTH];
+	u32 logicalId;
+	u32 physicalId;
+};
+
+struct CellPerfCBEpmStatus
+{
+	u32 traceDataSize;
+	//vm::ptr<CellPerfTraceData> traceDataCacheAddress;
+	//u32 counter[CELL_PERF_NUM_32BIT_COUNTERS];
+	u32 interval;
+	u64 startSystemTime;
+	u64 stopSystemTime;
+};
+
+struct CellPerfLv2TraceHeader
+{
+	u64 writePointer;
+	u64 readPointer;
+	u64 reserved[CELL_PERF_LV2_TRACE_HEADER_SIZE / sizeof(u64) - 2];
+};
+
+struct CellPerfLv2TracePacketHeader
+{
+	u8 tag;
+	u8 length;
+	u16 hardwareId;
+	u32 timebase;
+};
+
+struct CellPerfLv2TraceControlPacketPayload
+{
+	u32 control;
+	u32 reserved;
+};
+
+struct CellPerfLv2TraceSchedPacketPayload
+{
+	u32 threadId;
+	u8 incident;
+	u8 reserved;
+	u16 priority;
+};
+
+struct CellPerfLv2TraceThreadPacketPayload
+{
+	u32 processId;
+	u32 threadId;
+	u8 nameLength;
+	u8 incident;
+	u32 reserved;
+	char threadName[CELL_PERF_LV2_TRACE_MAX_THREAD_NAME];
+};
+
+struct CellPerfLv2TraceSyscallInPacketPayload
+{
+	u8 type;
+	u8 context;
+	u16 reserved;
+	u32 threadId;
+	u32 syscallNumber;
+	u32 srr;
+	u32 lr[CELL_PERF_LV2_TRACE_MAX_BACKTRACE + 1];
+};
+
+struct CellPerfLv2TraceSyscallOutPacketPayload
+{
+	u8 type;
+	u8 context;
+	u16 reserved;
+	u32 threadId;
+	u32 gpr3;
+};
+
+union CellPerfLv2TracePacketPayload
+{
+	CellPerfLv2TraceControlPacketPayload control;
+	CellPerfLv2TraceSchedPacketPayload schedule;
+	CellPerfLv2TraceThreadPacketPayload thread;
+	CellPerfLv2TraceSyscallInPacketPayload syscallIn;
+	CellPerfLv2TraceSyscallOutPacketPayload syscallOut;
+};
+
+struct CellPerfLv2TracePacket
+{
+	CellPerfLv2TracePacketHeader header;
+	CellPerfLv2TracePacketPayload payload;
+};
+
+union CellPerfCBEpmCounter
+{
+	//u32 counter32[CELL_PERF_NUM_32BIT_COUNTERS];
+	//u32 counter16[CELL_PERF_NUM_16BIT_COUNTERS];
+};

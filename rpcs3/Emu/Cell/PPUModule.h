@@ -207,6 +207,7 @@ public:
 	static const ppu_static_module cellOskDialog;
 	static const ppu_static_module cellOvis;
 	static const ppu_static_module cellPamf;
+	static const ppu_static_module cellPerf;
 	static const ppu_static_module cellPesmUtility;
 	static const ppu_static_module cellPhotoDecode;
 	static const ppu_static_module cellPhotoExport;
