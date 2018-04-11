@@ -1210,6 +1210,9 @@
     <ClCompile Include="Emu\RSX\Program\SPIRVCommon.cpp">
       <Filter>Emu\GPU\RSX\Program</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\Cell\Modules\cellMS.cpp">
+      <Filter>Emu\Cell\Modules</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Crypto\aes.h">
@@ -2448,6 +2451,9 @@
     </ClInclude>
     <ClInclude Include="Emu\RSX\Program\SPIRVCommon.h">
       <Filter>Emu\GPU\RSX\Program</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\Modules\cellMS.h">
+      <Filter>Emu\Cell\Modules</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

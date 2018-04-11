@@ -202,6 +202,7 @@ public:
 	static const ppu_static_module cellMusic;
 	static const ppu_static_module cellMusicDecode;
 	static const ppu_static_module cellMusicExport;
+	static const ppu_static_module cellMS;
 	static const ppu_static_module cellNetAoi;
 	static const ppu_static_module cellNetCtl;
 	static const ppu_static_module cellOskDialog;
