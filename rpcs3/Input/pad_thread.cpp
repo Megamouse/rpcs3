@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "pad_thread.h"
 #include "product_info.h"
+#include "basic_mouse_handler.h"
 #include "ds3_pad_handler.h"
 #include "ds4_pad_handler.h"
 #include "dualsense_pad_handler.h"
@@ -331,6 +332,28 @@ void pad_thread::operator()()
 			{
 				handler.second->process();
 				connected_devices += handler.second->connected_devices;
+
+				if (handler.second->m_type == pad_handler::xinput && g_cfg.io.mouse == mouse_handler::sixaxis)
+				{
+					if (MouseHandlerBase* mhandler = g_fxo->try_get<MouseHandlerBase>())
+					{
+						if (MouseDataList& data_list = mhandler->GetDataList(0); !data_list.empty())
+						{
+							const std::vector<Mouse>& mice = mhandler->GetMice();
+							const MouseData& current_data = data_list.front();
+							std::vector<s32> data =
+							{
+								mice.empty() ? static_cast<s32>(current_data.x_axis) : static_cast<s32>(PadHandlerBase::ScaledInput2(mice.front().x_pos, 0, mice.front().x_max, 512)),
+								mice.empty() ? static_cast<s32>(current_data.y_axis) : static_cast<s32>(PadHandlerBase::ScaledInput2(mice.front().y_pos, 0, mice.front().y_max, 399)),
+								static_cast<s32>(current_data.wheel),
+								static_cast<s32>(current_data.buttons)
+							};
+							input_log.error("x_axis=%d, y_axis=%d, wheel=%d, buttons=%d", data[0], data[1], data[2], data[3]);
+							handler.second->set_sixaxis(data);
+							data_list.pop_front();
+						}
+					}
+				}
 			}
 		}
 		else

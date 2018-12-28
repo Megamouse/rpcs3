@@ -11,6 +11,7 @@ void fmt_class_string<mouse_handler>::format(std::string& out, u64 arg)
 		case mouse_handler::null: return "Null";
 		case mouse_handler::basic: return "Basic";
 		case mouse_handler::raw: return "Raw";
+		case mouse_handler::sixaxis: return "Sixaxis";
 		}
 
 		return unknown;

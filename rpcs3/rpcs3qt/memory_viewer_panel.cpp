@@ -416,7 +416,7 @@ memory_viewer_panel::memory_viewer_panel(QWidget* parent, std::shared_ptr<CPUDis
 	setLayout(vbox_panel);
 
 	// Events
-	connect(m_addr_line, &QLineEdit::returnPressed, [this]()
+	connect(m_addr_line, &QLineEdit::returnPressed, this, [this]()
 	{
 		bool ok = false;
 		const QString text = m_addr_line->text();
@@ -425,17 +425,17 @@ memory_viewer_panel::memory_viewer_panel(QWidget* parent, std::shared_ptr<CPUDis
 
 		scroll(0); // Refresh
 	});
-	connect(sb_words, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), [=, this]()
+	connect(sb_words, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this, [=, this]()
 	{
 		m_colcount = 1 << sb_words->value();
 		ShowMemory();
 	});
 
-	connect(b_prev, &QAbstractButton::clicked, [this]() { scroll(-1); });
-	connect(b_next, &QAbstractButton::clicked, [this]() { scroll(1); });
-	connect(b_fprev, &QAbstractButton::clicked, [this]() { scroll(m_rowcount * -1); });
-	connect(b_fnext, &QAbstractButton::clicked, [this]() { scroll(m_rowcount); });
-	connect(b_img, &QAbstractButton::clicked, [=, this]()
+	connect(b_prev, &QAbstractButton::clicked, this, [this]() { scroll(-1); });
+	connect(b_next, &QAbstractButton::clicked, this, [this]() { scroll(1); });
+	connect(b_fprev, &QAbstractButton::clicked, this, [this]() { scroll(m_rowcount * -1); });
+	connect(b_fnext, &QAbstractButton::clicked, this, [this]() { scroll(m_rowcount); });
+	connect(b_img, &QAbstractButton::clicked, this, [=, this]()
 	{
 		const color_format format = cbox_img_mode->currentData().value<color_format>();
 		const int sizex = sb_img_size_x->value();
@@ -572,7 +572,7 @@ memory_viewer_panel::memory_viewer_panel(QWidget* parent, std::shared_ptr<CPUDis
 	const u32 id = idm::last_id();
 	auto handle_ptr = idm::get_unlocked<memory_viewer_handle>(id);
 
-	connect(this, &memory_viewer_panel::finished, [handle_ptr = std::move(handle_ptr), id, this](int)
+	connect(this, &memory_viewer_panel::finished, this, [handle_ptr = std::move(handle_ptr), id, this](int)
 	{
 		if (m_search_thread)
 		{

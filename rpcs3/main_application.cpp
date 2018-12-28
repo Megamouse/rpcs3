@@ -177,6 +177,14 @@ EmuCallbacks main_application::CreateCallbacks()
 			g_fxo->init<MouseHandlerBase, raw_mouse_handler>(Emu.DeserialManager());
 			break;
 		}
+		case mouse_handler::sixaxis:
+		{
+			basic_mouse_handler* ret = g_fxo->init<MouseHandlerBase, basic_mouse_handler>(Emu.DeserialManager());
+			ret->moveToThread(get_thread());
+			ret->SetTargetWindow(m_game_window);
+			ret->Init(1);
+			break;
+		}
 		}
 	};
 

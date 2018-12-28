@@ -38,7 +38,8 @@ enum class mouse_handler
 {
 	null,
 	basic,
-	raw
+	raw,
+	sixaxis,
 };
 
 enum class video_renderer

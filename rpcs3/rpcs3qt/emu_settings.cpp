@@ -1010,6 +1010,7 @@ QString emu_settings::GetLocalizedSetting(const QString& original, emu_settings_
 		case mouse_handler::null: return tr("Null", "Mouse handler");
 		case mouse_handler::basic: return tr("Basic", "Mouse handler");
 		case mouse_handler::raw: return tr("Raw", "Mouse handler");
+		case mouse_handler::sixaxis: return tr("Sixaxis", "Mouse handler");
 		}
 		break;
 	case emu_settings_type::CameraType:

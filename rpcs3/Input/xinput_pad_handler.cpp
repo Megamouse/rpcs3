@@ -517,6 +517,13 @@ void xinput_pad_handler::get_extended_info(const pad_ensemble& binding)
 			pad->m_sensors[3].m_value = sensors.SCP_GYRO;
 		}
 	}
+	else
+	{
+		pad->m_sensors[0].m_value = m_sixaxis[0].m_value;
+		pad->m_sensors[1].m_value = m_sixaxis[1].m_value;
+		pad->m_sensors[2].m_value = m_sixaxis[2].m_value;
+		pad->m_sensors[3].m_value = m_sixaxis[3].m_value;
+	}
 }
 
 void xinput_pad_handler::apply_pad_data(const pad_ensemble& binding)

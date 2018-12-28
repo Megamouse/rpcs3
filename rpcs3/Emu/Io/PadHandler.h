@@ -113,6 +113,7 @@ protected:
 	static constexpr u32 MAX_GAMEPADS = 7;
 
 	std::array<bool, MAX_GAMEPADS> last_connection_status{{ false, false, false, false, false, false, false }};
+	std::vector<AnalogSensor> m_sixaxis;
 
 	std::string m_name_string;
 	usz m_max_devices = 0;
@@ -210,9 +211,11 @@ protected:
 	// Get new scaled value between 0 and 255 based on its minimum and maximum
 	static f32 ScaledInput(f32 raw_value, f32 minimum, f32 maximum, f32 deadzone, f32 range = 255.0f);
 
+public:
 	// Get new scaled value between -255 and 255 based on its minimum and maximum
 	static f32 ScaledAxisInput(f32 raw_value, f32 minimum, f32 maximum, f32 deadzone, f32 range = 255.0f);
 
+protected:
 	// Get normalized trigger value based on the range defined by a threshold
 	u16 NormalizeTriggerInput(u16 value, s32 threshold) const;
 
@@ -261,6 +264,8 @@ public:
 	bool has_player_led() const;
 	bool has_battery() const;
 	bool has_pressure_intensity_button() const;
+
+	void set_sixaxis(const std::vector<s32>& data);
 
 	u16 NormalizeStickInput(u16 raw_value, s32 threshold, s32 multiplier, bool ignore_threshold = false) const;
 	void convert_stick_values(u16& x_out, u16& y_out, const s32& x_in, const s32& y_in, const s32& deadzone, const s32& padsquircling) const;

@@ -11,6 +11,10 @@ extern void pad_state_notify_state_change(usz index, u32 state);
 
 PadHandlerBase::PadHandlerBase(pad_handler type, bool emulation) : m_type(type), m_emulation(emulation)
 {
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_X, 0, false, 0, 512);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_Y, 0, false, 0, 399);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_Z, 0, false, 0, 512);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_G, 0, false, 0, 512);
 }
 
 std::set<u32> PadHandlerBase::narrow_set(const std::set<u64>& src)
@@ -248,6 +252,15 @@ bool PadHandlerBase::has_battery() const
 bool PadHandlerBase::has_pressure_intensity_button() const
 {
 	return b_has_pressure_intensity_button;
+}
+
+void PadHandlerBase::set_sixaxis(const std::vector<s32>& data)
+{
+	// accel
+	m_sixaxis[0].m_value = Clamp0To1023(512 + data[0]);
+	m_sixaxis[1].m_value = Clamp0To1023(399 + data[1]);
+	m_sixaxis[2].m_value = Clamp0To1023(512 + data[2]);
+	m_sixaxis[3].m_value = Clamp0To1023(512 + data[3]);
 }
 
 void PadHandlerBase::init_configs()
