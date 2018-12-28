@@ -171,7 +171,9 @@ void rpcs3_app::InitializeCallbacks()
 	{
 		switch (mouse_handler type = g_cfg.io.mouse)
 		{
-		case mouse_handler::null: return std::make_shared<NullMouseHandler>();
+		case mouse_handler::null:
+		case mouse_handler::sixaxis:
+			return std::make_shared<NullMouseHandler>();
 		case mouse_handler::basic:
 		{
 			basic_mouse_handler* ret = new basic_mouse_handler();

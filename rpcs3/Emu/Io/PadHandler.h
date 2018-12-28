@@ -362,6 +362,7 @@ protected:
 	static const u32 MAX_GAMEPADS = 7;
 
 	std::array<bool, MAX_GAMEPADS> last_connection_status{{ false, false, false, false, false, false, false }};
+	std::vector<AnalogSensor> m_sixaxis;
 
 	std::string m_name_string;
 	int m_max_devices = 0;
@@ -440,6 +441,8 @@ public:
 	bool has_config();
 	bool has_rumble();
 	bool has_deadzones();
+
+	void set_sixaxis(const std::vector<s32>& data);
 
 	static std::string get_config_dir(pad_handler type);
 	static std::string get_config_filename(int i);

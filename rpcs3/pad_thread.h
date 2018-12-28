@@ -6,6 +6,7 @@
 
 #include "../Utilities/types.h"
 #include "Emu/Io/PadHandler.h"
+#include "Emu/Io/MouseHandler.h"
 
 struct PadInfo
 {
@@ -31,6 +32,9 @@ protected:
 
 	// List of all handlers
 	std::map<pad_handler, std::shared_ptr<PadHandlerBase>> handlers;
+
+	// Mouse handler for sixaxis support
+	std::unique_ptr<MouseHandlerBase> sixaxis_mouse_handler;
 
 	// Used for pad_handler::keyboard
 	void *curthread;

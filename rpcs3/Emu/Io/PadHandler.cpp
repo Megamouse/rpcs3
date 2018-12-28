@@ -5,6 +5,10 @@ cfg_input g_cfg_input;
 
 PadHandlerBase::PadHandlerBase(pad_handler type) : m_type(type)
 {
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_X, 512);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_Y, 399);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_Z, 512);
+	m_sixaxis.emplace_back(CELL_PAD_BTN_OFFSET_SENSOR_G, 512);
 }
 
 // Search an unordered map for a string value and return found keycode
@@ -261,6 +265,15 @@ bool PadHandlerBase::has_rumble()
 bool PadHandlerBase::has_deadzones()
 {
 	return b_has_deadzones;
+}
+
+void PadHandlerBase::set_sixaxis(const std::vector<s32>& data)
+{
+	// accel
+	m_sixaxis[0].m_value = Clamp0To1023(512 + data[0]);
+	m_sixaxis[1].m_value = Clamp0To1023(512 + data[1]);
+	m_sixaxis[2].m_value = Clamp0To1023(512 + data[2]);
+	m_sixaxis[3].m_value = Clamp0To1023(512 + data[3]);
 }
 
 std::string PadHandlerBase::get_config_dir(pad_handler type)

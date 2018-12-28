@@ -7,6 +7,7 @@
 #include "evdev_joystick_handler.h"
 #endif
 #include "keyboard_pad_handler.h"
+#include "basic_mouse_handler.h"
 #include "Emu/Io/Null/NullPadHandler.h"
 
 namespace pad
@@ -62,6 +63,7 @@ void pad_thread::Init()
 
 	m_pads.clear();
 	handlers.clear();
+	sixaxis_mouse_handler.release();
 
 	g_cfg_input.load();
 
@@ -70,6 +72,15 @@ void pad_thread::Init()
 	// Always have a Null Pad Handler
 	std::shared_ptr<NullPadHandler> nullpad = std::make_shared<NullPadHandler>();
 	handlers.emplace(pad_handler::null, nullpad);
+
+	if (g_cfg.io.mouse == mouse_handler::sixaxis)
+	{
+		basic_mouse_handler* smh = new basic_mouse_handler();
+		smh->moveToThread((QThread *)curthread);
+		smh->SetTargetWindow((QWindow *)curwindow);
+		sixaxis_mouse_handler.reset(smh);
+		sixaxis_mouse_handler->Init(1);
+	}
 
 	for (u32 i = 0; i < CELL_PAD_MAX_PORT_NUM; i++) // max 7 pads
 	{
@@ -162,11 +173,33 @@ void pad_thread::ThreadFunc()
 			Init();
 		}
 		u32 connected = 0;
+
 		for (auto& cur_pad_handler : handlers)
 		{
+			if (cur_pad_handler.second->m_type == pad_handler::xinput && g_cfg.io.mouse == mouse_handler::sixaxis)
+			{
+				MouseDataList& data_list = sixaxis_mouse_handler->GetDataList(0);
+
+				if (data_list.size() > 0)
+				{
+					const MouseData current_data = data_list.front();
+					const std::vector<s32> data =
+					{
+						(s32)current_data.x_axis,
+						(s32)current_data.y_axis,
+						(s32)current_data.tilt,
+						(s32)current_data.wheel,
+						(s32)current_data.buttons,
+						(s32)current_data.update
+					};
+					cur_pad_handler.second->set_sixaxis(data);
+					data_list.pop_front();
+				}
+			}
 			cur_pad_handler.second->ThreadProc();
 			connected += cur_pad_handler.second->connected;
 		}
+
 		m_info.now_connect = connected;
 		std::this_thread::sleep_for(1ms);
 	}

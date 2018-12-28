@@ -438,6 +438,11 @@ void xinput_pad_handler::ThreadProc()
 				}
 			}
 
+			if (i == 0)
+			{
+				pad->m_sensors = m_sixaxis;
+			}
+
 			break;
 		}
 	}

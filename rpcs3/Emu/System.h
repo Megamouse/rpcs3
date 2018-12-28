@@ -57,6 +57,7 @@ enum class mouse_handler
 {
 	null,
 	basic,
+	sixaxis
 };
 
 enum class pad_handler
