@@ -6,11 +6,8 @@
 #include "Emu/System.h"
 #include "Emu/Cell/Modules/cellScreenshot.h"
 
-#include <QKeyEvent>
-#include <QTimer>
-#include <QThread>
-#include <QLibraryInfo>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <string>
 
 #include "png.h"
@@ -30,12 +27,14 @@
 #endif
 
 LOG_CHANNEL(screenshot);
+LOG_CHANNEL(game_window, "Game Window");
 
 constexpr auto qstr = QString::fromStdString;
 
 gs_frame::gs_frame(const QRect& geometry, const QIcon& appIcon, const std::shared_ptr<gui_settings>& gui_settings)
 	: QWindow(), m_gui_settings(gui_settings)
 {
+	m_container = (gs_container*)QWidget::createWindowContainer(this);
 	m_disable_mouse = gui_settings->GetValue(gui::gs_disableMouse).toBool();
 
 	m_window_title = qstr(Emu.GetFormattedTitle(0));
@@ -51,10 +50,13 @@ gs_frame::gs_frame(const QRect& geometry, const QIcon& appIcon, const std::share
 		setSurfaceType(QSurface::VulkanSurface);
 #endif
 
-	setMinimumWidth(160);
-	setMinimumHeight(90);
-	setGeometry(geometry);
-	setTitle(m_window_title);
+	shortcut_handler* sc_handler = new shortcut_handler(gui::shortcuts::shortcut_handler_id::main_window, m_container, gui_settings);
+	connect(sc_handler, &shortcut_handler::shortcut_activated, this, &gs_frame::handle_shortcut);
+
+	m_container->setMinimumWidth(160);
+	m_container->setMinimumHeight(90);
+	m_container->setGeometry(geometry);
+	m_container->setWindowTitle(m_window_title);
 	setVisibility(Hidden);
 	create();
 
@@ -75,6 +77,10 @@ gs_frame::gs_frame(const QRect& geometry, const QIcon& appIcon, const std::share
 
 gs_frame::~gs_frame()
 {
+	if (m_container)
+	{
+		m_container->deleteLater();
+	}
 #ifdef _WIN32
 	if (m_tb_progress)
 	{
@@ -96,6 +102,11 @@ void gs_frame::paintEvent(QPaintEvent *event)
 
 void gs_frame::showEvent(QShowEvent *event)
 {
+	if (m_container)
+	{
+		m_container->setVisible(true);
+	}
+
 	// we have to calculate new window positions, since the frame is only known once the window was created
 	// the left and right margins are too big on my setup for some reason yet unknown, so we'll have to ignore them
 	int x = geometry().left(); //std::max(geometry().left(), frameMargins().left());
@@ -106,41 +117,54 @@ void gs_frame::showEvent(QShowEvent *event)
 	QWindow::showEvent(event);
 }
 
-void gs_frame::keyPressEvent(QKeyEvent *keyEvent)
+void gs_frame::hideEvent(QHideEvent *event)
 {
-	switch (keyEvent->key())
+	if (m_container)
 	{
-	case Qt::Key_L:
-		if (keyEvent->modifiers() == Qt::AltModifier) { static int count = 0; screenshot.success("Made forced mark %d in log", ++count); }
-		break;
-	case Qt::Key_Return:
-		if (keyEvent->modifiers() == Qt::AltModifier) { toggle_fullscreen(); return; }
-		break;
-	case Qt::Key_Escape:
-		if (visibility() == FullScreen) { toggle_fullscreen(); return; }
-		break;
-	case Qt::Key_P:
-		if (keyEvent->modifiers() == Qt::ControlModifier && Emu.IsRunning()) { Emu.Pause(); return; }
-		break;
-	case Qt::Key_S:
-		if (keyEvent->modifiers() == Qt::ControlModifier && (!Emu.IsStopped())) { Emu.Stop(); return; }
-		break;
-	case Qt::Key_R:
-		if (keyEvent->modifiers() == Qt::ControlModifier && (!Emu.GetBoot().empty())) { Emu.Restart(); return; }
-		break;
-	case Qt::Key_E:
-		if (keyEvent->modifiers() == Qt::ControlModifier)
-		{
-			if (Emu.IsReady()) { Emu.Run(true); return; }
-			else if (Emu.IsPaused()) { Emu.Resume(); return; }
-		}
-		break;
-	case Qt::Key_F12:
+		m_container->setVisible(false);
+	}
+
+	QWindow::hideEvent(event);
+}
+
+void gs_frame::handle_shortcut(gui::shortcuts::shortcut shortcut_key, const QKeySequence& key_sequence)
+{
+	game_window.notice("Registered shortcut: %d %s", static_cast<int>(shortcut_key), key_sequence.toString().toStdString());
+
+	switch (shortcut_key)
+	{
+	case gui::shortcuts::shortcut::shortcut_gw_toggle_fullscreen:
+	{
+		toggle_fullscreen();
+		return;
+	}
+	case gui::shortcuts::shortcut::shortcut_gw_exit_fullscreen:
+	{
+		if (visibility() == FullScreen)
+			toggle_fullscreen();
+		return;
+	}
+	case gui::shortcuts::shortcut::shortcut_gw_log_mark:
+	{
+		handle_log_mark();
+		return;
+	}
+	case gui::shortcuts::shortcut::shortcut_gw_screenshot:
+	{
 		screenshot_toggle = true;
-		break;
+		return;
+	}
 	default:
+	{
 		break;
 	}
+	}
+}
+
+void gs_frame::handle_log_mark()
+{
+	static int count = 0;
+	game_window.success("Made forced mark %d in log", ++count);
 }
 
 void gs_frame::toggle_fullscreen()
@@ -158,10 +182,46 @@ void gs_frame::toggle_fullscreen()
 	});
 }
 
+void gs_frame::try_to_close()
+{
+	if (m_gui_settings->GetValue(gui::ib_confirm_exit).toBool())
+	{
+		if (visibility() == FullScreen)
+		{
+			toggle_fullscreen();
+		}
+
+		int result = QMessageBox::Yes;
+		atomic_t<bool> called = false;
+
+		Emu.CallAfter([this, &result, &called]()
+		{
+			m_gui_settings->ShowConfirmationBox(tr("Exit Game?"),
+				tr("Do you really want to exit the game?\n\nAny unsaved progress will be lost!\n"),
+				gui::ib_confirm_exit, &result, nullptr);
+
+			called = true;
+			called.notify_one();
+		});
+
+		called.wait(false);
+
+		if (result != QMessageBox::Yes)
+		{
+			return;
+		}
+	}
+
+	close();
+}
+
 void gs_frame::close()
 {
 	Emu.Stop();
-	Emu.CallAfter([this]() { deleteLater(); });
+	Emu.CallAfter([this]()
+	{
+		deleteLater();
+	});
 }
 
 bool gs_frame::shown()
@@ -171,7 +231,10 @@ bool gs_frame::shown()
 
 void gs_frame::hide()
 {
-	Emu.CallAfter([this]() {QWindow::hide(); });
+	Emu.CallAfter([this]()
+	{
+		QWindow::hide();
+	});
 }
 
 void gs_frame::show()
@@ -418,34 +481,7 @@ bool gs_frame::event(QEvent* ev)
 {
 	if (ev->type() == QEvent::Close)
 	{
-		if (m_gui_settings->GetValue(gui::ib_confirm_exit).toBool())
-		{
-			if (visibility() == FullScreen)
-			{
-				toggle_fullscreen();
-			}
-
-			int result = QMessageBox::Yes;
-			atomic_t<bool> called = false;
-
-			Emu.CallAfter([this, &result, &called]()
-			{
-				m_gui_settings->ShowConfirmationBox(tr("Exit Game?"),
-					tr("Do you really want to exit the game?\n\nAny unsaved progress will be lost!\n"),
-					gui::ib_confirm_exit, &result, nullptr);
-
-				called = true;
-				called.notify_one();
-			});
-
-			called.wait(false);
-
-			if (result != QMessageBox::Yes)
-			{
-				return true;
-			}
-		}
-		close();
+		try_to_close();
 	}
 	return QWindow::event(ev);
 }

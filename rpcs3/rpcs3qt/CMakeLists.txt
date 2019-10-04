@@ -17,6 +17,7 @@
 	game_list_grid_delegate.cpp
 	gui_application.cpp
 	gl_gs_frame.cpp
+	gs_container.cpp
 	gs_frame.cpp
 	gui_settings.cpp
 	input_dialog.cpp
@@ -42,6 +43,9 @@
 	save_manager_dialog.cpp
 	settings.cpp
 	settings_dialog.cpp
+	shortcut_dialog.cpp
+	shortcut_handler.cpp
+	shortcut_settings.cpp
 	skylander_dialog.cpp
 	syntax_highlighter.cpp
 	tooltips.cpp
@@ -61,6 +65,7 @@ set(UI_FILES
 	main_window.ui
 	pad_settings_dialog.ui
 	settings_dialog.ui
+	shortcut_dialog.ui
 	welcome_dialog.ui
 )
 

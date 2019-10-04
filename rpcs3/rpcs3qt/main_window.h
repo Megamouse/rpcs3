@@ -17,6 +17,7 @@
 #include "gui_settings.h"
 #include "persistent_settings.h"
 #include "update_manager.h"
+#include "shortcut_handler.h"
 
 #include <memory>
 
@@ -102,9 +103,10 @@ private Q_SLOTS:
 	void SetIconSizeActions(int idx);
 	void ResizeIcons(int index);
 
+	void handle_shortcut(gui::shortcuts::shortcut shortcut_key, const QKeySequence& key_sequence);
+
 protected:
 	void closeEvent(QCloseEvent *event) override;
-	void keyPressEvent(QKeyEvent *keyEvent) override;
 	void mouseDoubleClickEvent(QMouseEvent *event) override;
 	void dropEvent(QDropEvent* event) override;
 	void dragEnterEvent(QDragEnterEvent* event) override;

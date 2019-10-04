@@ -1,14 +1,4 @@
-﻿
-#include <QApplication>
-#include <QMenuBar>
-#include <QMessageBox>
-#include <QFileDialog>
-#include <QVBoxLayout>
-#include <QDockWidget>
-#include <QDesktopWidget>
-#include <QMimeData>
-
-#include "qt_utils.h"
+﻿#include "qt_utils.h"
 #include "vfs_dialog.h"
 #include "save_manager_dialog.h"
 #include "trophy_manager_dialog.h"
@@ -31,10 +21,9 @@
 #include "skylander_dialog.h"
 #include "cheat_manager.h"
 #include "pkg_install_dialog.h"
+#include "shortcut_dialog.h"
 
 #include <thread>
-
-#include <QScreen>
 
 #include "stdafx.h"
 #include "Emu/System.h"
@@ -55,6 +44,16 @@
 #include "Utilities/sysinfo.h"
 
 #include "ui_main_window.h"
+
+#include <QApplication>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QVBoxLayout>
+#include <QDockWidget>
+#include <QDesktopWidget>
+#include <QMimeData>
+#include <QScreen>
 
 LOG_CHANNEL(gui_log, "GUI");
 
@@ -134,6 +133,9 @@ void main_window::Init()
 		}
 	}
 
+	shortcut_handler* sc_handler = new shortcut_handler(gui::shortcuts::shortcut_handler_id::main_window, this, guiSettings);
+	connect(sc_handler, &shortcut_handler::shortcut_activated, this, &main_window::handle_shortcut);
+
 	show(); // needs to be done before creating the thumbnail toolbar
 
 	// enable play options if a recent game exists
@@ -142,7 +144,7 @@ void main_window::Init()
 	if (enable_play_last)
 	{
 		ui->sysPauseAct->setEnabled(true);
-		ui->sysPauseAct->setText(tr("&Start last played game\tCtrl+E"));
+		ui->sysPauseAct->setText(tr("&Start last played game"));
 		ui->sysPauseAct->setIcon(m_icon_play);
 		ui->toolbar_start->setToolTip(tr("Start last played game"));
 		ui->toolbar_start->setEnabled(true);
@@ -214,6 +216,30 @@ void main_window::ResizeIcons(int index)
 	}
 
 	m_gameListFrame->ResizeIcons(index);
+}
+
+void main_window::handle_shortcut(gui::shortcuts::shortcut shortcut_key, const QKeySequence& key_sequence)
+{
+	gui_log.notice("Main window registered shortcut: %d %s", static_cast<int>(shortcut_key), key_sequence.toString().toStdString());
+
+	switch (shortcut_key)
+	{
+	case gui::shortcuts::shortcut::shortcut_mw_toggle_fullscreen:
+	{
+		ui->toolbar_fullscreen->trigger();
+		return;
+	}
+	case gui::shortcuts::shortcut::shortcut_mw_exit_fullscreen:
+	{
+		if (isFullScreen())
+			ui->toolbar_fullscreen->trigger();
+		return;
+	}
+	default:
+	{
+		break;
+	}
+	}
 }
 
 void main_window::OnPlayOrPause()
@@ -859,7 +885,7 @@ void main_window::OnEmuRun(bool /*start_playtime*/)
 	m_thumb_playPause->setToolTip(tr("Pause emulation"));
 	m_thumb_playPause->setIcon(m_icon_thumb_pause);
 #endif
-	ui->sysPauseAct->setText(tr("&Pause\tCtrl+P"));
+	ui->sysPauseAct->setText(tr("&Pause"));
 	ui->sysPauseAct->setIcon(m_icon_pause);
 	ui->toolbar_start->setIcon(m_icon_pause);
 	ui->toolbar_start->setText(tr("Pause"));
@@ -873,7 +899,7 @@ void main_window::OnEmuResume()
 	m_thumb_playPause->setToolTip(tr("Pause emulation"));
 	m_thumb_playPause->setIcon(m_icon_thumb_pause);
 #endif
-	ui->sysPauseAct->setText(tr("&Pause\tCtrl+P"));
+	ui->sysPauseAct->setText(tr("&Pause"));
 	ui->sysPauseAct->setIcon(m_icon_pause);
 	ui->toolbar_start->setIcon(m_icon_pause);
 	ui->toolbar_start->setText(tr("Pause"));
@@ -886,7 +912,7 @@ void main_window::OnEmuPause()
 	m_thumb_playPause->setToolTip(tr("Resume emulation"));
 	m_thumb_playPause->setIcon(m_icon_thumb_play);
 #endif
-	ui->sysPauseAct->setText(tr("&Resume\tCtrl+E"));
+	ui->sysPauseAct->setText(tr("&Resume"));
 	ui->sysPauseAct->setIcon(m_icon_play);
 	ui->toolbar_start->setIcon(m_icon_play);
 	ui->toolbar_start->setText(tr("Play"));
@@ -904,7 +930,7 @@ void main_window::OnEmuStop()
 	m_debuggerFrame->EnableButtons(false);
 	m_debuggerFrame->ClearBreakpoints();
 
-	ui->sysPauseAct->setText(Emu.IsReady() ? tr("&Start\tCtrl+E") : tr("&Resume\tCtrl+E"));
+	ui->sysPauseAct->setText(Emu.IsReady() ? tr("&Start") : tr("&Resume"));
 	ui->sysPauseAct->setIcon(m_icon_play);
 #ifdef _WIN32
 	m_thumb_playPause->setToolTip(Emu.IsReady() ? tr("Start emulation") : tr("Resume emulation"));
@@ -944,7 +970,7 @@ void main_window::OnEmuReady()
 	m_thumb_playPause->setToolTip(Emu.IsReady() ? tr("Start emulation") : tr("Resume emulation"));
 	m_thumb_playPause->setIcon(m_icon_thumb_play);
 #endif
-	ui->sysPauseAct->setText(Emu.IsReady() ? tr("&Start\tCtrl+E") : tr("&Resume\tCtrl+E"));
+	ui->sysPauseAct->setText(Emu.IsReady() ? tr("&Start") : tr("&Resume"));
 	ui->sysPauseAct->setIcon(m_icon_play);
 	ui->toolbar_start->setIcon(m_icon_play);
 	ui->toolbar_start->setText(tr("Play"));
@@ -1342,6 +1368,12 @@ void main_window::CreateConnects()
 	connect(ui->confAudioAct,  &QAction::triggered, [=, this]() { openSettings(2); });
 	connect(ui->confIOAct,     &QAction::triggered, [=, this]() { openSettings(3); });
 	connect(ui->confSystemAct, &QAction::triggered, [=, this]() { openSettings(4); });
+
+	connect(ui->confShortcutsAct, &QAction::triggered, [this]()
+	{
+		shortcut_dialog dlg(guiSettings, this);
+		dlg.exec();
+	});
 
 	auto openPadSettings = [this]
 	{
@@ -1802,25 +1834,6 @@ void main_window::RemoveDiskCache()
 	else
 	{
 		QMessageBox::warning(this, tr("Error"), tr("Could not remove disk cache"));
-	}
-}
-
-void main_window::keyPressEvent(QKeyEvent *keyEvent)
-{
-	if (((keyEvent->modifiers() & Qt::AltModifier) && keyEvent->key() == Qt::Key_Return) || (isFullScreen() && keyEvent->key() == Qt::Key_Escape))
-	{
-		ui->toolbar_fullscreen->trigger();
-	}
-
-	if (keyEvent->modifiers() & Qt::ControlModifier)
-	{
-		switch (keyEvent->key())
-		{
-		case Qt::Key_E: if (Emu.IsPaused()) Emu.Resume(); else if (Emu.IsReady()) Emu.Run(true); return;
-		case Qt::Key_P: if (Emu.IsRunning()) Emu.Pause(); return;
-		case Qt::Key_S: if (!Emu.IsStopped()) Emu.Stop(); return;
-		case Qt::Key_R: if (!Emu.GetBoot().empty()) Emu.Restart(); return;
-		}
 	}
 }
 

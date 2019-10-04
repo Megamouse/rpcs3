@@ -3,7 +3,9 @@
 #include "stdafx.h"
 #include "Emu/RSX/GSRender.h"
 
+#include "gs_container.h"
 #include "gui_settings.h"
+#include "shortcut_handler.h"
 
 #include <QWidget>
 #include <QWindow>
@@ -34,6 +36,7 @@ private:
 #endif
 
 	std::shared_ptr<gui_settings> m_gui_settings;
+	gs_container* m_container;
 
 	u64 m_frames = 0;
 	QString m_window_title;
@@ -42,6 +45,8 @@ private:
 public:
 	gs_frame(const QRect& geometry, const QIcon& appIcon, const std::shared_ptr<gui_settings>& gui_settings);
 	~gs_frame();
+
+	void try_to_close();
 
 	draw_context_t make_context() override;
 	void set_current(draw_context_t context) override;
@@ -58,8 +63,7 @@ public:
 protected:
 	virtual void paintEvent(QPaintEvent *event);
 	virtual void showEvent(QShowEvent *event) override;
-
-	void keyPressEvent(QKeyEvent *keyEvent) override;
+	virtual void hideEvent(QHideEvent *event) override;
 
 	void close() override;
 
@@ -78,4 +82,6 @@ protected:
 
 private Q_SLOTS:
 	void HandleCursor(QWindow::Visibility visibility);
+	void handle_log_mark();
+	void handle_shortcut(gui::shortcuts::shortcut shortcut_key, const QKeySequence& key_sequence);
 };

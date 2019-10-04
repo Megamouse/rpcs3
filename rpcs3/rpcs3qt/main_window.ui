@@ -215,6 +215,8 @@
     <addaction name="confIOAct"/>
     <addaction name="confSystemAct"/>
     <addaction name="separator"/>
+    <addaction name="confShortcutsAct"/>
+    <addaction name="separator"/>
     <addaction name="confAutopauseManagerAct"/>
    </widget>
    <widget class="QMenu" name="menuManage">
@@ -1031,6 +1033,11 @@
    </property>
    <property name="text">
     <string>English</string>
+   </property>
+  </action>
+  <action name="confShortcutsAct">
+   <property name="text">
+    <string>Shortcuts</string>
    </property>
   </action>
  </widget>
