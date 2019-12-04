@@ -1800,6 +1800,12 @@ namespace rsx
 
 		on_init_rsx();
 		m_rsx_thread_exiting = false;
+		m_is_init = true;
+	}
+
+	bool thread::is_init()
+	{
+		return m_is_init;
 	}
 
 	GcmTileInfo *thread::find_tile(u32 offset, u32 location)

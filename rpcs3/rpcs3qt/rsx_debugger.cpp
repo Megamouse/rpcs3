@@ -816,7 +816,7 @@ QString rsx_debugger::DisAsmCommand(u32 cmd, u32 count, u32 ioAddr)
 {
 	std::string disasm;
 
-#define DISASM(string, ...) { if(disasm.empty()) disasm = fmt::format((string), ##__VA_ARGS__); else disasm += (' ' + fmt::format((string), ##__VA_ARGS__)); }
+#define DISASM(string, ...) { if (disasm.empty()) disasm = fmt::format((string), ##__VA_ARGS__); else disasm += (' ' + fmt::format((string), ##__VA_ARGS__)); }
 
 	if (cmd & RSX_METHOD_NON_METHOD_CMD_MASK)
 	{
@@ -857,7 +857,7 @@ QString rsx_debugger::DisAsmCommand(u32 cmd, u32 count, u32 ioAddr)
 		{
 		case 0x3fead:
 			DISASM("Flip and change current buffer: %d", args[0]);
-		break;
+			break;
 
 		case_16(NV4097_SET_TEXTURE_OFFSET, 0x20):
 			DISASM("Texture Offset[%d]: %07x", index, args[0]);
@@ -872,28 +872,28 @@ QString rsx_debugger::DisAsmCommand(u32 cmd, u32 count, u32 ioAddr)
 				((args[1] >> 4) & 0xf),
 				((args[1] >> 8) & 0xff),
 				((args[1] >> 16) & 0xffff));
-		break;
+			break;
 
 		case NV4097_SET_DEPTH_BOUNDS_TEST_ENABLE:
 			DISASM("Depth bounds test: %s", args[0] ? "Enable" : "Disable");
-		break;
+			break;
 		default:
 		{
-			std::string str = rsx::get_pretty_printing_function((cmd & 0x3ffff) >> 2)(args[0]);
+			const std::string str = rsx::get_pretty_printing_function((cmd & 0x3ffff) >> 2)(args[0]);
 			DISASM("%s", str.c_str());
 		}
 		}
 
-		if((cmd & RSX_METHOD_NON_INCREMENT_CMD_MASK) == RSX_METHOD_NON_INCREMENT_CMD && count > 1)
+		if ((cmd & RSX_METHOD_NON_INCREMENT_CMD_MASK) == RSX_METHOD_NON_INCREMENT_CMD && count > 1)
 		{
 			DISASM("Non Increment cmd");
 		}
 
 		DISASM("(");
 
-		for(uint i=0; i<count; ++i)
+		for (uint i = 0; i < count; ++i)
 		{
-			if(i != 0) disasm += ", ";
+			if (i != 0) disasm += ", ";
 			disasm += fmt::format("0x%x", args[i]);
 		}
 

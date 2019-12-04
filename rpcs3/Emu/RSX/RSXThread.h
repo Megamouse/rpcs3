@@ -584,6 +584,8 @@ namespace rsx
 
 	class thread
 	{
+		bool m_is_init = false;
+
 		u64 timestamp_ctrl = 0;
 		u64 timestamp_subvalue = 0;
 
@@ -934,6 +936,7 @@ namespace rsx
 	public:
 		void reset();
 		void init(u32 ctrlAddress);
+		bool is_init();
 
 		tiled_region get_tiled_address(u32 offset, u32 location);
 		GcmTileInfo *find_tile(u32 offset, u32 location);

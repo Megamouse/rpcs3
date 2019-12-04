@@ -21,6 +21,7 @@
 #include "Emu/IdManager.h"
 #include "Emu/RSX/GSRender.h"
 #include "Emu/RSX/Capture/rsx_replay.h"
+#include "Emu/RSX/Overlays/overlay_message_dialog.h"
 
 #include "Loader/PSF.h"
 #include "Loader/ELF.h"
@@ -248,9 +249,28 @@ namespace
 				}
 
 				// Initialize message dialog
-				std::shared_ptr<MsgDialogBase> dlg = Emu.GetCallbacks().get_msg_dialog();
-				if (dlg)
+				std::shared_ptr<MsgDialogBase> dlg;
+				std::shared_ptr<rsx::overlays::message_dialog> native_dlg;
+
+				if (const auto renderer = static_cast<GSRender*>(rsx::get_current_renderer());
+					renderer && renderer->is_init())
 				{
+					if (auto manager = g_fxo->get<rsx::overlays::display_manager>())
+					{
+						MsgDialogType type{};
+						type.se_normal = true;
+						type.bg_invisible = true;
+						type.disable_cancel = true;
+						type.progress_bar_count = 1;
+
+						native_dlg = manager->create<rsx::overlays::message_dialog>(!!g_cfg.video.shader_preloading_dialog.use_custom_background);
+						native_dlg->show(false, +g_progr, type, nullptr);
+					}
+				}
+
+				if (!native_dlg)
+				{
+					dlg = Emu.GetCallbacks().get_msg_dialog();
 					dlg->type.se_normal = true;
 					dlg->type.bg_invisible = true;
 					dlg->type.progress_bar_count = 1;
@@ -305,7 +325,12 @@ namespace
 							if (ptotal)
 								fmt::append(progr, " module %u of %u", pdone, ptotal);
 
-							if (dlg)
+							if (native_dlg)
+							{
+								native_dlg->progress_bar_set_message(0, progr);
+								native_dlg->progress_bar_increment(0, static_cast<f32>(delta));
+							}
+							else if (dlg)
 							{
 								dlg->SetMsg(+g_progr);
 								dlg->ProgressBarSetMsg(0, progr);
@@ -334,13 +359,17 @@ namespace
 				g_progr_ptotal -= pdone;
 				g_progr_pdone  -= pdone;
 
-				if (dlg)
+				Emu.CallAfter([=]()
 				{
-					Emu.CallAfter([=]()
+					if (native_dlg)
+					{
+						native_dlg->close(false, false);
+					}
+					else if (dlg)
 					{
 						dlg->Close(true);
-					});
-				}
+					}
+				});
 			}
 		}
 
