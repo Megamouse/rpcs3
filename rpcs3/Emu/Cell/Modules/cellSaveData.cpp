@@ -723,6 +723,11 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 		return CELL_SAVEDATA_ERROR_BUSY;
 	}
 
+	// show indicator for manual save or load interactions (funcStat result->progressBarInc)
+	const bool show_progress_bar = operation > SAVEDATA_OP_LIST_AUTO_LOAD && operation <= SAVEDATA_OP_FIXED_LOAD;
+
+	// TODO: check fixedSet->option and ask for user permission if needed
+
 	// Simulate idle time while data is being sent to VSH
 	const auto lv2_sleep = [](ppu_thread& ppu, usz sleep_time)
 	{
@@ -1280,6 +1285,8 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 				continue;
 			}
 
+			// TODO: List Save, List Load here, or is it handled in funcFixed ?
+
 			break;
 		}
 
@@ -1602,6 +1609,12 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 		funcStat(ppu, result, statGet, statSet);
 		ppu.state += cpu_flag::wait;
 
+		if (show_progress_bar)
+		{
+			// TODO: add and process Manual Save and Manual Load Indicators (result->progressBarInc)
+			cellSaveData.fatal("savedata_op: result->progressBarInc %d.", result->progressBarInc);
+		}
+
 		if (const s32 res = result->result; res != CELL_SAVEDATA_CBRESULT_OK_NEXT)
 		{
 			cellSaveData.warning("savedata_op(): funcStat returned result=%d.", res);
@@ -1766,6 +1779,17 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 	fileGet->excSize = 0;
 
+	// show indicator for automatic save or auto load interactions (statSet->indicator)
+	const bool show_auto_indicator = operation <= SAVEDATA_OP_LIST_AUTO_LOAD && statSet && statSet->indicator;
+
+	if (show_auto_indicator)
+	{
+		// TODO: show auto indicator
+
+		cellSaveData.fatal("savedata_op: statSet->indicator: dispPosition=%d, dispMode=%d, dispMsg='%s', picBufSize=%d, picBuf=*0x%x",
+			statSet->indicator->dispPosition, statSet->indicator->dispMode, statSet->indicator->dispMsg, statSet->indicator->picBufSize, statSet->indicator->picBuf);
+	}
+
 	error_code savedata_result = CELL_OK;
 
 	u64 delay_save_until = 0;
@@ -1793,6 +1817,11 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 			if (res == CELL_SAVEDATA_CBRESULT_OK_LAST)
 			{
+				if (show_auto_indicator)
+				{
+					// TODO: hide auto indicator
+				}
+
 				// Display success message. The result is ignored.
 				const std::string msg = "Everything went better than expected!"; // TODO: proper message
 				[[maybe_unused]] error_code res = open_msg_dialog(true, CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL | CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK, vm::make_str(msg));
@@ -1816,7 +1845,10 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 			break;
 		}
 
-		// TODO: Show progress if it's not an auto load/save
+		if (show_auto_indicator)
+		{
+			// TODO: Show progress on auto indicator
+		}
 
 		std::string file_path;
 
@@ -2122,6 +2154,11 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 		// Remove backup again (TODO: may be changed to persistent backup implementation)
 		fs::remove_all(old_path);
+	}
+
+	if (show_auto_indicator)
+	{
+		// TODO: hide auto indicator
 	}
 
 	if (savedata_result + 0u == CELL_SAVEDATA_ERROR_CBRESULT)
