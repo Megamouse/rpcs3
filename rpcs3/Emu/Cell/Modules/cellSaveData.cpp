@@ -906,8 +906,16 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 				// if the callback has returned ok, lets return OK.
 				// typically used at game launch when no list is actually required.
 				// CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM is only valid for funcFile and funcDone
-				if (result->result == CELL_SAVEDATA_CBRESULT_OK_LAST || result->result == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
+				if (result->result == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
 				{
+					return CELL_OK;
+				}
+
+				if (result->result == CELL_SAVEDATA_CBRESULT_OK_LAST)
+				{
+					// Display success message. The result is ignored.
+					std::string msg = "Everything went better than expected!"; // TODO: proper message
+					[[maybe_unused]] error_code res = open_msg_dialog(true, CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL | CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK, vm::make_str(msg));
 					return CELL_OK;
 				}
 
@@ -1249,8 +1257,16 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 				{
 					cellSaveData.warning("savedata_op(): funcDone returned result=%d.", res);
 
-					if (res == CELL_SAVEDATA_CBRESULT_OK_LAST || res == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
+					if (res == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
 					{
+						return CELL_OK;
+					}
+
+					if (res == CELL_SAVEDATA_CBRESULT_OK_LAST)
+					{
+						// Display success message. The result is ignored.
+						const std::string msg = "Everything went better than expected!"; // TODO: proper message
+						[[maybe_unused]] error_code res = open_msg_dialog(true, CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL | CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK, vm::make_str(msg));
 						return CELL_OK;
 					}
 
@@ -1767,9 +1783,19 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 		if (const s32 res = result->result; res != CELL_SAVEDATA_CBRESULT_OK_NEXT)
 		{
-			if (res == CELL_SAVEDATA_CBRESULT_OK_LAST || res == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
+			if (res == CELL_SAVEDATA_CBRESULT_OK_LAST_NOCONFIRM)
 			{
-				// TODO: display user prompt
+				// Some games (Jak II [NPUA80707]) rely on this delay
+				lv2_obj::sleep(ppu);
+				delay_save_until = get_guest_system_time() + (has_modified ? 500'000 : 100'000);
+				break;
+			}
+
+			if (res == CELL_SAVEDATA_CBRESULT_OK_LAST)
+			{
+				// Display success message. The result is ignored.
+				const std::string msg = "Everything went better than expected!"; // TODO: proper message
+				[[maybe_unused]] error_code res = open_msg_dialog(true, CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL | CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK, vm::make_str(msg));
 
 				// Some games (Jak II [NPUA80707]) rely on this delay
 				lv2_obj::sleep(ppu);
