@@ -390,7 +390,7 @@ std::unordered_map<u64, u16> ds4_pad_handler::get_button_values(const std::share
 	return keyBuffer;
 }
 
-pad_preview_values ds4_pad_handler::get_preview_values(std::unordered_map<u64, u16> data)
+pad_preview_values ds4_pad_handler::get_preview_values(std::unordered_map<u64, u16> data, const std::vector<std::string>& /*buttons*/)
 {
 	return { data[L2], data[R2], data[LSXPos] - data[LSXNeg], data[LSYPos] - data[LSYNeg], data[RSXPos] - data[RSXNeg], data[RSYPos] - data[RSYNeg] };
 }
@@ -782,17 +782,17 @@ std::shared_ptr<PadDevice> ds4_pad_handler::get_device(const std::string& device
 	return ds4device;
 }
 
-bool ds4_pad_handler::get_is_left_trigger(u64 keyCode)
+bool ds4_pad_handler::get_is_left_trigger(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	return keyCode == DS4KeyCodes::L2;
 }
 
-bool ds4_pad_handler::get_is_right_trigger(u64 keyCode)
+bool ds4_pad_handler::get_is_right_trigger(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	return keyCode == DS4KeyCodes::R2;
 }
 
-bool ds4_pad_handler::get_is_left_stick(u64 keyCode)
+bool ds4_pad_handler::get_is_left_stick(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	switch (keyCode)
 	{
@@ -806,7 +806,7 @@ bool ds4_pad_handler::get_is_left_stick(u64 keyCode)
 	}
 }
 
-bool ds4_pad_handler::get_is_right_stick(u64 keyCode)
+bool ds4_pad_handler::get_is_right_stick(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	switch (keyCode)
 	{

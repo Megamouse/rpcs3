@@ -22,6 +22,7 @@
 #include "Input/ds3_pad_handler.h"
 #include "Input/ds4_pad_handler.h"
 #ifdef _WIN32
+#include "Input/direct_input_pad_handler.h"
 #include "Input/xinput_pad_handler.h"
 #include "Input/mm_joystick_handler.h"
 #endif
@@ -982,6 +983,9 @@ std::shared_ptr<PadHandlerBase> pad_settings_dialog::GetHandler(pad_handler type
 		ret_handler = std::make_unique<ds4_pad_handler>();
 		break;
 #ifdef _WIN32
+	case pad_handler::direct_input:
+		ret_handler = std::make_unique<direct_input_pad_handler>();
+		break;
 	case pad_handler::xinput:
 		ret_handler = std::make_unique<xinput_pad_handler>();
 		break;
@@ -1229,6 +1233,9 @@ void pad_settings_dialog::ChangeProfile()
 		static_cast<ds4_pad_handler*>(m_handler.get())->init_config(&m_handler_cfg, cfg_name);
 		break;
 #ifdef _WIN32
+	case pad_handler::direct_input:
+		((direct_input_pad_handler*)m_handler.get())->init_config(&m_handler_cfg, cfg_name);
+		break;
 	case pad_handler::xinput:
 		static_cast<xinput_pad_handler*>(m_handler.get())->init_config(&m_handler_cfg, cfg_name);
 		break;

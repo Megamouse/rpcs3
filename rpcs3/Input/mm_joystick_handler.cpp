@@ -357,19 +357,19 @@ std::unordered_map<u64, u16> mm_joystick_handler::GetButtonValues(const JOYINFOE
 					}
 				};
 
-				float rad = static_cast<float>(js_info.dwPOV / 100 * acos(-1) / 180);
+				const float rad = static_cast<float>(js_info.dwPOV / 100 * acos(-1) / 180);
 				emplacePOVs(cosf(rad) * 255.0f, JOY_POVBACKWARD, JOY_POVFORWARD);
 				emplacePOVs(sinf(rad) * 255.0f, JOY_POVLEFT, JOY_POVRIGHT);
 			}
 		}
 		else if (js_caps.wCaps & JOYCAPS_POV4DIR)
 		{
-			int val = static_cast<int>(js_info.dwPOV);
+			const int val = static_cast<int>(js_info.dwPOV);
 
 			auto emplacePOV = [&button_values, &val](int pov)
 			{
-				int cw = pov + 4500, ccw = pov - 4500;
-				bool pressed = (val == pov) || (val == cw) || (ccw < 0 ? val == 36000 - std::abs(ccw) : val == ccw);
+				const int cw = pov + 4500, ccw = pov - 4500;
+				const bool pressed = (val == pov) || (val == cw) || (ccw < 0 ? val == 36000 - std::abs(ccw) : val == ccw);
 				button_values.emplace(pov, pressed ? 255 : 0);
 			};
 
@@ -382,7 +382,7 @@ std::unordered_map<u64, u16> mm_joystick_handler::GetButtonValues(const JOYINFOE
 
 	auto add_axis_value = [&](DWORD axis, UINT min, UINT max, u64 pos, u64 neg)
 	{
-		float val = ScaledInput2(axis, min, max);
+		const float val = ScaledInput2(axis, min, max);
 		if (val < 0)
 		{
 			button_values.emplace(pos, 0);
@@ -472,24 +472,28 @@ std::shared_ptr<PadDevice> mm_joystick_handler::get_device(const std::string& de
 	return joy_device;
 }
 
-bool mm_joystick_handler::get_is_left_trigger(u64 keyCode)
+bool mm_joystick_handler::get_is_left_trigger(const std::shared_ptr<PadDevice>& device, u64 keyCode)
 {
-	return m_dev && m_dev->trigger_left == keyCode;
+	const auto dev = std::static_pointer_cast<MMJOYDevice>(device);
+	return dev && dev->trigger_left == keyCode;
 }
 
-bool mm_joystick_handler::get_is_right_trigger(u64 keyCode)
+bool mm_joystick_handler::get_is_right_trigger(const std::shared_ptr<PadDevice>& device, u64 keyCode)
 {
-	return m_dev && m_dev->trigger_right == keyCode;
+	const auto dev = std::static_pointer_cast<MMJOYDevice>(device);
+	return dev && dev->trigger_right == keyCode;
 }
 
-bool mm_joystick_handler::get_is_left_stick(u64 keyCode)
+bool mm_joystick_handler::get_is_left_stick(const std::shared_ptr<PadDevice>& device, u64 keyCode)
 {
-	return m_dev && std::find(m_dev->axis_left.begin(), m_dev->axis_left.end(), keyCode) != m_dev->axis_left.end();
+	const auto dev = std::static_pointer_cast<MMJOYDevice>(device);
+	return dev && std::find(dev->axis_left.begin(), dev->axis_left.end(), keyCode) != dev->axis_left.end();
 }
 
-bool mm_joystick_handler::get_is_right_stick(u64 keyCode)
+bool mm_joystick_handler::get_is_right_stick(const std::shared_ptr<PadDevice>& device, u64 keyCode)
 {
-	return m_dev && std::find(m_dev->axis_right.begin(), m_dev->axis_right.end(), keyCode) != m_dev->axis_right.end();
+	const auto dev = std::static_pointer_cast<MMJOYDevice>(device);
+	return dev && std::find(dev->axis_right.begin(), dev->axis_right.end(), keyCode) != dev->axis_right.end();
 }
 
 PadHandlerBase::connection mm_joystick_handler::update_connection(const std::shared_ptr<PadDevice>& device)

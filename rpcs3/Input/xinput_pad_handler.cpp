@@ -55,7 +55,7 @@ xinput_pad_handler::xinput_pad_handler() : PadHandlerBase(pad_handler::xinput)
 	vibration_min = 0;
 	vibration_max = 65535;
 
-	// set capabilities
+	// Set capabilities
 	b_has_config = true;
 	b_has_rumble = true;
 	b_has_deadzones = true;
@@ -144,11 +144,11 @@ int xinput_pad_handler::GetDeviceNumber(const std::string& padId)
 	if (!Init())
 		return -1;
 
-	size_t pos = padId.find(m_name_string);
+	const size_t pos = padId.find(m_name_string);
 	if (pos == umax)
 		return -1;
 
-	int device_number = std::stoul(padId.substr(pos + 12)) - 1; // Controllers 1-n in GUI
+	const int device_number = std::stoul(padId.substr(pos + 12)) - 1; // Controllers 1-n in GUI
 	if (device_number >= XUSER_MAX_COUNT)
 		return -1;
 
@@ -286,7 +286,7 @@ xinput_pad_handler::PadButtonValues xinput_pad_handler::get_button_values_scp(co
 	return values;
 }
 
-pad_preview_values xinput_pad_handler::get_preview_values(std::unordered_map<u64, u16> data)
+pad_preview_values xinput_pad_handler::get_preview_values(std::unordered_map<u64, u16> data, const std::vector<std::string>& /*buttons*/)
 {
 	return { data[LT], data[RT], data[LSXPos] - data[LSXNeg], data[LSYPos] - data[LSYNeg], data[RSXPos] - data[RSXNeg], data[RSYPos] - data[RSYNeg] };
 }
@@ -373,17 +373,17 @@ std::shared_ptr<PadDevice> xinput_pad_handler::get_device(const std::string& dev
 	return x_device;
 }
 
-bool xinput_pad_handler::get_is_left_trigger(u64 keyCode)
+bool xinput_pad_handler::get_is_left_trigger(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	return keyCode == XInputKeyCodes::LT;
 }
 
-bool xinput_pad_handler::get_is_right_trigger(u64 keyCode)
+bool xinput_pad_handler::get_is_right_trigger(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	return keyCode == XInputKeyCodes::RT;
 }
 
-bool xinput_pad_handler::get_is_left_stick(u64 keyCode)
+bool xinput_pad_handler::get_is_left_stick(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	switch (keyCode)
 	{
@@ -397,7 +397,7 @@ bool xinput_pad_handler::get_is_left_stick(u64 keyCode)
 	}
 }
 
-bool xinput_pad_handler::get_is_right_stick(u64 keyCode)
+bool xinput_pad_handler::get_is_right_stick(const std::shared_ptr<PadDevice>& /*device*/, u64 keyCode)
 {
 	switch (keyCode)
 	{
@@ -462,11 +462,11 @@ void xinput_pad_handler::apply_pad_data(const std::shared_ptr<PadDevice>& device
 
 	// The left motor is the low-frequency rumble motor. The right motor is the high-frequency rumble motor.
 	// The two motors are not the same, and they create different vibration effects. Values range between 0 to 65535.
-	size_t idx_l = profile->switch_vibration_motors ? 1 : 0;
-	size_t idx_s = profile->switch_vibration_motors ? 0 : 1;
+	const size_t idx_l = profile->switch_vibration_motors ? 1 : 0;
+	const size_t idx_s = profile->switch_vibration_motors ? 0 : 1;
 
-	u16 speed_large = profile->enable_vibration_motor_large ? pad->m_vibrateMotors[idx_l].m_value : static_cast<u16>(vibration_min);
-	u16 speed_small = profile->enable_vibration_motor_small ? pad->m_vibrateMotors[idx_s].m_value : static_cast<u16>(vibration_min);
+	const u16 speed_large = profile->enable_vibration_motor_large ? pad->m_vibrateMotors[idx_l].m_value : static_cast<u16>(vibration_min);
+	const u16 speed_small = profile->enable_vibration_motor_small ? pad->m_vibrateMotors[idx_s].m_value : static_cast<u16>(vibration_min);
 
 	dev->newVibrateData |= dev->largeVibrate != speed_large || dev->smallVibrate != speed_small;
 

@@ -4,6 +4,7 @@
 #include "ds3_pad_handler.h"
 #include "ds4_pad_handler.h"
 #ifdef _WIN32
+#include "direct_input_pad_handler.h"
 #include "xinput_pad_handler.h"
 #include "mm_joystick_handler.h"
 #elif HAVE_LIBEVDEV
@@ -121,6 +122,9 @@ void pad_thread::Init()
 				cur_pad_handler = std::make_shared<ds4_pad_handler>();
 				break;
 #ifdef _WIN32
+			case pad_handler::direct_input:
+				cur_pad_handler = std::make_shared<direct_input_pad_handler>();
+				break;
 			case pad_handler::xinput:
 				cur_pad_handler = std::make_shared<xinput_pad_handler>();
 				break;
@@ -216,6 +220,20 @@ void pad_thread::ThreadFunc()
 		}
 
 		m_info.now_connect = connected_devices + num_ldd_pad;
+
+		for (const auto& pad : m_pads)
+		{
+			if (pad->m_port_status & CELL_PAD_STATUS_CONNECTED)
+			{
+				for (const auto& button : pad->m_buttons)
+				{
+					if (button.m_pressed && button.m_outKeyCode == 0x100) // IDK if that one exists
+					{
+						input_log.error("0x100");
+					}
+				}
+			}
+		}
 
 		// The following section is only reached when a dialog was closed and the pads are still intercepted.
 		// As long as any of the listed buttons is pressed, cellPadGetData will ignore all input (needed for Hotline Miami).

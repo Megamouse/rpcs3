@@ -9,6 +9,7 @@ enum class pad_handler
 	ds3,
 	ds4,
 #ifdef _WIN32
+	direct_input,
 	xinput,
 	mm,
 #endif

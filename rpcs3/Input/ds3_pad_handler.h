@@ -71,7 +71,7 @@ class ds3_pad_handler final : public PadHandlerBase
 
 	struct ds3_device : public PadDevice
 	{
-		std::string device = {};
+		std::string device;
 		hid_device *handle = nullptr;
 		u8 buf[64]{ 0 };
 		u8 large_motor = 0;
@@ -113,13 +113,13 @@ private:
 	bool is_init = false;
 
 	std::shared_ptr<PadDevice> get_device(const std::string& device) override;
-	bool get_is_left_trigger(u64 keyCode) override;
-	bool get_is_right_trigger(u64 keyCode) override;
-	bool get_is_left_stick(u64 keyCode) override;
-	bool get_is_right_stick(u64 keyCode) override;
+	bool get_is_left_trigger(const std::shared_ptr<PadDevice>& device, u64 keyCode) override;
+	bool get_is_right_trigger(const std::shared_ptr<PadDevice>& device, u64 keyCode) override;
+	bool get_is_left_stick(const std::shared_ptr<PadDevice>& device, u64 keyCode) override;
+	bool get_is_right_stick(const std::shared_ptr<PadDevice>& device, u64 keyCode) override;
 	PadHandlerBase::connection update_connection(const std::shared_ptr<PadDevice>& device) override;
 	void get_extended_info(const std::shared_ptr<PadDevice>& device, const std::shared_ptr<Pad>& pad) override;
 	void apply_pad_data(const std::shared_ptr<PadDevice>& device, const std::shared_ptr<Pad>& pad) override;
 	std::unordered_map<u64, u16> get_button_values(const std::shared_ptr<PadDevice>& device) override;
-	pad_preview_values get_preview_values(std::unordered_map<u64, u16> data) override;
+	pad_preview_values get_preview_values(std::unordered_map<u64, u16> data, const std::vector<std::string>& buttons) override;
 };
