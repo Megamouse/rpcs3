@@ -52,6 +52,7 @@ protected:
 
 	PadInfo m_info{ 0, 0, false };
 	std::array<std::shared_ptr<Pad>, CELL_PAD_MAX_PORT_NUM> m_pads;
+	std::array<u32, CELL_PAD_MAX_PORT_NUM> m_battery_levels{100};
 
 	u32 num_ldd_pad = 0;
 

@@ -530,6 +530,16 @@ void gui_application::InitializeCallbacks()
 	callbacks.get_recvmessage_dialog = [this]() -> std::shared_ptr<RecvMessageDialogBase> { return std::make_shared<recvmessage_dialog_frame>(); };
 	callbacks.get_trophy_notification_dialog = [this]() -> std::unique_ptr<TrophyNotificationBase> { return std::make_unique<trophy_notification_helper>(m_game_window); };
 
+	callbacks.show_battery_indicator = [](int pad_id, int percentage, bool show) -> s32
+	{
+		if (auto manager = g_fxo->try_get<rsx::overlays::display_manager>())
+		{
+			auto popup = std::make_shared<rsx::overlays::battery_indicator>();
+			return manager->add(popup, false)->show(pad_id, percentage, show);
+		}
+		return CELL_OK;
+	};
+
 	callbacks.on_run    = [this](bool start_playtime) { OnEmulatorRun(start_playtime); };
 	callbacks.on_pause  = [this]() { OnEmulatorPause(); };
 	callbacks.on_resume = [this]() { OnEmulatorResume(true); };

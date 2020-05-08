@@ -494,6 +494,7 @@ bool PadHandlerBase::bindPadToDevice(std::shared_ptr<Pad> pad, u8 player_id)
 		config->vendor_id,
 		config->product_id,
 		config->pressure_intensity
+		device
 	);
 
 	pad->m_buttons.emplace_back(special_button_offset, mapping[button::pressure_intensity_button], special_button_value::pressure_intensity);

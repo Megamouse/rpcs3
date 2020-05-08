@@ -945,6 +945,7 @@ bool keyboard_pad_handler::bindPadToDevice(std::shared_ptr<Pad> pad, u8 player_i
 		cfg->vendor_id,
 		cfg->product_id,
 		cfg->pressure_intensity
+		std::string(pad::keyboard_device_name)
 	);
 
 	pad->m_buttons.emplace_back(special_button_offset, find_keys(cfg->pressure_intensity_button), special_button_value::pressure_intensity);

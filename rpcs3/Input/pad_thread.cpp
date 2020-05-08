@@ -343,6 +343,8 @@ void pad_thread::operator()()
 
 		m_info.now_connect = connected_devices + num_ldd_pad;
 
+		std::array<u32, CELL_PAD_MAX_PORT_NUM> battery_levels{100};
+
 		// The ignore_input section is only reached when a dialog was closed and the pads are still intercepted.
 		// As long as any of the listed buttons is pressed, cellPadGetData will ignore all input (needed for Hotline Miami).
 		// ignore_input was added because if we keep the pads intercepted, then some games will enter the menu due to unexpected system interception (tested with Ninja Gaiden Sigma).
@@ -369,6 +371,12 @@ void pad_thread::operator()()
 					{
 						any_button_pressed = true;
 						break;
+					}
+
+					// TODO: timer, simplify
+					if (const auto& handler = handlers[pad->m_pad_handler]; handler && handler->has_battery())
+					{
+						battery_levels[i] = handler->get_battery_level(pad->m_pad_id);
 					}
 				}
 			}
@@ -512,6 +520,13 @@ void pad_thread::operator()()
 			m_track_start_press_begin_timestamp = 0;
 		}
 
+		if (m_battery_levels != battery_levels)
+		{
+			// Update battery indicator
+		}
+
+		m_battery_levels = battery_levels;
+
 		thread_ctrl::wait_for(pad_sleep);
 	}
 
@@ -537,7 +552,8 @@ void pad_thread::InitLddPad(u32 handle, const u32* port_status)
 		product.pclass_profile,
 		product.vendor_id,
 		product.product_id,
-		50
+		50,
+		"LDD"
 	);
 
 	input_log.notice("Pad %d: LDD, VID=0x%x, PID=0x%x, class_type=0x%x, class_profile=0x%x",

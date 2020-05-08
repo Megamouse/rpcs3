@@ -474,6 +474,7 @@ target_sources(rpcs3_emu PRIVATE
     RSX/Overlays/Network/overlay_sendmessage_dialog.cpp
     RSX/Overlays/overlay_animated_icon.cpp
     RSX/Overlays/overlay_animation.cpp
+    RSX/Overlays/overlay_battery_indicator.cpp
     RSX/Overlays/overlay_controls.cpp
     RSX/Overlays/overlay_cursor.cpp
     RSX/Overlays/overlay_debug_overlay.cpp

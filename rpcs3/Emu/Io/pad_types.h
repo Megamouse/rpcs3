@@ -435,6 +435,7 @@ struct VibrateMotor
 struct Pad
 {
 	const pad_handler m_pad_handler;
+	std::string m_pad_id;
 
 	bool m_buffer_cleared{true};
 	u32 m_port_status{0};
@@ -506,8 +507,9 @@ struct Pad
 	{
 	}
 
-	void Init(u32 port_status, u32 device_capability, u32 device_type, u32 class_type, u32 class_profile, u16 vendor_id, u16 product_id, u8 pressure_intensity_percent)
+	void Init(u32 port_status, u32 device_capability, u32 device_type, u32 class_type, u32 class_profile, u16 vendor_id, u16 product_id, u8 pressure_intensity_percent, const std::string& pad_id)
 	{
+		m_pad_id = pad_id;
 		m_port_status = port_status;
 		m_device_capability = device_capability;
 		m_device_type = device_type;
