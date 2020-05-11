@@ -155,6 +155,14 @@ void gs_frame::keyPressEvent(QKeyEvent *keyEvent)
 			else if (Emu.IsPaused()) { Emu.Resume(); return; }
 		}
 		break;
+	case Qt::Key_0:
+		if (keyEvent->modifiers() == Qt::ControlModifier)
+		{
+			g_disable_frame_limit = !g_disable_frame_limit;
+			screenshot.warning("changed g_disable_frame_limit to %d", g_disable_frame_limit.load());
+			return;
+		}
+		break;
 	case Qt::Key_F12:
 		screenshot_toggle = true;
 		break;

@@ -28,6 +28,7 @@
 extern u64 get_guest_system_time();
 extern u64 get_system_time();
 
+extern std::atomic<bool> g_disable_frame_limit;
 extern std::atomic<bool> g_user_asked_for_frame_capture;
 extern rsx::frame_trace_data frame_debug;
 extern rsx::frame_capture_data frame_capture;
