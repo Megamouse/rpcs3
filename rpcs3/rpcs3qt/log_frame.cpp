@@ -28,6 +28,7 @@ constexpr auto qstr = QString::fromStdString;
 
 struct gui_listener : logs::listener
 {
+	atomic_t<bool> is_registered = false;
 	atomic_t<logs::level> enabled{logs::level{UINT_MAX}};
 
 	struct packet_t
@@ -43,12 +44,21 @@ struct gui_listener : logs::listener
 	gui_listener()
 		: logs::listener()
 	{
-		// Self-registration
-		logs::listener::add(this);
 	}
 
 	~gui_listener()
 	{
+	}
+
+	void register_listener()
+	{
+		// Self-registration
+		logs::listener::add(this);
+	}
+
+	bool get_is_registered() const
+	{
+		return is_registered;
 	}
 
 	void log(u64 stamp, const logs::message& msg, const std::string& prefix, const std::string& text)
@@ -107,6 +117,11 @@ static gui_listener s_gui_listener;
 log_frame::log_frame(std::shared_ptr<gui_settings> guiSettings, QWidget *parent)
 	: custom_dock_widget(tr("Log"), parent), m_gui_settings(std::move(guiSettings))
 {
+	if (!s_gui_listener.get_is_registered())
+	{
+		s_gui_listener.register_listener();
+	}
+
 	const int max_block_count_log = m_gui_settings->GetValue(gui::l_limit).toInt();
 	const int max_block_count_tty = m_gui_settings->GetValue(gui::l_limit_tty).toInt();
 
