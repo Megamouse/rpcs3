@@ -31,7 +31,7 @@ private:
 	std::shared_ptr<gui_settings> m_gui_settings;
 
 	u64 m_frames = 0;
-	QString m_window_title;
+	std::string m_window_title;
 	bool m_disable_mouse = false;
 	bool m_disable_kb_hotkeys = false;
 	bool m_show_mouse_in_fullscreen = false;

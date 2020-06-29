@@ -46,7 +46,7 @@ gs_frame::gs_frame(const QRect& geometry, const QIcon& appIcon, const std::share
 	m_disable_kb_hotkeys = gui_settings->GetValue(gui::gs_disableKbHotkeys).toBool();
 	m_show_mouse_in_fullscreen = gui_settings->GetValue(gui::gs_showMouseFs).toBool();
 
-	m_window_title = qstr(Emu.GetFormattedTitle(0));
+	m_window_title = Emu.GetFormattedTitle(0);
 
 	if (!appIcon.isNull())
 	{
@@ -62,7 +62,7 @@ gs_frame::gs_frame(const QRect& geometry, const QIcon& appIcon, const std::share
 	setMinimumWidth(160);
 	setMinimumHeight(90);
 	setGeometry(geometry);
-	setTitle(m_window_title);
+	setTitle(qstr(m_window_title));
 	setVisibility(Hidden);
 	create();
 
@@ -314,7 +314,7 @@ void gs_frame::flip(draw_context_t, bool /*skip_frame*/)
 
 	if (fps_t.GetElapsedTimeInSec() >= 0.5)
 	{
-		const QString new_title = qstr(Emu.GetFormattedTitle(m_frames / fps_t.GetElapsedTimeInSec()));
+		const std::string new_title = Emu.GetFormattedTitle(m_frames / fps_t.GetElapsedTimeInSec());
 
 		if (new_title != m_window_title)
 		{
@@ -322,7 +322,7 @@ void gs_frame::flip(draw_context_t, bool /*skip_frame*/)
 
 			Emu.CallAfter([this, title = std::move(new_title)]()
 			{
-				setTitle(title);
+				setTitle(qstr(title));
 			});
 		}
 
