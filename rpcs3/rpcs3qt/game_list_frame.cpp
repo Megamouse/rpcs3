@@ -69,6 +69,9 @@ game_list_frame::game_list_frame(std::shared_ptr<gui_settings> gui_settings, std
 	m_game_dock->setWindowFlags(Qt::Widget);
 	setWidget(m_game_dock);
 
+	m_future_watcher = new QFutureWatcher<void>(this);
+	connect(m_future_watcher, &QFutureWatcher<void>::finished, this, [this]() { RepaintIcons(); });
+
 	m_game_grid = new game_list_grid(QSize(), m_icon_color, m_margin_factor, m_text_factor, false);
 
 	m_game_list = new game_list();
@@ -232,6 +235,12 @@ void game_list_frame::LoadSettings()
 game_list_frame::~game_list_frame()
 {
 	SaveSettings();
+
+	if (m_future_watcher->isRunning())
+	{
+		m_future_watcher->cancel();
+		m_future_watcher->waitForFinished();
+	}
 }
 
 void game_list_frame::FixNarrowColumns()
@@ -401,6 +410,12 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 {
 	if (from_drive)
 	{
+		if (m_future_watcher->isRunning())
+		{
+			m_future_watcher->cancel();
+			m_future_watcher->waitForFinished();
+		}
+
 		const Localized localized;
 
 		// Load PSF
@@ -539,6 +554,12 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 
 		lf_queue<game_info> games;
 
+		QPixmap empty_icon(gui::gl_icon_size_max);
+		empty_icon.fill(Qt::transparent);
+
+		QPixmap empty_pixmap(m_icon_size);
+		empty_pixmap.fill(Qt::transparent);
+
 		QtConcurrent::blockingMap(path_list, [&](const std::string& dir)
 		{
 			const Localized thread_localized;
@@ -632,23 +653,12 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 
 				mutex_cat.unlock();
 
-				// Load ICON0.PNG
-				QPixmap icon;
-
-				if (game.icon_path.empty() || !icon.load(qstr(game.icon_path)))
-				{
-					game_list_log.warning("Could not load image from path %s", sstr(QDir(qstr(game.icon_path)).absolutePath()));
-				}
-
 				const auto compat = m_game_compat->GetCompatibility(game.serial);
 
 				const bool hasCustomConfig = fs::is_file(Emulator::GetCustomConfigPath(game.serial)) || fs::is_file(Emulator::GetCustomConfigPath(game.serial, true));
 				const bool hasCustomPadConfig = fs::is_file(Emulator::GetCustomInputConfigPath(game.serial));
 
-				const QColor color = getGridCompatibilityColor(compat.color);
-				const QPixmap pxmap = PaintedPixmap(icon, hasCustomConfig, hasCustomPadConfig, color);
-
-				games.push(std::make_shared<gui_game_info>(gui_game_info{game, qt_cat, compat, icon, pxmap, hasCustomConfig, hasCustomPadConfig}));
+				games.push(std::make_shared<gui_game_info>(gui_game_info{game, qt_cat, compat, empty_icon, empty_pixmap, hasCustomConfig, hasCustomPadConfig}));
 			}
 		});
 
@@ -749,6 +759,22 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 		m_central_widget->addWidget(m_game_grid);
 		m_central_widget->setCurrentWidget(m_game_grid);
 		m_game_grid->verticalScrollBar()->setValue(scroll_position);
+	}
+
+	if (from_drive)
+	{
+		QFuture<void> future = QtConcurrent::map(m_game_data, [this](const game_info& game)
+		{
+			if (game)
+			{
+				// Load ICON0.PNG
+				if (game->info.icon_path.empty() || !game->icon.load(qstr(game->info.icon_path)))
+				{
+					game_list_log.warning("Could not load image from path %s", sstr(QDir(qstr(game->info.icon_path)).absolutePath()));
+				}
+			}
+		});
+		m_future_watcher->setFuture(future);
 	}
 }
 
@@ -1895,7 +1921,9 @@ void game_list_frame::PopulateGameList()
 		index++;
 
 		if (!IsEntryVisible(game))
+		{
 			continue;
+		}
 
 		const QString serial = qstr(game->info.serial);
 		const QString title = m_titles.value(serial, qstr(game->info.name));

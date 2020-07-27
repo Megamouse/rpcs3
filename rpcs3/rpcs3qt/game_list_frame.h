@@ -6,6 +6,7 @@
 #include "game_compatibility.h"
 #include "gui_save.h"
 
+#include <QFutureWatcher>
 #include <QMainWindow>
 #include <QToolBar>
 #include <QStackedWidget>
@@ -136,6 +137,7 @@ private:
 
 	// Game List
 	game_list* m_game_list = nullptr;
+	QFutureWatcher<void>* m_future_watcher = nullptr;
 	game_compatibility* m_game_compat = nullptr;
 	QList<QAction*> m_columnActs;
 	Qt::SortOrder m_col_sort_order;
