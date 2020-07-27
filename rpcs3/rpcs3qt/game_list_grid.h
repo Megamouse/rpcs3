@@ -20,7 +20,8 @@ public:
 
 	void enableText(const bool& enabled);
 	void setIconSize(const QSize& size);
-	void addItem(const QPixmap& img, const QString& name, const int& row, const int& col);
+	void setItemDecoration(QTableWidgetItem* item, const QImage& img);
+	void addItem(const QImage& img, const QString& name, const int& row, const int& col);
 
 	qreal getMarginFactor();
 

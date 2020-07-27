@@ -26,11 +26,12 @@ struct gui_game_info
 {
 	GameInfo info;
 	QString localized_category;
-	compat_status compat;
-	QPixmap icon;
-	QPixmap pxmap;
-	bool hasCustomConfig;
-	bool hasCustomPadConfig;
+	compat_status compat{};
+	QImage icon;
+	QImage image;
+	QTableWidgetItem* item = nullptr;
+	bool hasCustomConfig = false;
+	bool hasCustomPadConfig = false;
 };
 
 typedef std::shared_ptr<gui_game_info> game_info;
@@ -67,6 +68,10 @@ public:
 
 	/** Repaint Gamelist Icons with new background color */
 	void RepaintIcons(const bool& from_settings = false);
+	
+	static QColor getGridCompatibilityColor(const QString& string);
+	static QImage PaintedPixmap(const QImage& icon, bool paint_config_icon = false, bool paint_pad_config_icon = false, const QColor& color = QColor());
+	static game_info load_game_icon(const game_info& game);
 
 	void SetShowHidden(bool show);
 
@@ -85,6 +90,7 @@ public Q_SLOTS:
 	void SetListMode(const bool& is_list);
 	void SetSearchText(const QString& text);
 	void SetShowCompatibilityInGrid(bool show);
+	void SetGameIcon(const game_info& game);
 
 private Q_SLOTS:
 	void OnColClicked(int col);
@@ -103,8 +109,6 @@ protected:
 	void resizeEvent(QResizeEvent *event) override;
 	bool eventFilter(QObject *object, QEvent *event) override;
 private:
-	QPixmap PaintedPixmap(const QPixmap& icon, bool paint_config_icon = false, bool paint_pad_config_icon = false, const QColor& color = QColor());
-	QColor getGridCompatibilityColor(const QString& string);
 	void ShowCustomConfigIcon(game_info game);
 	void PopulateGameList();
 	void PopulateGameGrid(int maxCols, const QSize& image_size, const QColor& image_color);
@@ -137,7 +141,8 @@ private:
 
 	// Game List
 	game_list* m_game_list = nullptr;
-	QFutureWatcher<void>* m_future_watcher = nullptr;
+	QFutureWatcher<game_info>* m_future_watcher = nullptr;
+	QFutureWatcher<game_info>* m_future_watcher_scaling = nullptr;
 	game_compatibility* m_game_compat = nullptr;
 	QList<QAction*> m_columnActs;
 	Qt::SortOrder m_col_sort_order;
@@ -149,7 +154,7 @@ private:
 	QStringList m_category_filters;
 
 	// List Mode
-	bool m_is_list_layout = true;
+	static bool m_is_list_layout;
 	bool m_old_layout_is_list = true;
 
 	// Data
@@ -167,9 +172,10 @@ private:
 	int m_icon_size_index = 0;
 
 	// Icons
-	QColor m_icon_color;
-	QSize m_icon_size;
+	static bool m_draw_compat_status_to_grid;
+	static qreal m_device_pixel_ratio;
+	static QColor m_icon_color;
+	static QSize m_icon_size;
 	qreal m_margin_factor;
 	qreal m_text_factor;
-	bool m_draw_compat_status_to_grid = false;
 };

@@ -56,8 +56,13 @@ void game_list_grid::setIconSize(const QSize& size)
 	}
 }
 
-void game_list_grid::addItem(const QPixmap& img, const QString& name, const int& row, const int& col)
+void game_list_grid::setItemDecoration(QTableWidgetItem* item, const QImage& img)
 {
+	if (!item)
+	{
+		return;
+	}
+
 	const qreal device_pixel_ratio = devicePixelRatioF();
 
 	// define size of expanded image, which is raw image size + margins
@@ -88,12 +93,17 @@ void game_list_grid::addItem(const QPixmap& img, const QString& name, const int&
 	QPainter painter(&exp_img);
 	painter.setRenderHint(QPainter::SmoothPixmapTransform);
 	painter.drawImage(offset, bg_img);
-	painter.drawPixmap(offset, img);
+	painter.drawImage(offset, img);
 	painter.end();
 
-	// create item with expanded image, title and position
-	QTableWidgetItem* item = new QTableWidgetItem();
 	item->setData(Qt::ItemDataRole::DecorationRole, QPixmap::fromImage(exp_img));
+}
+
+void game_list_grid::addItem(const QImage& img, const QString& name, const int& row, const int& col)
+{
+	// Create item with expanded image, title and position
+	QTableWidgetItem* item = new QTableWidgetItem();
+	setItemDecoration(item, img);
 
 	if (m_text_enabled)
 	{

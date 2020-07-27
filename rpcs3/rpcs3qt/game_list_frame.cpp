@@ -43,6 +43,12 @@ LOG_CHANNEL(sys_log, "SYS");
 
 inline std::string sstr(const QString& _in) { return _in.toStdString(); }
 
+qreal game_list_frame::m_device_pixel_ratio = 1.0;
+QSize game_list_frame::m_icon_size = QSize();
+QColor game_list_frame::m_icon_color = QColor();
+bool game_list_frame::m_is_list_layout = true;
+bool game_list_frame::m_draw_compat_status_to_grid = false;
+
 game_list_frame::game_list_frame(std::shared_ptr<gui_settings> gui_settings, std::shared_ptr<emu_settings> emu_settings, std::shared_ptr<persistent_settings> persistent_settings, QWidget* parent)
 	: custom_dock_widget(tr("Game List"), parent)
 	, m_gui_settings(gui_settings)
@@ -59,6 +65,7 @@ game_list_frame::game_list_frame(std::shared_ptr<gui_settings> gui_settings, std
 	m_hidden_list     = gui::utils::list_to_set(m_gui_settings->GetValue(gui::gl_hidden_list).toStringList());
 
 	m_old_layout_is_list = m_is_list_layout;
+	m_device_pixel_ratio = devicePixelRatioF();
 
 	// Save factors for first setup
 	m_gui_settings->SetValue(gui::gl_iconColor, m_icon_color);
@@ -69,8 +76,17 @@ game_list_frame::game_list_frame(std::shared_ptr<gui_settings> gui_settings, std
 	m_game_dock->setWindowFlags(Qt::Widget);
 	setWidget(m_game_dock);
 
-	m_future_watcher = new QFutureWatcher<void>(this);
-	connect(m_future_watcher, &QFutureWatcher<void>::finished, this, [this]() { RepaintIcons(); });
+	m_future_watcher = new QFutureWatcher<game_info>(this);
+	connect(m_future_watcher, &QFutureWatcher<game_info>::resultReadyAt, this, [this](int resultIndex)
+	{
+		SetGameIcon(m_future_watcher->resultAt(resultIndex));
+	});
+
+	m_future_watcher_scaling = new QFutureWatcher<game_info>(this);
+	connect(m_future_watcher_scaling, &QFutureWatcher<game_info>::resultReadyAt, this, [this](int resultIndex)
+	{
+		SetGameIcon(m_future_watcher_scaling->resultAt(resultIndex));
+	});
 
 	m_game_grid = new game_list_grid(QSize(), m_icon_color, m_margin_factor, m_text_factor, false);
 
@@ -241,6 +257,12 @@ game_list_frame::~game_list_frame()
 		m_future_watcher->cancel();
 		m_future_watcher->waitForFinished();
 	}
+
+	if (m_future_watcher_scaling->isRunning())
+	{
+		m_future_watcher_scaling->cancel();
+		m_future_watcher_scaling->waitForFinished();
+	}
 }
 
 void game_list_frame::FixNarrowColumns()
@@ -406,6 +428,28 @@ std::string game_list_frame::GetDataDirBySerial(const std::string& serial)
 	return fs::get_config_dir() + "data/" + serial;
 }
 
+game_info game_list_frame::load_game_icon(const game_info& game)
+{
+	// Item is only set if the game is visible
+	if (game && game->item)
+	{
+		if (game->image.isNull())
+		{
+			// Load ICON0.PNG
+			if (game->info.icon_path.empty() || !game->icon.load(qstr(game->info.icon_path)))
+			{
+				game_list_log.warning("Could not load image from path %s", sstr(QDir(qstr(game->info.icon_path)).absolutePath()));
+			}
+		}
+
+		const QColor color = getGridCompatibilityColor(game->compat.color);
+		game->image = game_list_frame::PaintedPixmap(game->icon, game->hasCustomConfig, game->hasCustomPadConfig, color);
+		QApplication::processEvents();
+	}
+
+	return game;
+}
+
 void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 {
 	if (from_drive)
@@ -414,6 +458,12 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 		{
 			m_future_watcher->cancel();
 			m_future_watcher->waitForFinished();
+		}
+
+		if (m_future_watcher_scaling->isRunning())
+		{
+			m_future_watcher_scaling->cancel();
+			m_future_watcher_scaling->waitForFinished();
 		}
 
 		const Localized localized;
@@ -554,11 +604,10 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 
 		lf_queue<game_info> games;
 
-		QPixmap empty_icon(gui::gl_icon_size_max);
+		QImage empty_icon(gui::gl_icon_size_max, QImage::Format::Format_ARGB32);
 		empty_icon.fill(Qt::transparent);
 
-		QPixmap empty_pixmap(m_icon_size);
-		empty_pixmap.fill(Qt::transparent);
+		QImage empty_image;
 
 		QtConcurrent::blockingMap(path_list, [&](const std::string& dir)
 		{
@@ -658,7 +707,7 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 				const bool hasCustomConfig = fs::is_file(Emulator::GetCustomConfigPath(game.serial)) || fs::is_file(Emulator::GetCustomConfigPath(game.serial, true));
 				const bool hasCustomPadConfig = fs::is_file(Emulator::GetCustomInputConfigPath(game.serial));
 
-				games.push(std::make_shared<gui_game_info>(gui_game_info{game, qt_cat, compat, empty_icon, empty_pixmap, hasCustomConfig, hasCustomPadConfig}));
+				games.push(std::make_shared<gui_game_info>(gui_game_info{game, qt_cat, compat, empty_icon, empty_image, nullptr, hasCustomConfig, hasCustomPadConfig}));
 			}
 		});
 
@@ -763,18 +812,11 @@ void game_list_frame::Refresh(const bool from_drive, const bool scroll_after)
 
 	if (from_drive)
 	{
-		QFuture<void> future = QtConcurrent::map(m_game_data, [this](const game_info& game)
+		if (m_game_data.size() > 0)
 		{
-			if (game)
-			{
-				// Load ICON0.PNG
-				if (game->info.icon_path.empty() || !game->icon.load(qstr(game->info.icon_path)))
-				{
-					game_list_log.warning("Could not load image from path %s", sstr(QDir(qstr(game->info.icon_path)).absolutePath()));
-				}
-			}
-		});
-		m_future_watcher->setFuture(future);
+			QFuture<game_info> future = QtConcurrent::mapped(m_game_data, load_game_icon);
+			m_future_watcher->setFuture(future);
+		}
 	}
 }
 
@@ -1661,12 +1703,12 @@ void game_list_frame::BatchRemoveShaderCaches()
 	QApplication::beep();
 }
 
-QPixmap game_list_frame::PaintedPixmap(const QPixmap& icon, bool paint_config_icon, bool paint_pad_config_icon, const QColor& compatibility_color)
+QImage game_list_frame::PaintedPixmap(const QImage& icon, bool paint_config_icon, bool paint_pad_config_icon, const QColor& compatibility_color)
 {
-	const qreal device_pixel_ratio = devicePixelRatioF();
+	const qreal device_pixel_ratio = m_device_pixel_ratio;
 	const QSize original_size = icon.size();
 
-	QPixmap canvas = QPixmap(original_size * device_pixel_ratio);
+	QImage canvas(original_size * device_pixel_ratio, icon.format());
 	canvas.setDevicePixelRatio(device_pixel_ratio);
 	canvas.fill(m_icon_color);
 
@@ -1675,7 +1717,7 @@ QPixmap game_list_frame::PaintedPixmap(const QPixmap& icon, bool paint_config_ic
 
 	if (!icon.isNull())
 	{
-		painter.drawPixmap(QPoint(0, 0), icon);
+		painter.drawImage(QPoint(0, 0), icon);
 	}
 
 	if (!m_is_list_layout && (paint_config_icon || paint_pad_config_icon))
@@ -1697,9 +1739,9 @@ QPixmap game_list_frame::PaintedPixmap(const QPixmap& icon, bool paint_config_ic
 			icon_path = ":/Icons/controllers_2.png";
 		}
 
-		QPixmap custom_config_icon(icon_path);
+		QImage custom_config_icon(icon_path);
 		custom_config_icon.setDevicePixelRatio(device_pixel_ratio);
-		painter.drawPixmap(origin, custom_config_icon.scaled(QSize(width, width) * device_pixel_ratio, Qt::KeepAspectRatio, Qt::TransformationMode::SmoothTransformation));
+		painter.drawImage(origin, custom_config_icon.scaled(QSize(width, width) * device_pixel_ratio, Qt::KeepAspectRatio, Qt::TransformationMode::SmoothTransformation));
 	}
 
 	if (compatibility_color.isValid())
@@ -1763,13 +1805,50 @@ void game_list_frame::RepaintIcons(const bool& from_settings)
 		}
 	}
 
-	QtConcurrent::blockingMap(m_game_data, [this](const game_info& game)
+	if (m_future_watcher->isRunning())
 	{
-		const QColor color = getGridCompatibilityColor(game->compat.color);
-		game->pxmap = PaintedPixmap(game->icon, game->hasCustomConfig, game->hasCustomPadConfig, color);
-	});
+		m_future_watcher->waitForFinished();
+	}
 
-	Refresh();
+	if (m_future_watcher_scaling->isRunning())
+	{
+		m_future_watcher_scaling->cancel();
+		m_future_watcher_scaling->waitForFinished();
+	}
+
+	int visible_count = 0;
+
+	for (const auto& game : m_game_data)
+	{
+		if (game->item)
+		{
+			visible_count++;
+		}
+	}
+
+	const int thread_count = QThread::idealThreadCount();
+
+	if (visible_count / thread_count > 5)
+	{
+		// Clear images
+		for (const auto& game : m_game_data)
+		{
+			game->image = {};
+		}
+
+		// Refresh once before we start async image scaling
+		Refresh();
+
+		QFuture<game_info> future = QtConcurrent::mapped(m_game_data, load_game_icon);
+		m_future_watcher_scaling->setFuture(future);
+	}
+	else
+	{
+		QtConcurrent::blockingMapped(m_game_data, load_game_icon);
+
+		// Refresh after blocking image scaling
+		Refresh();
+	}
 }
 
 void game_list_frame::SetShowHidden(bool show)
@@ -1915,15 +1994,18 @@ void game_list_frame::PopulateGameList()
 	const QLocale locale{};
 	const Localized localized;
 
+	QImage empty_image(m_icon_size, QImage::Format::Format_ARGB32);
+	empty_image.fill(m_icon_color);
+
 	int row = 0, index = -1;
 	for (const auto& game : m_game_data)
 	{
 		index++;
 
+		game->item = nullptr;
+
 		if (!IsEntryVisible(game))
-		{
 			continue;
-		}
 
 		const QString serial = qstr(game->info.serial);
 		const QString title = m_titles.value(serial, qstr(game->info.name));
@@ -1931,9 +2013,10 @@ void game_list_frame::PopulateGameList()
 
 		// Icon
 		custom_table_widget_item* icon_item = new custom_table_widget_item;
-		icon_item->setData(Qt::DecorationRole, game->pxmap);
+		icon_item->setData(Qt::DecorationRole, game->image.isNull() ? empty_image : game->image);
 		icon_item->setData(Qt::UserRole, index, true);
 		icon_item->setData(gui::game_role, QVariant::fromValue(game));
+		game->item = icon_item;
 
 		// Title
 		custom_table_widget_item* title_item = new custom_table_widget_item(title);
@@ -2055,6 +2138,8 @@ void game_list_frame::PopulateGameGrid(int maxCols, const QSize& image_size, con
 
 	for (const auto& app : m_game_data)
 	{
+		app->item = nullptr;
+
 		if (IsEntryVisible(app))
 		{
 			matching_apps.push_back(app);
@@ -2082,16 +2167,20 @@ void game_list_frame::PopulateGameGrid(int maxCols, const QSize& image_size, con
 		const QString title = m_titles.value(serial, qstr(app->info.name));
 		const QString notes = m_notes.value(serial);
 
-		m_game_grid->addItem(app->pxmap, title, r, c);
-		m_game_grid->item(r, c)->setData(gui::game_role, QVariant::fromValue(app));
+		m_game_grid->addItem(app->image, title, r, c);
+
+		auto item = m_game_grid->item(r, c);
+		app->item = item;
+
+		item->setData(gui::game_role, QVariant::fromValue(app));
 
 		if (!notes.isEmpty())
 		{
-			m_game_grid->item(r, c)->setToolTip(tr("%0 [%1]\n\nNotes:\n%2").arg(title).arg(serial).arg(notes));
+			item->setToolTip(tr("%0 [%1]\n\nNotes:\n%2").arg(title).arg(serial).arg(notes));
 		}
 		else
 		{
-			m_game_grid->item(r, c)->setToolTip(tr("%0 [%1]").arg(title).arg(serial));
+			item->setToolTip(tr("%0 [%1]").arg(title).arg(serial));
 		}
 
 		if (selected_item == app->info.icon_path)
@@ -2250,6 +2339,23 @@ void game_list_frame::SetShowCompatibilityInGrid(bool show)
 	m_draw_compat_status_to_grid = show;
 	RepaintIcons();
 	m_gui_settings->SetValue(gui::gl_draw_compat, show);
+}
+
+void game_list_frame::SetGameIcon(const game_info& game)
+{
+	if (!game || !game->item)
+	{
+		return;
+	}
+
+	if (m_is_list_layout)
+	{
+		game->item->setData(Qt::DecorationRole, game->image);
+	}
+	else
+	{
+		m_game_grid->setItemDecoration(game->item, game->image);
+	}
 }
 
 QList<game_info> game_list_frame::GetGameInfo() const
