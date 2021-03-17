@@ -49,6 +49,11 @@ void fmt_class_string<CellSaveDataError>::format(std::string& out, u64 arg)
 	});
 }
 
+struct save_data_info
+{
+	bool enable_overlay = false;
+};
+
 SaveDialogBase::~SaveDialogBase()
 {
 }
@@ -185,7 +190,7 @@ static error_code select_and_delete(ppu_thread& ppu)
 		// Display a blocking Save Data List asynchronously in the GUI thread.
 		if (auto save_dialog = Emu.GetCallbacks().get_save_dialog())
 		{
-			selected = save_dialog->ShowSaveDataList(save_entries, focused, SAVEDATA_OP_LIST_DELETE, vm::null);
+			selected = save_dialog->ShowSaveDataList(save_entries, focused, SAVEDATA_OP_LIST_DELETE, vm::null, g_fxo->get<save_data_info>().enable_overlay);
 		}
 
 		// Reschedule after a blocking dialog returns
@@ -998,7 +1003,7 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 			// Display a blocking Save Data List asynchronously in the GUI thread.
 			if (auto save_dialog = Emu.GetCallbacks().get_save_dialog())
 			{
-				selected = save_dialog->ShowSaveDataList(save_entries, focused, operation, listSet);
+				selected = save_dialog->ShowSaveDataList(save_entries, focused, operation, listSet, g_fxo->get<save_data_info>().enable_overlay);
 			}
 			else
 			{
@@ -2284,7 +2289,9 @@ error_code cellSaveDataUserFixedDelete(ppu_thread& ppu, u32 userId, PSetList set
 
 void cellSaveDataEnableOverlay(s32 enable)
 {
-	cellSaveData.error("cellSaveDataEnableOverlay(enable=%d)", enable);
+	cellSaveData.notice("cellSaveDataEnableOverlay(enable=%d)", enable);
+	auto& info = g_fxo->get<save_data_info>();
+	info.enable_overlay = enable != 0;
 }
 
 
