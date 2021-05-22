@@ -1,7 +1,7 @@
 #!/bin/sh -ex
 
 # Setup Qt variables
-export QT_BASE_DIR=/opt/qt"${QTVERMIN}"
+export QT_BASE_DIR=/opt/qt"${QT_VER_MAIN}"
 export PATH="$QT_BASE_DIR"/bin:"$PATH"
 export LD_LIBRARY_PATH="$QT_BASE_DIR"/lib/x86_64-linux-gnu:"$QT_BASE_DIR"/lib
 

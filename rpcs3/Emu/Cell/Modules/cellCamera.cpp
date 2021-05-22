@@ -1903,7 +1903,6 @@ bool camera_context::on_handler_state(camera_handler_base::camera_handler_state 
 {
 	switch (state)
 	{
-	case camera_handler_base::camera_handler_state::not_available:
 	case camera_handler_base::camera_handler_state::closed:
 	{
 		if (is_attached)

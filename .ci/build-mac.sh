@@ -27,13 +27,13 @@ cd qt-downloader
 git checkout f52efee0f18668c6d6de2dec0234b8c4bc54c597
 pip3 install pipenv
 pipenv run pip3 install py7zr requests semantic_version lxml
-pipenv run ./qt-downloader macos desktop 5.15.2 clang_64 --opensource
+pipenv run ./qt-downloader macos desktop $QT_VER clang_64 --opensource
 cd ..
 
-export Qt5_DIR="$WORKDIR/qt-downloader/5.15.2/clang_64/lib/cmake/Qt5"
+export Qt6_DIR="$WORKDIR/qt-downloader/$QT_VER/clang_64/lib/cmake/Qt$QT_VER_MAIN"
 export SDL2_DIR="$BREW_X64_PATH/opt/sdl2/lib/cmake/SDL2"
 
-export PATH="$BREW_PATH/opt/llvm@14/bin:$WORKDIR/qt-downloader/5.15.2/clang_64/bin:$BREW_BIN:$BREW_SBIN:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/Library/Apple/usr/bin:$PATH"
+export PATH="$BREW_PATH/opt/llvm@14/bin:$WORKDIR/qt-downloader/$QT_VER/clang_64/bin:$BREW_BIN:$BREW_SBIN:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/Library/Apple/usr/bin:$PATH"
 export LDFLAGS="-L$BREW_X64_PATH/lib -Wl,-rpath,$BREW_X64_PATH/lib"
 export CPPFLAGS="-I$BREW_X64_PATH/include -msse -msse2 -mcx16 -no-pie"
 export LIBRARY_PATH="$BREW_X64_PATH/lib"

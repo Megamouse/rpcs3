@@ -32,7 +32,7 @@
 #include <QLibraryInfo>
 #include <QDirIterator>
 #include <QFileInfo>
-#include <QSound>
+#include <QSoundEffect>
 #include <QMessageBox>
 
 #include <clocale>
@@ -509,7 +509,10 @@ void gui_application::InitializeCallbacks()
 		{
 			if (fs::is_file(path))
 			{
-				QSound::play(qstr(path));
+				// TODO: ist this working? Or do we need a member?
+				QSoundEffect sound_effect{};
+				sound_effect.setSource(qstr(path));
+				sound_effect.play();
 			}
 		});
 	};
