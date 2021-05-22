@@ -6,6 +6,7 @@
 #include "find_dialog.h"
 
 #include <QApplication>
+#include <QActionGroup>
 #include <QMenu>
 #include <QFile>
 #include <QFileDialog>

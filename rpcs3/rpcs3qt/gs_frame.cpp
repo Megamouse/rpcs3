@@ -20,7 +20,6 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QScreen>
-#include <QSound>
 
 #include <string>
 #include <thread>
@@ -41,7 +40,7 @@
 #endif
 #endif
 
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 #include <QWinTHumbnailToolbutton>
 #elif HAVE_QTDBUS
 #include <QtDBus/QDBusMessage>
@@ -130,7 +129,7 @@ gs_frame::gs_frame(QScreen* screen, const QRect& geometry, const QIcon& appIcon,
 	connect(&m_mousehide_timer, &QTimer::timeout, this, &gs_frame::MouseHideTimeout);
 	m_mousehide_timer.setSingleShot(true);
 
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	m_tb_button = new QWinTaskbarButton();
 	m_tb_progress = m_tb_button->progress();
 	m_tb_progress->setRange(0, m_gauge_max);
@@ -144,7 +143,7 @@ gs_frame::gs_frame(QScreen* screen, const QRect& geometry, const QIcon& appIcon,
 
 gs_frame::~gs_frame()
 {
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	// QWinTaskbarProgress::hide() will crash if the application is already about to close, even if the object is not null.
 	if (m_tb_progress && !QCoreApplication::closingDown())
 	{
@@ -433,7 +432,7 @@ void gs_frame::show()
 		}
 	});
 
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	// if we do this before show, the QWinTaskbarProgress won't show
 	if (m_tb_button)
 	{
@@ -782,7 +781,7 @@ void gs_frame::take_screenshot(std::vector<u8> data, const u32 sshot_width, cons
 			{
 				if (const std::string sound_path = fs::get_config_dir() + "sounds/snd_screenshot.wav"; fs::is_file(sound_path))
 				{
-					QSound::play(qstr(sound_path));
+					Emu.GetCallbacks().play_sound(sound_path);
 				}
 				else
 				{
@@ -893,7 +892,7 @@ bool gs_frame::event(QEvent* ev)
 
 void gs_frame::progress_reset(bool reset_limit)
 {
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	if (m_tb_progress)
 	{
 		m_tb_progress->reset();
@@ -910,7 +909,7 @@ void gs_frame::progress_reset(bool reset_limit)
 
 void gs_frame::progress_set_value(int value)
 {
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	if (m_tb_progress)
 	{
 		m_tb_progress->setValue(std::clamp(value, m_tb_progress->minimum(), m_tb_progress->maximum()));
@@ -928,7 +927,7 @@ void gs_frame::progress_increment(int delta)
 		return;
 	}
 
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	if (m_tb_progress)
 	{
 		progress_set_value(m_tb_progress->value() + delta);
@@ -940,7 +939,7 @@ void gs_frame::progress_increment(int delta)
 
 void gs_frame::progress_set_limit(int limit)
 {
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	if (m_tb_progress)
 	{
 		m_tb_progress->setMaximum(limit);

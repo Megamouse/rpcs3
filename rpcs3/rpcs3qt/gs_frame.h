@@ -8,7 +8,7 @@
 #include <QPaintEvent>
 #include <QTimer>
 
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 #include <QWinTaskbarProgress>
 #include <QWinTaskbarButton>
 #endif
@@ -25,7 +25,7 @@ class gs_frame : public QWindow, public GSFrameBase
 private:
 	// taskbar progress
 	int m_gauge_max = 100;
-#ifdef _WIN32
+#ifdef HAS_QT_WIN_STUFF
 	QWinTaskbarButton* m_tb_button = nullptr;
 	QWinTaskbarProgress* m_tb_progress = nullptr;
 #elif HAVE_QTDBUS

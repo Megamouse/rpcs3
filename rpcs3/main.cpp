@@ -1,4 +1,4 @@
-// Qt5.10+ frontend implementation for rpcs3. Known to work on Windows, Linux, Mac
+// Qt6.3+ frontend implementation for rpcs3. Known to work on Windows, Linux, Mac
 // by Sacha Refshauge, Megamouse and flash-fire
 
 #include <iostream>
@@ -904,7 +904,6 @@ int main(int argc, char** argv)
 	if (auto gui_app = qobject_cast<gui_application*>(app.data()))
 	{
 		gui_app->setAttribute(Qt::AA_UseHighDpiPixmaps);
-		gui_app->setAttribute(Qt::AA_DisableWindowContextHelpButton);
 		gui_app->setAttribute(Qt::AA_DontCheckOpenGLContextThreadAffinity);
 
 		gui_app->SetShowGui(!s_no_gui);
@@ -964,7 +963,7 @@ int main(int argc, char** argv)
 	bool got_timer_resolution = NtQueryTimerResolution(&min_res, &max_res, &orig_res) == 0;
 
 	// Set 0.5 msec timer resolution for best performance
-	// - As QT5 timers (QTimer) sets the timer resolution to 1 msec, override it here.
+	// - As QT timers (QTimer) sets the timer resolution to 1 msec, override it here.
 	if (parser.value(arg_timer).toStdString() == "1")
 	{
 		ULONG new_res;
