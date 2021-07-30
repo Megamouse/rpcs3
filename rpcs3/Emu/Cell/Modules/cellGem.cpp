@@ -580,6 +580,32 @@ void gem_config_data::operator()()
 
 using gem_config = named_thread<gem_config_data>;
 
+struct quaternion
+{
+	f32 x{};
+	f32 y{};
+	f32 z{};
+	f32 w{};
+};
+
+quaternion rad_to_quaternion(f32 roll_x, f32 pitch_y, f32 yaw_z)
+{
+	const f32 cy = cos(yaw_z * 0.5f);
+	const f32 sy = sin(yaw_z * 0.5f);
+	const f32 cp = cos(pitch_y * 0.5f);
+	const f32 sp = sin(pitch_y * 0.5f);
+	const f32 cr = cos(roll_x * 0.5f);
+	const f32 sr = sin(roll_x * 0.5f);
+
+	quaternion q;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+	q.w = cr * cp * cy + sr * sp * sy;
+
+	return q;
+}
+
 /**
  * \brief Verifies that a Move controller id is valid
  * \param gem_num Move controler ID to verify
@@ -947,14 +973,45 @@ static void mouse_pos_to_gem_state(const u32 mouse_no, const gem_config::gem_con
 
 	const auto& mouse = ::at32(handler.GetMice(), mouse_no);
 
-	if constexpr (std::is_same<T, vm::ptr<CellGemState>>::value)
-	{
-		pos_to_gem_state(mouse_no, controller, gem_state, mouse.x_pos, mouse.y_pos, mouse.x_max, mouse.y_max);
-	}
-	else if constexpr (std::is_same<T, vm::ptr<CellGemImageState>>::value)
-	{
-		pos_to_gem_image_state(mouse_no, controller, gem_state, mouse.x_pos, mouse.y_pos, mouse.x_max, mouse.y_max);
-	}
+	// if constexpr (std::is_same<T, vm::ptr<CellGemState>>::value)
+	// {
+	// 	pos_to_gem_state(mouse_no, controller, gem_state, mouse.x_pos, mouse.y_pos, mouse.x_max, mouse.y_max);
+	// }
+	// else if constexpr (std::is_same<T, vm::ptr<CellGemImageState>>::value)
+	// {
+	// 	pos_to_gem_image_state(mouse_no, controller, gem_state, mouse.x_pos, mouse.y_pos, mouse.x_max, mouse.y_max);
+	// }
+
+	s32 mouse_width = mouse.x_max;
+	if (mouse_width <= 0) mouse_width = shared_data.width;
+	s32 mouse_height = mouse.y_max;
+	if (mouse_height <= 0) mouse_height = shared_data.height;
+	const f32 scaling_width = mouse_width / static_cast<f32>(shared_data.width);
+	const f32 scaling_height = mouse_height / static_cast<f32>(shared_data.height);
+	const f32 mmPerPixel = controller.diameter_mm / static_cast<f32>(controller.radius * 2);
+
+	// Image coordinates in pixels
+	const f32 image_x = static_cast<f32>(mouse.x_pos) / scaling_width;
+	const f32 image_y = static_cast<f32>(mouse.y_pos) / scaling_height;
+
+	// Centered image coordinates in pixels
+	const f32 centered_x = image_x - (shared_data.width / 2.f);
+	const f32 centered_y = (shared_data.height / 2.f) - image_y; // Image coordinates increase downwards, so we have to invert this
+
+	// Camera coordinates in mm (centered, so it's the same as world coordinates)
+	const f32 world_x = centered_x * mmPerPixel;
+	const f32 world_y = centered_y * mmPerPixel;
+
+	// Image coordinates in pixels
+	gem_image_state->u = image_x;
+	gem_image_state->v = image_y;
+
+	// Projected camera coordinates in mm
+	gem_image_state->projectionx = world_x / controller.distance;
+	gem_image_state->projectiony = world_y / controller.distance;
+	//cellGem.error("image_x=%.2f, image_y=%.2f", gem_image_state->u, gem_image_state->v);
+
+	return true;
 }
 
 #ifdef HAVE_LIBEVDEV
@@ -994,6 +1051,33 @@ static bool gun_input_to_pad(const u32 gem_no, be_t<u16>& digital_buttons, be_t<
 		digital_buttons |= CELL_GEM_CTRL_SQUARE;
 
 	analog_t = gun.handler.get_button(gem_no, gun_button::btn_left) ? 0xFFFF : 0;
+
+	// Camera coordinates in mm (centered, so it's the same as world coordinates)
+	const f32 world_x = centered_x * mmPerPixel;
+	const f32 world_y = centered_y * mmPerPixel; // Let's move the camera to some desk below the TV
+
+	// Let's point the device at the proper direction (exagerrated, standing centered in front of the TV/Camera)
+	const f32 roll_x = atan(world_y / static_cast<f32>(controller.distance));
+	const f32 pitch_y = atan(world_x / static_cast<f32>(controller.distance));
+	const f32 yaw_z = 0.0f; // Let's leave the z axis untouched
+	const quaternion q = rad_to_quaternion(roll_x, pitch_y, yaw_z);
+
+	// World coordinates in mm
+	gem_state->pos[0] = world_x;
+	gem_state->pos[1] = world_y;
+	gem_state->pos[2] = static_cast<f32>(controller.distance);
+	gem_state->pos[3] = 0.f;
+
+	gem_state->quat[0] = q.x;
+	gem_state->quat[1] = q.y;
+	gem_state->quat[2] = q.z;
+	gem_state->quat[3] = q.w;
+
+	// TODO: calculate handle position based on our world coordinate and the angles
+	gem_state->handle_pos[0] = world_x;
+	gem_state->handle_pos[1] = world_y;
+	gem_state->handle_pos[2] = static_cast<f32>(controller.distance);
+	gem_state->handle_pos[3] = 0.f;
 
 	return true;
 }
