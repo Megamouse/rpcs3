@@ -219,7 +219,7 @@ std::array<std::set<u32>, PadHandlerBase::button::button_count> mm_joystick_hand
 	return mapping;
 }
 
-PadHandlerBase::connection mm_joystick_handler::get_next_button_press(const std::string& padId, const pad_callback& callback, const pad_fail_callback& fail_callback, bool get_blacklist, const std::vector<std::string>& buttons)
+PadHandlerBase::connection mm_joystick_handler::get_next_button_press(const std::string& padId, const pad_callback& callback, const pad_fail_callback& fail_callback, bool get_blacklist, const pad_buttons& buttons)
 {
 	if (get_blacklist)
 		m_blacklist.clear();
@@ -353,28 +353,26 @@ PadHandlerBase::connection mm_joystick_handler::get_next_button_press(const std:
 
 		if (callback)
 		{
-			pad_preview_values preview_values{};
-			if (buttons.size() == 10)
+			const auto get_key_value = [this, &data](const std::string& str) -> u16
 			{
-				const auto get_key_value = [this, &data](const std::string& str) -> u16
+				u16 value{};
+				for (u32 key_code : find_keys<u32>(cfg_pad::get_buttons(str)))
 				{
-					u16 value{};
-					for (u32 key_code : find_keys<u32>(cfg_pad::get_buttons(str)))
+					if (const auto it = data.find(key_code); it != data.cend())
 					{
-						if (const auto it = data.find(key_code); it != data.cend())
-						{
-							value = std::max(value, it->second);
-						}
+						value = std::max(value, it->second);
 					}
-					return value;
-				};
-				preview_values[0] = get_key_value(buttons[0]);
-				preview_values[1] = get_key_value(buttons[1]);
-				preview_values[2] = get_key_value(buttons[3]) - get_key_value(buttons[2]);
-				preview_values[3] = get_key_value(buttons[5]) - get_key_value(buttons[4]);
-				preview_values[4] = get_key_value(buttons[7]) - get_key_value(buttons[6]);
-				preview_values[5] = get_key_value(buttons[9]) - get_key_value(buttons[8]);
-			}
+				}
+				return value;
+			};
+
+			pad_preview_values preview_values{};
+			preview_values[0] = get_key_value(buttons[0]);
+			preview_values[1] = get_key_value(buttons[1]);
+			preview_values[2] = get_key_value(buttons[3]) - get_key_value(buttons[2]);
+			preview_values[3] = get_key_value(buttons[5]) - get_key_value(buttons[4]);
+			preview_values[4] = get_key_value(buttons[7]) - get_key_value(buttons[6]);
+			preview_values[5] = get_key_value(buttons[9]) - get_key_value(buttons[8]);
 
 			if (pressed_button.value > 0)
 				callback(pressed_button.value, pressed_button.name, padId, 0, preview_values);

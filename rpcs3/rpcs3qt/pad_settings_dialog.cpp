@@ -556,7 +556,7 @@ void pad_settings_dialog::InitButtons()
 
 			std::lock_guard lock(m_handler_mutex);
 
-			const std::vector<std::string> buttons =
+			const pad_buttons buttons =
 			{
 				m_cfg_entries[button_ids::id_pad_l2].keys, m_cfg_entries[button_ids::id_pad_r2].keys, m_cfg_entries[button_ids::id_pad_lstick_left].keys,
 				m_cfg_entries[button_ids::id_pad_lstick_right].keys, m_cfg_entries[button_ids::id_pad_lstick_down].keys, m_cfg_entries[button_ids::id_pad_lstick_up].keys,
@@ -1386,6 +1386,7 @@ void pad_settings_dialog::ChangeHandler()
 	case pad_handler::keyboard: m_description = tooltips.gamepad_settings.keyboard; break;
 	case pad_handler::skateboard: m_description = tooltips.gamepad_settings.skateboard; break;
 #ifdef _WIN32
+	case pad_handler::direct_input: m_description = tooltips.gamepad_settings.direct_input; break;
 	case pad_handler::xinput: m_description = tooltips.gamepad_settings.xinput; break;
 	case pad_handler::mm: m_description = tooltips.gamepad_settings.mmjoy; break;
 	case pad_handler::ds3: m_description = tooltips.gamepad_settings.ds3_windows; break;
@@ -1904,6 +1905,7 @@ QString pad_settings_dialog::GetLocalizedPadHandler(const QString& original, pad
 		case pad_handler::dualsense: return tr("DualSense");
 		case pad_handler::skateboard: return tr("Skateboard");
 #ifdef _WIN32
+		case pad_handler::direct_input: return tr("DirectInput");
 		case pad_handler::xinput: return tr("XInput");
 		case pad_handler::mm: return tr("MMJoystick");
 #endif
@@ -1928,6 +1930,7 @@ QString pad_settings_dialog::GetLocalizedPadName(pad_handler handler, const QStr
 		case pad_handler::dualsense: return tr("DualSense Pad #%0").arg(index);
 		case pad_handler::skateboard: return tr("Skateboard #%0").arg(index);
 #ifdef _WIN32
+		case pad_handler::direct_input: break; // Localization not feasible. Names differ for each device.
 		case pad_handler::xinput: return tr("XInput Pad #%0").arg(index);
 		case pad_handler::mm: return tr("Joystick #%0").arg(index);
 #endif

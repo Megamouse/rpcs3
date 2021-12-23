@@ -6,6 +6,7 @@
 #include "dualsense_pad_handler.h"
 #include "skateboard_pad_handler.h"
 #ifdef _WIN32
+#include "direct_input_pad_handler.h"
 #include "xinput_pad_handler.h"
 #include "mm_joystick_handler.h"
 #elif HAVE_LIBEVDEV
@@ -587,6 +588,8 @@ std::shared_ptr<PadHandlerBase> pad_thread::GetHandler(pad_handler type)
 	case pad_handler::skateboard:
 		return std::make_shared<skateboard_pad_handler>(true);
 #ifdef _WIN32
+	case pad_handler::direct_input:
+		return std::make_shared<direct_input_pad_handler>(true);
 	case pad_handler::xinput:
 		return std::make_shared<xinput_pad_handler>(true);
 	case pad_handler::mm:

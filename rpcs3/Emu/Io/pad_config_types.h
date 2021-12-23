@@ -11,6 +11,7 @@ enum class pad_handler
 	dualsense,
 	skateboard,
 #ifdef _WIN32
+	direct_input,
 	xinput,
 	mm,
 #endif
