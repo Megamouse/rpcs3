@@ -713,47 +713,51 @@ error_code sceNpTrophyRegisterContext(ppu_thread& ppu, u32 context, u32 handle, 
 
 	lv2_obj::sleep(ppu);
 
-	// Create a counter which is destroyed after the function ends
-	const auto queued = std::make_shared<atomic_t<u32>>(0);
-	std::weak_ptr<atomic_t<u32>> wkptr = queued;
+	const auto cond = std::make_shared<atomic_t<s32>>(0);
+	std::weak_ptr<atomic_t<s32>> wkptr = cond;
 
-	for (auto status : statuses)
+	for (const auto& [status, total_progress] : statuses)
 	{
 		// One status max per cellSysutilCheckCallback call
-		*queued += status.second;
-		for (s32 completed = 0; completed <= status.second; completed++)
+		for (s32 completed = 0; completed <= total_progress; completed++)
 		{
-			sysutil_register_cb([statusCb, status, context, completed, arg, wkptr](ppu_thread& cb_ppu) -> s32
-			{
-				// TODO: it is possible that we need to check the return value here as well.
-				statusCb(cb_ppu, context, status.first, completed, status.second, arg);
+			*cond = 0;
 
-				const auto queued = wkptr.lock();
-				if (queued && (*queued)-- == 1)
+			sysutil_register_cb([statusCb, trp_status = status, total = total_progress, context, completed, arg, wkptr](ppu_thread& cb_ppu) -> s32
+			{
+				sceNpTrophy.notice("sceNpTrophyRegisterContext(): Progress callback... (trp_status=%u, completed=%d, total=%d)", trp_status, completed, total);
+				const s32 res = statusCb(cb_ppu, context, trp_status, completed, total, arg);
+				if (res < 0)
 				{
-					queued->notify_one();
+					sceNpTrophy.warning("sceNpTrophyRegisterContext(): Progress callback returned result=%d. Aborting process... (trp_status=%u)", res, trp_status);
 				}
+
+				auto cond = wkptr.lock();
+				*cond = res < 0 ? -1 : 1;
+				cond->notify_one();
 
 				return 0;
 			});
-		}
 
-		u64 current = get_system_time();
-		const u64 until = current + 300'000;
-
-		// If too much time passes just send the rest of the events anyway
-		for (u32 old_value; current < until && (old_value = *queued);
-			current = get_system_time())
-		{
-			thread_ctrl::wait_on(*queued, old_value, until - current);
-
-			if (ppu.is_stopped())
+			while (*cond == 0)
 			{
-				return {};
+				thread_ctrl::wait_on(*cond, 0, 1000);
+
+				if (ppu.is_stopped())
+				{
+					return {};
+				}
+			}
+
+			if (*cond < 0)
+			{
+				on_error();
+				return SCE_NP_TROPHY_ERROR_PROCESSING_ABORTED;
 			}
 		}
 	}
 
+	sceNpTrophy.notice("sceNpTrophyRegisterContext(): Finished");
 	return CELL_OK;
 }
 
