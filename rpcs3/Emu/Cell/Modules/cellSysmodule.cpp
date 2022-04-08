@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Emu/Cell/PPUModule.h"
+#include "Emu/Cell/lv2/sys_process.h"
 
 LOG_CHANNEL(cellSysmodule);
 
@@ -153,6 +154,115 @@ static const char* get_module_name(u16 id)
 	return nullptr;
 }
 
+enum CellSysmoduleID
+{
+	CELL_SYSMODULE_INVALID                  = 0xffff,
+	CELL_SYSMODULE_NET                      = 0x0000,
+	CELL_SYSMODULE_HTTP                     = 0x0001,
+	CELL_SYSMODULE_HTTP_UTIL                = 0x0002,
+	CELL_SYSMODULE_SSL                      = 0x0003,
+	CELL_SYSMODULE_HTTPS                    = 0x0004,
+	CELL_SYSMODULE_VDEC                     = 0x0005,
+	CELL_SYSMODULE_ADEC                     = 0x0006,
+	CELL_SYSMODULE_DMUX                     = 0x0007,
+	CELL_SYSMODULE_VPOST                    = 0x0008,
+	CELL_SYSMODULE_RTC                      = 0x0009,
+	CELL_SYSMODULE_SPURS                    = 0x000a,
+	CELL_SYSMODULE_OVIS                     = 0x000b,
+	CELL_SYSMODULE_SHEAP                    = 0x000c,
+	CELL_SYSMODULE_SYNC                     = 0x000d,
+	CELL_SYSMODULE_FS                       = 0x000e,
+	CELL_SYSMODULE_JPGDEC                   = 0x000f,
+	CELL_SYSMODULE_GCM_SYS                  = 0x0010,
+	CELL_SYSMODULE_GCM                      = 0x0010,
+	CELL_SYSMODULE_AUDIO                    = 0x0011,
+	CELL_SYSMODULE_PAMF                     = 0x0012,
+	CELL_SYSMODULE_ATRAC3PLUS               = 0x0013,
+	CELL_SYSMODULE_NETCTL                   = 0x0014,
+	CELL_SYSMODULE_SYSUTIL                  = 0x0015,
+	CELL_SYSMODULE_SYSUTIL_NP               = 0x0016,
+	CELL_SYSMODULE_IO                       = 0x0017,
+	CELL_SYSMODULE_PNGDEC                   = 0x0018,
+	CELL_SYSMODULE_FONT                     = 0x0019,
+	CELL_SYSMODULE_FONTFT                   = 0x001a,
+	CELL_SYSMODULE_FREETYPE                 = 0x001b,
+	CELL_SYSMODULE_USBD                     = 0x001c,
+	CELL_SYSMODULE_SAIL                     = 0x001d,
+	CELL_SYSMODULE_L10N                     = 0x001e,
+	CELL_SYSMODULE_RESC                     = 0x001f,
+	CELL_SYSMODULE_DAISY                    = 0x0020,
+	CELL_SYSMODULE_KEY2CHAR                 = 0x0021,
+	CELL_SYSMODULE_MIC                      = 0x0022,
+	CELL_SYSMODULE_CAMERA                   = 0x0023,
+	CELL_SYSMODULE_VDEC_MPEG2               = 0x0024,
+	CELL_SYSMODULE_VDEC_AVC                 = 0x0025,
+	CELL_SYSMODULE_ADEC_LPCM                = 0x0026,
+	CELL_SYSMODULE_ADEC_AC3                 = 0x0027,
+	CELL_SYSMODULE_ADEC_ATX                 = 0x0028,
+	CELL_SYSMODULE_ADEC_AT3                 = 0x0029,
+	CELL_SYSMODULE_DMUX_PAMF                = 0x002a,
+	CELL_SYSMODULE_VDEC_AL                  = 0x002b,
+	CELL_SYSMODULE_ADEC_AL                  = 0x002c,
+	CELL_SYSMODULE_DMUX_AL                  = 0x002d,
+	CELL_SYSMODULE_LV2DBG                   = 0x002e,
+	CELL_SYSMODULE_USBPSPCM                 = 0x0030,
+	CELL_SYSMODULE_AVCONF_EXT               = 0x0031,
+	CELL_SYSMODULE_SYSUTIL_USERINFO         = 0x0032,
+	CELL_SYSMODULE_SYSUTIL_SAVEDATA         = 0x0033,
+	CELL_SYSMODULE_SUBDISPLAY               = 0x0034,
+	CELL_SYSMODULE_SYSUTIL_REC              = 0x0035,
+	CELL_SYSMODULE_VIDEO_EXPORT             = 0x0036,
+	CELL_SYSMODULE_SYSUTIL_GAME_EXEC        = 0x0037,
+	CELL_SYSMODULE_SYSUTIL_NP2              = 0x0038,
+	CELL_SYSMODULE_SYSUTIL_AP               = 0x0039,
+	CELL_SYSMODULE_SYSUTIL_NP_CLANS         = 0x003a,
+	CELL_SYSMODULE_SYSUTIL_OSK_EXT          = 0x003b,
+	CELL_SYSMODULE_VDEC_DIVX                = 0x003c,
+	CELL_SYSMODULE_JPGENC                   = 0x003d,
+	CELL_SYSMODULE_SYSUTIL_GAME             = 0x003e,
+	CELL_SYSMODULE_BGDL                     = 0x003f,
+	CELL_SYSMODULE_FREETYPE_TT              = 0x0040,
+	CELL_SYSMODULE_SYSUTIL_VIDEO_UPLOAD     = 0x0041,
+	CELL_SYSMODULE_SYSUTIL_SYSCONF_EXT      = 0x0042,
+	CELL_SYSMODULE_FIBER                    = 0x0043,
+	CELL_SYSMODULE_SYSUTIL_NP_COMMERCE2     = 0x0044,
+	CELL_SYSMODULE_SYSUTIL_NP_TUS           = 0x0045,
+	CELL_SYSMODULE_VOICE                    = 0x0046,
+	CELL_SYSMODULE_ADEC_CELP8               = 0x0047,
+	CELL_SYSMODULE_CELP8ENC                 = 0x0048,
+	CELL_SYSMODULE_SYSUTIL_LICENSEAREA      = 0x0049,
+	CELL_SYSMODULE_SYSUTIL_MUSIC2           = 0x004a,
+	CELL_SYSMODULE_SYSUTIL_SCREENSHOT       = 0x004e,
+	CELL_SYSMODULE_SYSUTIL_MUSIC_DECODE     = 0x004f,
+	CELL_SYSMODULE_SPURS_JQ                 = 0x0050,
+	CELL_SYSMODULE_PNGENC                   = 0x0052,
+	CELL_SYSMODULE_SYSUTIL_MUSIC_DECODE2    = 0x0053,
+	CELL_SYSMODULE_SYNC2                    = 0x0055,
+	CELL_SYSMODULE_SYSUTIL_NP_UTIL          = 0x0056,
+	CELL_SYSMODULE_RUDP                     = 0x0057,
+	CELL_SYSMODULE_SYSUTIL_NP_SNS           = 0x0059,
+	CELL_SYSMODULE_GEM                      = 0x005a,
+	CELL_SYSMODULE_SYSUTIL_CROSS_CONTROLLER = 0x005c,
+	CELL_SYSMODULE_CELPENC                  = 0xf00a,
+	CELL_SYSMODULE_GIFDEC                   = 0xf010,
+	CELL_SYSMODULE_ADEC_CELP                = 0xf019,
+	CELL_SYSMODULE_ADEC_M2BC                = 0xf01b,
+	CELL_SYSMODULE_ADEC_M4AAC               = 0xf01d,
+	CELL_SYSMODULE_ADEC_MP3                 = 0xf01e,
+	CELL_SYSMODULE_IMEJP                    = 0xf023,
+	CELL_SYSMODULE_SYSUTIL_MUSIC            = 0xf028,
+	CELL_SYSMODULE_PHOTO_EXPORT             = 0xf029,
+	CELL_SYSMODULE_PRINT                    = 0xf02a,
+	CELL_SYSMODULE_PHOTO_IMPORT             = 0xf02b,
+	CELL_SYSMODULE_MUSIC_EXPORT             = 0xf02c,
+	CELL_SYSMODULE_PHOTO_DECODE             = 0xf02e,
+	CELL_SYSMODULE_SYSUTIL_SEARCH           = 0xf02f,
+	CELL_SYSMODULE_SYSUTIL_AVCHAT2          = 0xf030,
+	CELL_SYSMODULE_SAIL_REC                 = 0xf034,
+	CELL_SYSMODULE_SYSUTIL_NP_TROPHY        = 0xf035,
+	CELL_SYSMODULE_LIBATRAC3MULTI           = 0xf054,
+};
+
 static const char* get_module_id(u16 id)
 {
 	static thread_local char tls_id_name[8]; // for test
@@ -293,7 +403,45 @@ error_code cellSysmoduleFinalize()
 error_code cellSysmoduleSetMemcontainer(u32 ct_id)
 {
 	cellSysmodule.todo("cellSysmoduleSetMemcontainer(ct_id=0x%x)", ct_id);
-	return CELL_OK;
+
+	int iStack116;
+	undefined auStack44[4];
+	uint uStack40;
+
+	error_code error = CELL_OK;
+	if (error = sys_lwmutex_lock((sys_lwmutex_t*)PTR_DAT_00009e98, 0))
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	if (ct_id == 0xffffffff)
+	{
+		**(undefined4**)(iStack116 + -0x7ff4) = 0;
+	}
+	else
+	{
+		if (error = FUN_00004740(auStack44, ct_id))
+		{
+			**(undefined4**)(iStack116 + -0x7ff4) = 0;
+			error = CELL_SYSMODULE_ERROR_INVALID_MEMCONTAINER;
+		}
+		else
+		{
+			if (uStack40 < 0x60000)
+			{
+				**(undefined4**)(iStack116 + -0x7ff4) = 0;
+				error = CELL_SYSMODULE_ERROR_INVALID_MEMCONTAINER;
+			}
+			else
+			{
+				**(uint32_t**)(iStack116 + -0x7ff0)   = ct_id;
+				**(undefined4**)(iStack116 + -0x7ff4) = 1;
+			}
+		}
+	}
+
+	sys_lwmutex_unlock(*(sys_lwmutex_t**)(iStack116 + -0x7ff8));
+	return error;
 }
 
 error_code cellSysmoduleLoadModule(u16 id)
@@ -313,8 +461,124 @@ error_code cellSysmoduleLoadModule(u16 id)
 	//	m->Load();
 	//}
 
-	return CELL_OK;
+	if (id == 0x58)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (id == CELL_SYSMODULE_ADEC_CELP ||
+		id == CELL_SYSMODULE_CELPENC ||
+		id == CELL_SYSMODULE_ADEC_MP3 ||
+		id == CELL_SYSMODULE_PHOTO_EXPORT ||
+		id == CELL_SYSMODULE_PRINT ||
+		id == CELL_SYSMODULE_SYSUTIL_SEARCH ||
+		id == CELL_SYSMODULE_IMEJP ||
+		id == CELL_SYSMODULE_PHOTO_IMPORT ||
+		id == CELL_SYSMODULE_MUSIC_EXPORT ||
+		id == CELL_SYSMODULE_PHOTO_DECODE ||
+		id == CELL_SYSMODULE_ADEC_M2BC ||
+		id == CELL_SYSMODULE_SYSUTIL_AVCHAT2 ||
+		id == CELL_SYSMODULE_ADEC_M4AAC ||
+		id == CELL_SYSMODULE_GIFDEC ||
+		id == CELL_SYSMODULE_SYSUTIL_NP_TROPHY ||
+		id == CELL_SYSMODULE_SAIL_REC ||
+		id == 0xf044 ||
+		id == CELL_SYSMODULE_LIBATRAC3MULTI ||
+		id == CELL_SYSMODULE_SYSUTIL_MUSIC)
+	{
+		return cellSysmoduleLoadModuleInternal(id);
+	}
+
+	if (id >= 0x5d)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	error_code error = CELL_OK;
+
+	u64 uVar1 = ZEXT48(&TOC_BASE);
+	undefined* puVar4 = &TOC_BASE;
+	undefined* puVar3 = &TOC_BASE;
+	undefined* puVar2 = &TOC_BASE;
+
+	if (id == CELL_SYSMODULE_LV2DBG)
+	{
+		const u16 other_id = FUN_00000450(0);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+		error = FUN_00000000((u32)other_id * 0x10 + *(s32*)(puVar4 + -0x7fcc), 0, 0);
+		*(undefined4*)(*(s32*)(puVar4 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(puVar4 + -0x7fcc) + (u32)other_id * 0x10);
+	}
+	else if (id == CELL_SYSMODULE_GCM)
+	{
+		const u16 other_id = FUN_00000450(1);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+		error = FUN_00000000((u32)other_id * 0x10 + *(s32*)(puVar4 + -0x7fc4), 0, 0);
+		*(undefined4*)(*(s32*)(puVar4 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(puVar4 + -0x7fc4) + (u32)other_id * 0x10);
+	}
+	else if (id == CELL_SYSMODULE_FS)
+	{
+		const u16 other_id = FUN_00000450(2);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+		error = FUN_00000000((u32)other_id * 0x10 + *(s32*)(puVar4 + -0x7fc0), 0, 0);
+		*(undefined4*)(*(s32*)(puVar4 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(puVar4 + -0x7fc0) + (u32)other_id * 0x10);
+	}
+	else if (id == CELL_SYSMODULE_SAIL)
+	{
+		const s16 sVar6 = FUN_00000450(4);
+
+		if (sVar6 == -1)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+
+		if (sVar6 == 1)
+		{
+			undefined local_30[16];
+			error = FUN_00000000((u32)id * 0x10 + *(s32*)(puVar3 + -0x7fc8), 8, local_30);
+		}
+		else
+		{
+			error = FUN_00000000((u32)id * 0x10 + *(s32*)(puVar3 + -0x7fc8), 0, 0);
+		}
+	}
+	else
+	{
+		if (u16* id_ptr = *(u16**)(PTR_s__00009ec8 + (u32)id * 0x10 + 0xc))
+		{
+			for (; puVar2 = (undefined*)uVar1, *id_ptr != CELL_SYSMODULE_INVALID; id_ptr++)
+			{
+				if (*id_ptr < 0xf000)
+				{
+					error = cellSysmoduleLoadModule(*id_ptr);
+				}
+				else
+				{
+					error = CELL_SYSMODULE_ERROR_UNKNOWN;
+				}
+
+				if (error != CELL_OK && error != CELL_SYSMODULE_ERROR_DUPLICATED)
+				{
+					return error;
+				}
+			}
+		}
+
+		return FUN_00000000((u32)id * 0x10 + *(s32*)(puVar2 + -0x7fc8), 0, 0);
+	}
+
+	return error;
 }
+
+error_code cellSysmoduleUnloadModuleInternal(u16 id); // Forward declaration
 
 error_code cellSysmoduleUnloadModule(u16 id)
 {
@@ -338,7 +602,136 @@ error_code cellSysmoduleUnloadModule(u16 id)
 	//	m->Unload();
 	//}
 
-	return CELL_OK;
+	if (id == 0x58)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (id == CELL_SYSMODULE_CELPENC ||
+		id == CELL_SYSMODULE_GIFDEC ||
+		id == CELL_SYSMODULE_ADEC_CELP ||
+		id == CELL_SYSMODULE_ADEC_M2BC ||
+		id == CELL_SYSMODULE_ADEC_M4AAC ||
+		id == CELL_SYSMODULE_ADEC_MP3 ||
+		id == CELL_SYSMODULE_IMEJP ||
+		id == CELL_SYSMODULE_SYSUTIL_MUSIC ||
+		id == CELL_SYSMODULE_PHOTO_EXPORT ||
+		id == CELL_SYSMODULE_PRINT ||
+		id == CELL_SYSMODULE_PHOTO_IMPORT ||
+		id == CELL_SYSMODULE_MUSIC_EXPORT ||
+		id == CELL_SYSMODULE_PHOTO_DECODE ||
+		id == CELL_SYSMODULE_SYSUTIL_SEARCH ||
+		id == CELL_SYSMODULE_SYSUTIL_AVCHAT2 ||
+		id == CELL_SYSMODULE_SAIL_REC ||
+		id == CELL_SYSMODULE_SYSUTIL_NP_TROPHY ||
+		id == 0xf044 ||
+		id == CELL_SYSMODULE_LIBATRAC3MULTI)
+	{
+		return cellSysmoduleUnloadModuleInternal(id);
+	}
+
+	if (id >= 0x5d)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	u64 uVar2;
+	u64 local_88;
+	s32 sdk_ver = SYS_PROCESS_PARAM_VERSION_INVALID;
+	process_get_sdk_version(process_getpid(), sdk_ver);
+	const s32 max_iterations = (sdk_ver < SYS_PROCESS_PARAM_VERSION_330_0) ? 5 : 7;
+
+	s32 iVar3;
+	for (s32 i = 0; iVar3 = (s32)uVar2, i < max_iterations; i++)
+	{
+		if (error_code error = sys_lwmutex_lock(*(sys_lwmutex_t**)(iVar3 + -0x7ff8), 0))
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+
+		iVar3 = (int)local_88;
+		if ((*(u16*)(*(s32*)(iVar3 + -0x7fbc) + i * 2) == id) &&
+			(*(s32*)(*(s32*)(iVar3 + -0x7fc8) + (u32)id * 0x10) == 1))
+		{
+			sys_lwmutex_unlock(*(sys_lwmutex_t**)(iVar3 + -0x7ff8));
+			return CELL_OK;
+		}
+		sys_lwmutex_unlock(*(sys_lwmutex_t**)(iVar3 + -0x7ff8));
+		uVar2 = local_88;
+	}
+
+	error_code error = CELL_OK;
+
+	if (id == CELL_SYSMODULE_LV2DBG)
+	{
+		const u16 other_id = FUN_00000450(0);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+
+		error = FUN_000002cc((u32)other_id * 0x10 + *(s32*)(iVar3 + -0x7fcc), 0);
+		*(undefined4*)(*(int*)(iVar3 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(iVar3 + -0x7fcc) + (u32)other_id * 0x10);
+	}
+	else if (id == CELL_SYSMODULE_GCM)
+	{
+		const u16 other_id = FUN_00000450(1);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+
+		error = FUN_000002cc((u32)other_id * 0x10 + *(s32*)(iVar3 + -0x7fc4), 0);
+		*(undefined4*)(*(s32*)(iVar3 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(iVar3 + -0x7fc4) + (u32)other_id * 0x10);
+	}
+	else if (id == CELL_SYSMODULE_FS)
+	{
+		const u16 other_id = FUN_00000450(2);
+		if (other_id == CELL_SYSMODULE_INVALID)
+		{
+			return CELL_SYSMODULE_ERROR_FATAL;
+		}
+
+		error = FUN_000002cc((u32)other_id * 0x10 + *(s32*)(iVar3 + -0x7fc0), 0);
+		*(undefined4*)(*(int*)(iVar3 + -0x7fc8) + (u32)id * 0x10) = *(undefined4*)(*(s32*)(iVar3 + -0x7fc0) + (u32)other_id * 0x10);
+	}
+	else
+	{
+		error = FUN_000002cc((u32)id * 0x10 + *(s32*)(iVar3 + -0x7fc8), 0);
+	}
+
+	if (error != CELL_OK)
+	{
+		return error;
+	}
+
+	if (u16* id_begin = *(u16**)(*(s32*)(iVar3 + -0x7fc8) + (u32)id * 0x10 + 0xc))
+	{
+		u16* id_it = id_begin;
+
+		for (; *id_it != CELL_SYSMODULE_INVALID; id_it++)
+		{
+		}
+
+		while (id_it != id_begin)
+		{
+			id_it--;
+
+			if (*id_it < 0xf000)
+			{
+				if (error = cellSysmoduleUnloadModule(*id_it))
+				{
+					return error;
+				}
+			}
+			else
+			{
+				return CELL_SYSMODULE_ERROR_UNKNOWN;
+			}
+		}
+	}
+
+	return error;
 }
 
 error_code cellSysmoduleIsLoaded(u16 id)
@@ -361,49 +754,343 @@ error_code cellSysmoduleIsLoaded(u16 id)
 	//	}
 	//}
 
-	return CELL_SYSMODULE_LOADED;
+	if (id == 0x58)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (id == CELL_SYSMODULE_ADEC_CELP ||
+		id == CELL_SYSMODULE_CELPENC ||
+		id == CELL_SYSMODULE_ADEC_MP3 ||
+		id == CELL_SYSMODULE_PHOTO_EXPORT ||
+		id == CELL_SYSMODULE_PRINT ||
+		id == CELL_SYSMODULE_SYSUTIL_SEARCH ||
+		id == CELL_SYSMODULE_IMEJP ||
+		id == CELL_SYSMODULE_PHOTO_IMPORT ||
+		id == CELL_SYSMODULE_MUSIC_EXPORT ||
+		id == CELL_SYSMODULE_PHOTO_DECODE ||
+		id == CELL_SYSMODULE_ADEC_M2BC ||
+		id == CELL_SYSMODULE_SYSUTIL_AVCHAT2 ||
+		id == CELL_SYSMODULE_ADEC_M4AAC ||
+		id == CELL_SYSMODULE_GIFDEC ||
+		id == CELL_SYSMODULE_SYSUTIL_NP_TROPHY ||
+		id == CELL_SYSMODULE_SAIL_REC ||
+		id == 0xf044 ||
+		id == CELL_SYSMODULE_LIBATRAC3MULTI ||
+		id == CELL_SYSMODULE_SYSUTIL_MUSIC)
+	{
+		return cellSysmoduleIsLoadedEx(id);
+	}
+
+	if (id >= 0x5d)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (error_code error = sys_lwmutex_lock((sys_lwmutex_t*)PTR_DAT_00009e98, 0))
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	s32 iStack116;
+	u16 other_id = 0;
+
+	if (*(s32*)(*(s32*)(iStack116 + -0x7fc8) + (u32)id * 0x10 + 8) == 0)
+	{
+		for (s32 i = 0; id_array[i] != CELL_SYSMODULE_INVALID; i++)
+		{
+			other_id = id_array[i];
+		}
+	}
+	else
+	{
+		other_id = id;
+	}
+
+	error_code error = CELL_SYSMODULE_LOADED;
+
+	if (*(s32*)(*(s32*)(iStack116 + -0x7fc8) + (u32)other_id * 0x10) == 0)
+	{
+		error = CELL_SYSMODULE_ERROR_UNLOADED;
+	}
+
+	sys_lwmutex_unlock(*(sys_lwmutex_t**)(iStack116 + -0x7ff8));
+	return error;
 }
 
-error_code cellSysmoduleGetImagesize()
+error_code cellSysmoduleGetImagesize(u16 id, vm::ptr<u32> size)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
+	cellSysmodule.todo("cellSysmoduleGetImagesize(id=0x%04X=%s, size=*0x%x)", id, get_module_id(id), size);
+
+	*size = 0;
+
+	if (id < 0xff00)
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	const u16 other_id = id + 0x100;
+	if (other_id >= 2)
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	u32 uStack92;
+	if (error_code error = FUN_00003e00("PTR_s_/dev_flash/sys/external/flashATR_00009ef0" + (u32)other_id * 0x80, 0, &uStack92, 0, 0, 0))
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	undefined auStack88[40];
+	if (error_code error = FUN_00003f00(uStack92, auStack88))
+	{
+		FUN_00003e60(uStack92);
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	u64 uStack48;
+	*size = (u32)((u64)uStack48 >> 0x20);
+	FUN_00003e60(uStack92);
 	return CELL_OK;
 }
 
-error_code cellSysmoduleFetchImage()
+error_code cellSysmoduleFetchImage(u16 id, u32 param_2, vm::ptr<u32> param_3)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
+	cellSysmodule.todo("cellSysmoduleFetchImage(id=0x%04X=%s, param_2=0x%x, param_3=*0x%x)", id, get_module_id(id), param_2, param_3);
+
+	if (id < 0xff00)
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	const u16 other_id = id + 0x100;
+	if (other_id >= 2)
+	{
+		*param_3 = 0;
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	undefined4 auStack120[2];
+	if (error_code error = FUN_00003e00("PTR_s_/dev_flash/sys/external/flashATR_00009ef0" + (u32)other_id * 0x80, 0, auStack120, 0, 0, 0))
+	{
+		*param_3 = 0;
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	undefined auStack104[32];
+	if (error_code error = FUN_00003f00(auStack120[0], auStack104))
+	{
+		FUN_00003e60(auStack120[0]);
+		*param_3 = 0;
+		EStack32         = CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	u64 uStack64;
+	s64 lStack72;
+	u64 uVar1 = uStack64 >> 0x20 | lStack72 << 0x20;
+	u64 uStack48 = (u64)*param_3;
+	if (uVar1 < *param_3)
+	{
+		uStack48 = uVar1;
+	}
+
+	undefined auStack112[4];
+	if (error_code error = FUN_00003e20(auStack120[0], param_2, (s32)uStack48, auStack112))
+	{
+		*param_3 = 0;
+	}
+	else
+	{
+		uint uStack108;
+		*param_3 = uStack108;
+	}
+
+	FUN_00003e60(auStack120[0]);
 	return CELL_OK;
 }
 
-error_code cellSysmoduleUnloadModuleInternal()
+error_code cellSysmoduleUnloadModuleInternal(u16 id)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
+	cellSysmodule.todo("cellSysmoduleUnloadModuleInternal(id=0x%04X=%s)", id, get_module_id(id));
+
+	if ((id < 0xf000) || (id == CELL_SYSMODULE_INVALID))
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	u16 other_id = id + 0x1000;
+	if (other_id >= 0x57)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (error_code error = FUN_000002cc(PTR_DAT_00009ee0 + (u32)other_id * 0x10, 0))
+	{
+		return error;
+	}
+
+	void* puVar2 = &TOC_BASE;
+	if (u16* id_begin = *(u16**)(*(s32*)(puVar2 + -0x7fb0) + (u32)other_id * 0x10 + 0xc))
+	{
+		u16* id_it = id_begin;
+
+		for (; *id_it != CELL_SYSMODULE_INVALID; id_it++)
+		{
+		}
+
+		while (id_it != id_begin)
+		{
+			id_it--;
+
+			if (*id_it < 0xf000)
+			{
+				if (error_code error = cellSysmoduleUnloadModule(*id_it))
+				{
+					return error;
+				}
+			}
+			else
+			{
+				if (error_code error = cellSysmoduleUnloadModuleInternal(*id_it))
+				{
+					return error;
+				}
+			}
+		}
+	}
+
 	return CELL_OK;
 }
 
-error_code cellSysmoduleLoadModuleInternal()
+error_code cellSysmoduleLoadModuleInternal(u16 id)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
-	return CELL_OK;
+	cellSysmodule.todo("cellSysmoduleLoadModuleInternal(id=0x%04X=%s)", id, get_module_id(id));
+
+	u64 uVar1;
+	u64 local_b8;
+
+	if ((id < 0xf000) || (id == CELL_SYSMODULE_INVALID))
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (((id == 0xf024) || (id == 0xf03e)) || (uVar1 = ZEXT48(&TOC_BASE), id == 0xf020))
+	{
+		char sfo[40] {};
+
+		if (error_code error = _sys_process_get_paramsfo(sfo))
+		{
+			return CELL_SYSMODULE_ERROR_UNKNOWN;
+		}
+
+		uVar1 = local_b8;
+		if (((sfo[24] & 1) == 0) && ((sfo[32] & 1) == 0))
+		{
+			return CELL_SYSMODULE_ERROR_UNKNOWN;
+		}
+	}
+
+	s32 iVar2 = (s32)uVar1;
+	u16 other_id = id + 0x1000;
+
+	if (other_id >= 0x57)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (u16* id_ptr = *(u16**)(*(s32*)(iVar2 + -0x7fb0) + (u32)other_id * 0x10 + 0xc))
+	{
+		for (; iVar2 = (s32)uVar1, *id_ptr != CELL_SYSMODULE_INVALID; id_ptr++)
+		{
+			error_code error = CELL_OK;
+
+			if (*id_ptr < 0xf000)
+			{
+				error = cellSysmoduleLoadModule(*id_ptr);
+			}
+			else
+			{
+				error = cellSysmoduleLoadModuleInternal(*id_ptr);
+			}
+
+			if (error != CELL_OK && error != CELL_SYSMODULE_ERROR_DUPLICATED)
+			{
+				return error;
+			}
+		}
+	}
+
+	return FUN_00000000((u32)other_id * 0x10 + *(s32*)(iVar2 + -0x7fb0), 0, 0);
 }
 
-error_code cellSysmoduleUnloadModuleEx()
+error_code cellSysmoduleUnloadModuleEx(u16 id)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
-	return CELL_OK;
+	cellSysmodule.todo("cellSysmoduleUnloadModuleEx(id=0x%04X=%s)", id, get_module_id(id));
+
+	u16 id_to_unload = CELL_SYSMODULE_INVALID;
+
+	for (s32 i = 0; i < 0x33; i++)
+	{
+		const u16 other_id = id_array[i];
+		if (other_id == id)
+		{
+			id_to_unload = other_id;
+			break;
+		}
+	}
+
+	return cellSysmoduleUnloadModuleInternal(id_to_unload);
 }
 
-error_code cellSysmoduleLoadModuleEx()
+error_code cellSysmoduleLoadModuleEx(u16 id)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
-	return CELL_OK;
+	cellSysmodule.todo("cellSysmoduleLoadModuleEx(id=0x%04X=%s)", id, get_module_id(id));
+
+	u16 id_to_load = CELL_SYSMODULE_INVALID;
+
+	for (s32 i = 0; i < 0x33; i++)
+	{
+		const u16 other_id = id_array[i];
+		if (other_id == id)
+		{
+			id_to_load = other_id;
+			break;
+		}
+	}
+
+	return cellSysmoduleLoadModuleInternal(id_to_load);
 }
 
-error_code cellSysmoduleIsLoadedEx()
+error_code cellSysmoduleIsLoadedEx(u16 id)
 {
-	UNIMPLEMENTED_FUNC(cellSysmodule);
-	return CELL_OK;
+	cellSysmodule.todo("cellSysmoduleIsLoadedEx(id=0x%04X=%s)", id, get_module_id(id));
+
+	if ((id < 0xf000) || (id == 0xffff))
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	const u16 other_id = id + 0x1000;
+	if (other_id >= 0x57)
+	{
+		return CELL_SYSMODULE_ERROR_UNKNOWN;
+	}
+
+	if (error_code error = sys_lwmutex_lock((sys_lwmutex_t*)PTR_DAT_00009e98, 0))
+	{
+		return CELL_SYSMODULE_ERROR_FATAL;
+	}
+
+	error_code error = CELL_OK;
+
+	s32 iStack116;
+	if (*(s32*)(*(s32*)(iStack116 + -0x7fb0) + (uint)other_id * 0x10) == 0)
+	{
+		error = CELL_SYSMODULE_ERROR_UNLOADED;
+	}
+
+	sys_lwmutex_unlock(*(sys_lwmutex_t**)(iStack116 + -0x7ff8));
+	return error;
 }
 
 DECLARE(ppu_module_manager::cellSysmodule)("cellSysmodule", []()
