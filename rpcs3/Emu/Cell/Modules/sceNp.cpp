@@ -6994,7 +6994,7 @@ error_code sceNpSignalingGetLocalNetInfo(u32 ctx_id, vm::ptr<SceNpSignalingNetIn
 		return SCE_NP_SIGNALING_ERROR_NOT_INITIALIZED;
 	}
 
-	if (!info || info->size != sizeof(SceNpSignalingNetInfo))
+	if (!info || (info->size != 0x18 && info->size != 0x1c))
 	{
 		return SCE_NP_SIGNALING_ERROR_INVALID_ARGUMENT;
 	}
@@ -7055,9 +7055,13 @@ error_code sceNpSignalingGetPeerNetInfoResult(u32 ctx_id, u32 req_id, vm::ptr<Sc
 		return SCE_NP_SIGNALING_ERROR_NOT_INITIALIZED;
 	}
 
-	if (!info)
+	if (false)
 	{
-		// TODO: check info->size
+		return SCE_NP_SIGNALING_ERROR_CTX_NOT_FOUND;
+	}
+
+	if (!info || (info->size != 0x18 && info->size != 0x1c))
+	{
 		return SCE_NP_SIGNALING_ERROR_INVALID_ARGUMENT;
 	}
 
