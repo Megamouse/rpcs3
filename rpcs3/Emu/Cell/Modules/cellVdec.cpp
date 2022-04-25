@@ -392,6 +392,7 @@ struct vdec_context final
 					au_mode == CELL_VDEC_DEC_MODE_B_SKIP ? AVDISCARD_NONREF : AVDISCARD_NONINTRA;
 
 				std::deque<vdec_frame> decoded_frames;
+				u32 audone_result = CELL_OK;
 
 				if (!abort_decode && seq_id == cmd->seq_id)
 				{
@@ -399,10 +400,11 @@ struct vdec_context final
 
 					if (int ret = avcodec_send_packet(ctx, &packet); ret < 0)
 					{
-						fmt::throw_exception("AU queuing error (handle=0x%x, seq_id=%d, cmd_id=%d, error=0x%x): %s", handle, cmd->seq_id, cmd->id, ret, utils::av_error_to_string(ret));
+						cellVdec.error("AU queuing error (handle=0x%x, seq_id=%d, cmd_id=%d, error=0x%x): %s", handle, cmd->seq_id, cmd->id, ret, utils::av_error_to_string(ret));
+						audone_result = CELL_VDEC_ERROR_AU;
 					}
 
-					while (!abort_decode && seq_id == cmd->seq_id)
+					while (!abort_decode && seq_id == cmd->seq_id && audone_result == CELL_OK)
 					{
 						// Keep receiving frames
 						vdec_frame frame;
@@ -537,13 +539,13 @@ struct vdec_context final
 				if (thread_ctrl::state() != thread_state::aborting)
 				{
 					// Send AUDONE even if the current sequence was reset and a new sequence was started.
-					cellVdec.trace("Sending CELL_VDEC_MSG_TYPE_AUDONE (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, cmd->seq_id, cmd->id);
+					cellVdec.trace("Sending CELL_VDEC_MSG_TYPE_AUDONE (handle=0x%x, seq_id=%d, cmd_id=%d, au_result=%d)", handle, cmd->seq_id, cmd->id, audone_result);
 					ensure(au_count.try_dec(0));
 
-					cb_func(ppu, vid, CELL_VDEC_MSG_TYPE_AUDONE, CELL_OK, cb_arg);
+					cb_func(ppu, vid, CELL_VDEC_MSG_TYPE_AUDONE, audone_result, cb_arg);
 					lv2_obj::sleep(ppu);
 
-					while (!decoded_frames.empty() && seq_id == cmd->seq_id)
+					while (!decoded_frames.empty() && seq_id == cmd->seq_id && audone_result == CELL_OK)
 					{
 						// Wait until there is free space in the image queue.
 						// Do this after pushing the frame to the queue. That way the game can consume the frame and we can move on.
