@@ -156,6 +156,7 @@ struct vdec_frame
 	u64 cmd_id{};
 
 	std::unique_ptr<AVFrame, frame_dtor> avf;
+	u32 picout_result = CELL_OK;
 	u64 dts{};
 	u64 pts{};
 	u64 userdata{};
@@ -451,6 +452,12 @@ struct vdec_context final
 							fmt::throw_exception("AU decoding error (handle=0x%x, seq_id=%d, cmd_id=%d, error=0x%x): %s", handle, cmd->seq_id, cmd->id, ret, utils::av_error_to_string(ret));
 						}
 
+						if (frame->decode_error_flags)
+						{
+							cellVdec.error("AU decoding flawed (decode_error_flags=0x%x)", frame->decode_error_flags);
+							frame.picout_result = CELL_VDEC_ERROR_PIC;
+						}
+
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(60, 31, 102)
 						const int ticks_per_frame = ctx->ticks_per_frame;
 #else
@@ -594,6 +601,8 @@ struct vdec_context final
 							break;
 						}
 
+						const u32 picout_result = decoded_frames.front().picout_result;
+
 						{
 							std::lock_guard lock{mutex};
 							out_queue.push_back(std::move(decoded_frames.front()));
@@ -601,7 +610,7 @@ struct vdec_context final
 						}
 
 						cellVdec.trace("Sending CELL_VDEC_MSG_TYPE_PICOUT (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, cmd->seq_id, cmd->id);
-						cb_func(ppu, vid, CELL_VDEC_MSG_TYPE_PICOUT, CELL_OK, cb_arg);
+						cb_func(ppu, vid, CELL_VDEC_MSG_TYPE_PICOUT, picout_result, cb_arg);
 						lv2_obj::sleep(ppu);
 					}
 				}
@@ -1138,7 +1147,6 @@ error_code cellVdecDecodeAu(ppu_thread& ppu, u32 handle, CellVdecDecodeMode mode
 	const u64 cmd_id = vdec->next_cmd_id++;
 	cellVdec.trace("Adding decode cmd (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, seq_id, cmd_id);
 
-	// TODO: check info
 	vdec->in_cmd.push(vdec_cmd(vdec_cmd_type::au_decode, seq_id, cmd_id, mode, *auInfo));
 	return CELL_OK;
 }
