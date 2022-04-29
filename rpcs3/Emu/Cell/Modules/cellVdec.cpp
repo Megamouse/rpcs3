@@ -170,6 +170,8 @@ struct vdec_frame
 	}
 };
 
+constexpr u32 cmd_depth = 4;
+
 struct vdec_context final
 {
 	static const u32 id_base = 0xf0000000;
@@ -820,7 +822,7 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	attr->decoderVerLower = decoderVerLower;
 	attr->decoderVerUpper = 0x4840010;
 	attr->memSize = !spec_addr ? ensure(memSize) : 4 * 1024 * 1024;
-	attr->cmdDepth = 4;
+	attr->cmdDepth = cmd_depth;
 	return CELL_OK;
 }
 
@@ -1107,7 +1109,7 @@ error_code cellVdecDecodeAu(ppu_thread& ppu, u32 handle, CellVdecDecodeMode mode
 		return { CELL_VDEC_ERROR_ARG, "mode=%d, type=%d", +mode, vdec->type };
 	}
 
-	if (!vdec->au_count.try_inc(4))
+	if (!vdec->au_count.try_inc(cmd_depth))
 	{
 		return CELL_VDEC_ERROR_BUSY;
 	}
@@ -1154,7 +1156,7 @@ error_code cellVdecDecodeAuEx2(ppu_thread& ppu, u32 handle, CellVdecDecodeMode m
 		return { CELL_VDEC_ERROR_ARG, "mode=%d, type=%d", +mode, vdec->type };
 	}
 
-	if (!vdec->au_count.try_inc(4))
+	if (!vdec->au_count.try_inc(cmd_depth))
 	{
 		return CELL_VDEC_ERROR_BUSY;
 	}
@@ -1171,7 +1173,6 @@ error_code cellVdecDecodeAuEx2(ppu_thread& ppu, u32 handle, CellVdecDecodeMode m
 	const u64 cmd_id = vdec->next_cmd_id++;
 	cellVdec.trace("Adding decode cmd (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, seq_id, cmd_id);
 
-	// TODO: check info
 	vdec->in_cmd.push(vdec_cmd(vdec_cmd_type::au_decode, seq_id, cmd_id, mode, au_info));
 	return CELL_OK;
 }
