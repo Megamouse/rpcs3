@@ -949,6 +949,9 @@ error_code cellVdecClose(ppu_thread& ppu, u32 handle)
 		return CELL_VDEC_ERROR_ARG;
 	}
 
+	u64 seq_id = 0;
+	u64 cmd_id = 0;
+
 	{
 		std::lock_guard lock{vdec->mutex};
 
@@ -956,10 +959,11 @@ error_code cellVdecClose(ppu_thread& ppu, u32 handle)
 		{
 			return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
 		}
+
+		seq_id = vdec->seq_id;
+		cmd_id = vdec->next_cmd_id++;
 	}
 
-	const u64 seq_id = vdec->seq_id;
-	const u64 cmd_id = vdec->next_cmd_id++;
 	cellVdec.trace("Adding close cmd (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, seq_id, cmd_id);
 
 	lv2_obj::sleep(ppu);
@@ -1003,21 +1007,18 @@ error_code cellVdecStartSeq(ppu_thread& ppu, u32 handle)
 		return CELL_VDEC_ERROR_ARG;
 	}
 
-	sequence_state old_state{};
+	std::lock_guard lock{vdec->mutex};
 
+	const sequence_state old_state = vdec->seq_state;
+
+	if (old_state != sequence_state::dormant && old_state != sequence_state::ready)
 	{
-		std::lock_guard lock{vdec->mutex};
-		old_state = vdec->seq_state;
+		return { CELL_VDEC_ERROR_SEQ, old_state };
+	}
 
-		if (old_state != sequence_state::dormant && old_state != sequence_state::ready)
-		{
-			return { CELL_VDEC_ERROR_SEQ, old_state };
-		}
-
-		if (old_state == sequence_state::ready)
-		{
-			vdec->seq_state = sequence_state::resetting;
-		}
+	if (old_state == sequence_state::ready)
+	{
+		vdec->seq_state = sequence_state::resetting;
 	}
 
 	const u64 seq_id = ++vdec->seq_id;
@@ -1027,8 +1028,6 @@ error_code cellVdecStartSeq(ppu_thread& ppu, u32 handle)
 	vdec->abort_decode = false;
 	vdec->is_running = false;
 	vdec->in_cmd.push(vdec_cmd(vdec_cmd_type::start_sequence, seq_id, cmd_id));
-
-	std::lock_guard lock{vdec->mutex};
 
 	if (false) // TODO: set to old state in case of error
 	{
@@ -1055,16 +1054,14 @@ error_code cellVdecEndSeq(ppu_thread& ppu, u32 handle)
 		return CELL_VDEC_ERROR_ARG;
 	}
 
+	std::lock_guard lock{vdec->mutex};
+
+	if (vdec->seq_state != sequence_state::ready)
 	{
-		std::lock_guard lock{vdec->mutex};
-
-		if (vdec->seq_state != sequence_state::ready)
-		{
-			return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
-		}
-
-		vdec->seq_state = sequence_state::ending;
+		return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
 	}
+
+	vdec->seq_state = sequence_state::ending;
 
 	const u64 seq_id = vdec->seq_id;
 	const u64 cmd_id = vdec->next_cmd_id++;
@@ -1088,13 +1085,11 @@ error_code cellVdecDecodeAu(ppu_thread& ppu, u32 handle, CellVdecDecodeMode mode
 		return { CELL_VDEC_ERROR_ARG, "vdec=%d, auInfo=%d, size=%d, startAddr=0x%x", !!vdec, !!auInfo, auInfo ? auInfo->size.value() : 0, auInfo ? auInfo->startAddr.value() : 0 };
 	}
 
-	{
-		std::lock_guard lock{vdec->mutex};
+	std::lock_guard lock{vdec->mutex};
 
-		if (vdec->seq_state != sequence_state::ready)
-		{
-			return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
-		}
+	if (vdec->seq_state != sequence_state::ready)
+	{
+		return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
 	}
 
 	if (mode < 0 || mode > (CELL_VDEC_DEC_MODE_B_SKIP | CELL_VDEC_DEC_MODE_PB_SKIP))
@@ -1135,13 +1130,11 @@ error_code cellVdecDecodeAuEx2(ppu_thread& ppu, u32 handle, CellVdecDecodeMode m
 		return { CELL_VDEC_ERROR_ARG, "vdec=%d, auInfo=%d, size=%d, startAddr=0x%x", !!vdec, !!auInfo, auInfo ? auInfo->size.value() : 0, auInfo ? auInfo->startAddr.value() : 0 };
 	}
 
-	{
-		std::lock_guard lock{vdec->mutex};
+	std::lock_guard lock{vdec->mutex};
 
-		if (vdec->seq_state != sequence_state::ready)
-		{
-			return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
-		}
+	if (vdec->seq_state != sequence_state::ready)
+	{
+		return { CELL_VDEC_ERROR_SEQ, vdec->seq_state.load() };
 	}
 
 	if (mode < 0 || mode > (CELL_VDEC_DEC_MODE_B_SKIP | CELL_VDEC_DEC_MODE_PB_SKIP))
