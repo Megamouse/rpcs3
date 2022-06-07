@@ -207,6 +207,7 @@ struct vdec_context final
 
 	atomic_t<s32> au_count{0};
 
+	atomic_t<u32> cmd_depth = 4;
 	lf_queue<vdec_cmd> in_cmd;
 
 	AVRational log_time_base{}; // Used to reduce log spam
@@ -658,9 +659,20 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	{
 	case CELL_VDEC_CODEC_TYPE_AVC:
 	{
-		cellVdec.warning("cellVdecQueryAttr: AVC (profile=%d)", profile);
+		cellVdec.warning("vdecQueryAttr: AVC (profile=%d)", profile);
 
-		//const vm::ptr<CellVdecAvcSpecificInfo> sinfo = vm::cast(spec_addr);
+		const vm::ptr<CellVdecAvcSpecificInfo> sinfo = vm::cast(spec_addr);
+
+		if (sinfo)
+		{
+			if (sinfo->thisSize != sizeof(CellVdecAvcSpecificInfo))
+			{
+				return CELL_VDEC_ERROR_ARG;
+			}
+
+			cellVdec.notice("vdecQueryAttr: AVC sinfo: maxDecodedFrameWidth=%d, maxDecodedFrameHeight=%d, disableDeblockingFilter=%d, numberOfDecodedFrameBuffer=%d",
+				sinfo->maxDecodedFrameWidth, sinfo->maxDecodedFrameHeight, sinfo->disableDeblockingFilter, sinfo->numberOfDecodedFrameBuffer);
+		}
 
 		// TODO: sinfo
 
@@ -687,7 +699,7 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	}
 	case CELL_VDEC_CODEC_TYPE_MPEG2:
 	{
-		cellVdec.warning("cellVdecQueryAttr: MPEG2 (profile=%d)", profile);
+		cellVdec.warning("vdecQueryAttr: MPEG2 (profile=%d)", profile);
 
 		const vm::ptr<CellVdecMpeg2SpecificInfo> sinfo = vm::cast(spec_addr);
 
@@ -697,6 +709,8 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 			{
 				return CELL_VDEC_ERROR_ARG;
 			}
+
+			cellVdec.notice("vdecQueryAttr: MPEG2 sinfo: maxDecodedFrameWidth=%d, maxDecodedFrameHeight=%d", sinfo->maxDecodedFrameWidth, sinfo->maxDecodedFrameHeight);
 		}
 
 		// TODO: sinfo
@@ -754,7 +768,7 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	}
 	case CELL_VDEC_CODEC_TYPE_DIVX:
 	{
-		cellVdec.warning("cellVdecQueryAttr: DivX (profile=%d)", profile);
+		cellVdec.warning("vdecQueryAttr: DivX (profile=%d)", profile);
 
 		const vm::ptr<CellVdecDivxSpecificInfo2> sinfo = vm::cast(spec_addr);
 
@@ -764,6 +778,9 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 			{
 				return CELL_VDEC_ERROR_ARG;
 			}
+
+			cellVdec.notice("vdecQueryAttr: DivX sinfo: maxDecodedFrameWidth=%d, maxDecodedFrameHeight=%d, numberOfDecodedFrameBuffer=%d",
+				sinfo->maxDecodedFrameWidth, sinfo->maxDecodedFrameHeight, sinfo->numberOfDecodedFrameBuffer);
 		}
 
 		// TODO: sinfo
@@ -807,9 +824,9 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	}
 
 	attr->decoderVerLower = decoderVerLower;
-	attr->decoderVerUpper = 0x4840010;
+	attr->decoderVerUpper = 0x4840010; // Seems to be 0x4850000 or even higher on newer SDK
 	attr->memSize = !spec_addr ? ensure(memSize) : 4 * 1024 * 1024;
-	attr->cmdDepth = 4;
+	attr->cmdDepth = 4; // TODO
 	return CELL_OK;
 }
 
@@ -834,7 +851,7 @@ error_code cellVdecQueryAttrEx(vm::cptr<CellVdecTypeEx> type, vm::ptr<CellVdecAt
 		return CELL_VDEC_ERROR_ARG;
 	}
 
-	return vdecQueryAttr(type->codecType, type->profileLevel, type->codecSpecificInfo_addr, attr.get_ptr());
+	return vdecQueryAttr(type->codecType, type->profileLevel, type->codecSpecificInfo, attr.get_ptr());
 }
 
 template <typename T, typename U>
@@ -855,11 +872,12 @@ static error_code vdecOpen(ppu_thread& ppu, T type, U res, vm::cptr<CellVdecCb> 
 
 	if constexpr (std::is_same_v<std::decay_t<typename T::type>, CellVdecTypeEx>)
 	{
-		spec_addr = type->codecSpecificInfo_addr;
+		spec_addr = type->codecSpecificInfo;
 	}
 
-	if (CellVdecAttr attr{};
-		vdecQueryAttr(type->codecType, type->profileLevel, spec_addr, &attr) != CELL_OK ||
+	CellVdecAttr attr{};
+
+	if (vdecQueryAttr(type->codecType, type->profileLevel, spec_addr, &attr) != CELL_OK ||
 		attr.memSize > res->memSize)
 	{
 		return CELL_VDEC_ERROR_ARG;
@@ -882,6 +900,7 @@ static error_code vdecOpen(ppu_thread& ppu, T type, U res, vm::cptr<CellVdecCb> 
 
 	ensure(vdec);
 	vdec->handle = vid;
+	vdec->cmd_depth = attr.cmdDepth;
 
 	// Run thread
 	vm::var<u64> _tid;
@@ -1096,7 +1115,7 @@ error_code cellVdecDecodeAu(ppu_thread& ppu, u32 handle, CellVdecDecodeMode mode
 		return { CELL_VDEC_ERROR_ARG, "mode=%d, type=%d", +mode, vdec->type };
 	}
 
-	if (!vdec->au_count.try_inc(4))
+	if (!vdec->au_count.try_inc(vdec->cmd_depth))
 	{
 		return CELL_VDEC_ERROR_BUSY;
 	}
@@ -1105,7 +1124,6 @@ error_code cellVdecDecodeAu(ppu_thread& ppu, u32 handle, CellVdecDecodeMode mode
 	const u64 cmd_id = vdec->next_cmd_id++;
 	cellVdec.trace("Adding decode cmd (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, seq_id, cmd_id);
 
-	// TODO: check info
 	vdec->in_cmd.push(vdec_cmd(vdec_cmd_type::au_decode, seq_id, cmd_id, mode, *auInfo));
 	return CELL_OK;
 }
@@ -1144,7 +1162,7 @@ error_code cellVdecDecodeAuEx2(ppu_thread& ppu, u32 handle, CellVdecDecodeMode m
 		return { CELL_VDEC_ERROR_ARG, "mode=%d, type=%d", +mode, vdec->type };
 	}
 
-	if (!vdec->au_count.try_inc(4))
+	if (!vdec->au_count.try_inc(vdec->cmd_depth))
 	{
 		return CELL_VDEC_ERROR_BUSY;
 	}
@@ -1161,7 +1179,6 @@ error_code cellVdecDecodeAuEx2(ppu_thread& ppu, u32 handle, CellVdecDecodeMode m
 	const u64 cmd_id = vdec->next_cmd_id++;
 	cellVdec.trace("Adding decode cmd (handle=0x%x, seq_id=%d, cmd_id=%d)", handle, seq_id, cmd_id);
 
-	// TODO: check info
 	vdec->in_cmd.push(vdec_cmd(vdec_cmd_type::au_decode, seq_id, cmd_id, mode, au_info));
 	return CELL_OK;
 }

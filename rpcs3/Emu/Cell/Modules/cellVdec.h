@@ -90,7 +90,7 @@ struct CellVdecTypeEx
 {
 	be_t<s32> codecType; // CellVdecCodecType
 	be_t<u32> profileLevel;
-	be_t<u32> codecSpecificInfo_addr;
+	be_t<u32> codecSpecificInfo;
 };
 
 // Library Attributes
@@ -378,11 +378,11 @@ struct CellVdecAvcInfo
 // DIVX Profile
 enum DIVX_level : u8
 {
-	CELL_VDEC_DIVX_QMOBILE                   = 10,
-	CELL_VDEC_DIVX_MOBILE                    = 11,
-	CELL_VDEC_DIVX_HOME_THEATER              = 12,
-	CELL_VDEC_DIVX_HD_720                    = 13,
-	CELL_VDEC_DIVX_HD_1080                   = 14,
+	CELL_VDEC_DIVX_QMOBILE      = 10,
+	CELL_VDEC_DIVX_MOBILE       = 11,
+	CELL_VDEC_DIVX_HOME_THEATER = 12,
+	CELL_VDEC_DIVX_HD_720       = 13,
+	CELL_VDEC_DIVX_HD_1080      = 14,
 };
 
 struct CellVdecDivxSpecificInfo
