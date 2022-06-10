@@ -1713,3 +1713,142 @@ DECLARE(ppu_module_manager::cellVdec)("libvdec", []()
 
 	REG_HIDDEN_FUNC(vdecEntry);
 });
+
+//
+//void cellFunc(CellVdecCodecType codec_type, uint32_t level, void* codecSpecificInfo, bool query_ex)
+//{
+//	CellVdecAttr attr;
+//	memset(&attr, 0, sizeof(CellVdecAttr));
+//
+//	if (query_ex)
+//	{
+//		CellVdecTypeEx type_ex;
+//		memset(&type_ex, 0, sizeof(CellVdecTypeEx));
+//
+//		type_ex.codecType = codec_type;
+//		type_ex.profileLevel = level;
+//		type_ex.codecSpecificInfo = codecSpecificInfo;
+//
+//		const s32 res = cellVdecQueryAttrEx(&type_ex, &attr);
+//
+//		printf("cellVdecQueryAttrEx(type=%d, level=%d): res=%d, memSize=%d, decoderVerUpper=%d, decoderVerLower=%d, cmdDepth=%d\n",
+//			codec_type, level, res, attr.memSize, attr.decoderVerUpper, attr.decoderVerLower, attr.cmdDepth);
+//	}
+//	else
+//	{
+//		CellVdecType type;
+//		memset(&type, 0, sizeof(CellVdecType));
+//
+//		type.codecType = codec_type;
+//		type.profileLevel = level;
+//
+//		const s32 res = cellVdecQueryAttr(&type, &attr);
+//
+//		printf("cellVdecQueryAttr(type=%d, level=%d): res=%d, memSize=%d, decoderVerUpper=%d, decoderVerLower=%d, cmdDepth=%d\n",
+//			codec_type, level, res, attr.memSize, attr.decoderVerUpper, attr.decoderVerLower, attr.cmdDepth);
+//	}
+//}
+//
+//void testQuery(CellVdecCodecType codec_type, bool query_ex)
+//{
+//	uint32_t numProfileLevels = 0;
+//	uint32_t profileLevels[32];
+//
+//	switch(codec_type)
+//	{
+//	case CELL_VDEC_CODEC_TYPE_MPEG2:
+//		profileLevels[numProfileLevels++] = CELL_VDEC_MPEG2_MP_LL;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_MPEG2_MP_ML;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_MPEG2_MP_H14;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_MPEG2_MP_HL;
+//		break;
+//	case CELL_VDEC_CODEC_TYPE_AVC:
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_1P0;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_1P1;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_1P2;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_1P3;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_2P0;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_2P1;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_2P2;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_3P0;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_3P1;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_3P2;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_4P0;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_4P1;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_AVC_LEVEL_4P2;
+//		break;
+//	case CELL_VDEC_CODEC_TYPE_DIVX:
+//		profileLevels[numProfileLevels++] = CELL_VDEC_DIVX_QMOBILE;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_DIVX_MOBILE;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_DIVX_HOME_THEATER;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_DIVX_HD_720;
+//		profileLevels[numProfileLevels++] = CELL_VDEC_DIVX_HD_1080;
+//		break;
+//	default:
+//		break;
+//	}
+//
+//	for (int pl = 0; pl < numProfileLevels; pl++)
+//	{
+//		for (int mode : { 0, 1, 2, 3, 4 })
+//		{
+//			CellVdecMpeg2SpecificInfo mpeg_info;
+//			CellVdecAvcSpecificInfo avc_info;
+//			CellVdecDivxSpecificInfo2 divx_info;
+//
+//			void* codecSpecificInfo = NULL;
+//
+//			if (mode == 0)
+//			{
+//				printf("codecSpecificInfo: null\n");
+//			}
+//			else
+//			{
+//				switch(codec_type)
+//				{
+//				case CELL_VDEC_CODEC_TYPE_MPEG2:
+//					memset(&mpeg_info, 0, sizeof(CellVdecMpeg2SpecificInfo));
+//					if (mode > 1) mpeg_info.thisSize = sizeof(CellVdecAvcSpecificInfo);
+//					printf("codecSpecificInfo: size=%d\n", mpeg_info.thisSize);
+//					break;
+//				case CELL_VDEC_CODEC_TYPE_AVC:
+//					memset(&avc_info, 0, sizeof(CellVdecAvcSpecificInfo));
+//					if (mode > 1) avc_info.thisSize = sizeof(CellVdecMpeg2SpecificInfo);
+//					if (mode > 2) avc_info.maxDecodedFrameWidth = sizeof(CellVdecMpeg2SpecificInfo);
+//					printf("codecSpecificInfo: size=%d\n", avc_info.thisSize);
+//					break;
+//				case CELL_VDEC_CODEC_TYPE_DIVX:
+//					memset(&divx_info, 0, sizeof(CellVdecDivxSpecificInfo2));
+//					if (mode > 1) divx_info.thisSize = sizeof(CellVdecDivxSpecificInfo2);
+//					printf("codecSpecificInfo: size=%d\n", divx_info.thisSize);
+//					break;
+//				default:
+//					break;
+//				}
+//			}
+//
+//			cellFunc(codec_type, profileLevels[pl], codecSpecificInfo, query_ex);
+//		}
+//	}
+//}
+//
+//void main()
+//{
+//	printf("\nTesting cellVdecQueryAttr with CELL_VDEC_CODEC_TYPE_MPEG2\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_MPEG2, false);
+//
+//	printf("\nTesting cellVdecQueryAttr with CELL_VDEC_CODEC_TYPE_AVC\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_AVC, false);
+//
+//	printf("\nTesting cellVdecQueryAttr with CELL_VDEC_CODEC_TYPE_DIVX\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_DIVX, false);
+//	
+//	printf("\nTesting cellVdecQueryAttrEx with CELL_VDEC_CODEC_TYPE_MPEG2\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_MPEG2, true);
+//
+//	printf("\nTesting cellVdecQueryAttrEx with CELL_VDEC_CODEC_TYPE_AVC\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_AVC, true);
+//
+//	printf("\nTesting cellVdecQueryAttrEx with CELL_VDEC_CODEC_TYPE_DIVX\n");
+//	testQuery(CELL_VDEC_CODEC_TYPE_DIVX, true);
+//}
