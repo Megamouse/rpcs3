@@ -11,8 +11,8 @@ pkg info # debug
 # Prefer newer Clang than in base system (see also .ci/build-freebsd.sh)
 pkg install llvm13
 
-# Mandatory dependencies (qt6-dbus and qt6-gui are pulled via qt6-widgets)
-pkg install git ccache cmake ninja qt6-qmake qt6-buildtools qt6-widgets qt6-concurrent qt6-multimedia qt6-svg glew openal-soft ffmpeg
+# Mandatory dependencies (qt6-base and qt6-svg are pulled via qt6-multimedia)
+pkg install git ccache cmake ninja qt6-multimedia glew openal-soft ffmpeg
 
-# Optional dependencies (libevdev is pulled by qt6-gui)
+# Optional dependencies (libevdev is pulled by qt6-base)
 pkg install pkgconf alsa-lib pulseaudio sdl2 evdev-proto vulkan-headers vulkan-loader
