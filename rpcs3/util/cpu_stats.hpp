@@ -2,11 +2,11 @@
 
 #include "util/types.hpp"
 
+#include <vector>
+
 #ifdef _WIN32
 #include <pdh.h>
 #include <pdhmsg.h>
-#elif __linux__
-#include <vector>
 #endif
 
 namespace utils

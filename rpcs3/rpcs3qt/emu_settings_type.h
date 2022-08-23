@@ -2,6 +2,8 @@
 
 #include <QMap>
 
+#include <vector>
+
 // Node location
 using cfg_location = std::vector<const char*>;
 
