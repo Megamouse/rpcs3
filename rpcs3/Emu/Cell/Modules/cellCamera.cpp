@@ -65,10 +65,11 @@ void fmt_class_string<CellCameraFormat>::format(std::string& out, u64 arg)
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-// **************
-// * Prototypes *
-// **************
+// ************************
+// * Forward declarations *
+// ************************
 
+error_code cellCameraGetAttribute(s32 dev_num, s32 attrib, vm::ptr<u32> arg1, vm::ptr<u32> arg2);
 error_code cellCameraSetAttribute(s32 dev_num, s32 attrib, u32 arg1, u32 arg2);
 error_code cellCameraReadEx(s32 dev_num, vm::ptr<CellCameraReadEx> read);
 
@@ -772,7 +773,13 @@ s32 cellCameraIsAvailable(s32 dev_num)
 
 	if (*type > CELL_CAMERA_TYPE_UNKNOWN || *type <= CELL_CAMERA_USBVIDEOCLASS)
 	{
-		// TODO: checks CELL_CAMERA_DEVICESPEED attribute
+		vm::var<u32> device_speed;
+		if (cellCameraGetAttribute(dev_num, CELL_CAMERA_DEVICESPEED, device_speed, vm::null) == CELL_OK)
+		{
+			// TODO: set device_speed somewhere
+			//return device_speed && *device_speed > 0;
+			return true;
+		}
 	}
 
 	return true;
@@ -983,9 +990,51 @@ error_code cellCameraSetAttribute(s32 dev_num, s32 attrib, u32 arg1, u32 arg2)
 	return CELL_OK;
 }
 
-error_code cellCameraResetAttribute()
+error_code cellCameraResetAttribute(s32 dev_num)
 {
-	UNIMPLEMENTED_FUNC(cellCamera);
+	cellCamera.warning("cellCameraResetAttribute(dev_num=%d)", dev_num);
+
+	vm::var<s32> type;
+	error_code err = cellCameraGetType(dev_num, type);
+	if (err != CELL_OK) return err;
+
+	switch (*type)
+	{
+	case CELL_CAMERA_EYETOY2:
+	{
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_GAMMA, 1, 0);
+		if (err != CELL_OK) return err;
+
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_AGCLIMIT, 4, 0);
+		if (err != CELL_OK) return err;
+
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_DENOISE, 0, 0);
+		if (err != CELL_OK) return err;
+
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_FRAMERATEADJUST, 0, 0);
+		if (err != CELL_OK) return err;
+
+		[[fallthrough]];
+	}
+	case CELL_CAMERA_EYETOY:
+	{
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_LED, 1, 0);
+		if (err != CELL_OK) return err;
+
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_BACKLIGHTCOMP, 0, 0);
+		if (err != CELL_OK) return err;
+
+		err = cellCameraSetAttribute(dev_num, CELL_CAMERA_MIRRORFLAG, 1, 0);
+		if (err != CELL_OK) return err;
+
+		break;
+	}
+	default:
+	{
+		break;
+	}
+	}
+
 	return CELL_OK;
 }
 
@@ -1030,15 +1079,23 @@ error_code cellCameraGetBufferSize(s32 dev_num, vm::ptr<CellCameraInfoEx> info)
 		return CELL_CAMERA_ERROR_DEVICE_NOT_FOUND;
 	}
 
-	if (auto status = cellCameraSetAttribute(dev_num, CELL_CAMERA_READMODE, info->read_mode, 0))
+	if (info->info_ver >= 512)
 	{
-		return status;
+		if (auto status = cellCameraSetAttribute(dev_num, CELL_CAMERA_READMODE, info->read_mode, 0))
+		{
+			return status;
+		}
 	}
 
 	if (error_code error = check_resolution(dev_num))
 	{
 		return error;
 	}
+	
+	u32 width, height;
+	std::tie(width, height) = get_video_resolution(*info);
+	info->width = width;
+	info->height = height;
 
 	std::lock_guard lock(g_camera.mutex);
 
@@ -1289,9 +1346,9 @@ error_code cellCameraStartPost()
 	return CELL_OK;
 }
 
-error_code cellCameraRead(s32 dev_num, vm::ptr<u32> frame_num, vm::ptr<u32> bytes_read)
+error_code cellCameraRead2(s32 dev_num, vm::ptr<u32> frame_num, vm::ptr<u32> bytes_read, vm::ptr<u32> unk)
 {
-	cellCamera.notice("cellCameraRead(dev_num=%d, frame_num=*0x%x, bytes_read=*0x%x)", dev_num, frame_num, bytes_read);
+	cellCamera.notice("cellCameraRead2(dev_num=%d, frame_num=*0x%x, bytes_read=*0x%x, unk=*0x%x)", dev_num, frame_num, bytes_read, unk);
 
 	vm::ptr<CellCameraReadEx> read_ex = vm::make_var<CellCameraReadEx>({});
 
@@ -1310,13 +1367,19 @@ error_code cellCameraRead(s32 dev_num, vm::ptr<u32> frame_num, vm::ptr<u32> byte
 		*bytes_read = read_ex->bytesread;
 	}
 
+	if (unk)
+	{
+		// TODO
+	}
+
 	return CELL_OK;
 }
 
-error_code cellCameraRead2()
+error_code cellCameraRead(s32 dev_num, vm::ptr<u32> frame_num, vm::ptr<u32> bytes_read)
 {
-	UNIMPLEMENTED_FUNC(cellCamera);
-	return CELL_OK;
+	cellCamera.notice("cellCameraRead(dev_num=%d, frame_num=*0x%x, bytes_read=*0x%x)", dev_num, frame_num, bytes_read);
+
+	return cellCameraRead2(dev_num, frame_num, bytes_read, vm::null);
 }
 
 error_code cellCameraReadEx(s32 dev_num, vm::ptr<CellCameraReadEx> read)
@@ -1377,8 +1440,7 @@ error_code cellCameraReadEx(s32 dev_num, vm::ptr<CellCameraReadEx> read)
 
 			g_camera.bytes_read = ::narrow<u32>(bytes_read);
 
-			cellCamera.trace("cellCameraRead: frame_number=%d, width=%d, height=%d. bytes_read=%d (passed to game: frame=%d, bytesread=%d)",
-				frame_number, width, height, bytes_read, read ? read->frame.get() : 0, read ? read->bytesread.get() : 0);
+			cellCamera.trace("cellCameraRead: frame_number=%d, width=%d, height=%d. bytes_read=%d", frame_number, width, height, bytes_read);
 		}
 	}
 	else
@@ -1393,13 +1455,16 @@ error_code cellCameraReadEx(s32 dev_num, vm::ptr<CellCameraReadEx> read)
 
 	if (read) // NULL returns CELL_OK
 	{
-		read->timestamp = g_camera.frame_timestamp_us;
+		//read->timestamp = g_camera.frame_timestamp_us;
 		read->frame = g_camera.frame_num;
 		read->bytesread = g_camera.bytes_read;
+		read->pbuf = g_camera.info.buffer;
+
+		cellCamera.error("cellCameraReadEx: passed to game=(timestamp=%d, frame=%d, bytesread=%d)", read->timestamp, read->frame, read->bytesread);
 
 		auto& shared_data = g_fxo->get<gem_camera_shared>();
 
-		shared_data.frame_timestamp_us.store(read->timestamp);
+		shared_data.frame_timestamp_us.store(g_camera.frame_timestamp_us);
 	}
 
 	return CELL_OK;
