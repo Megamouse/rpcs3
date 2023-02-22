@@ -27,13 +27,17 @@ cd qt-downloader
 git checkout f52efee0f18668c6d6de2dec0234b8c4bc54c597
 pip3 install pipenv
 pipenv run pip3 install py7zr requests semantic_version lxml
+mkdir -p $QT_VER/clang_64/bin/
+mkdir -p $QT_VER/clang_64/mkspecs/
+touch $QT_VER/clang_64/mkspecs/qconfig.pri
 pipenv run ./qt-downloader macos desktop $QT_VER clang_64 --opensource
 cd ..
 
-export Qt6_DIR="$WORKDIR/qt-downloader/$QT_VER/clang_64/lib/cmake/Qt$QT_VER_MAIN"
+export Qt6_PREFIX="$WORKDIR/qt-downloader/$QT_VER/macos"
+export Qt6_DIR="$Qt6_PREFIX/lib/cmake/Qt$QT_VER_MAIN"
 export SDL2_DIR="$BREW_X64_PATH/opt/sdl2/lib/cmake/SDL2"
 
-export PATH="$BREW_PATH/opt/llvm@14/bin:$WORKDIR/qt-downloader/$QT_VER/clang_64/bin:$BREW_BIN:$BREW_SBIN:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/Library/Apple/usr/bin:$PATH"
+export PATH="$BREW_PATH/opt/llvm@14/bin:$WORKDIR/qt-downloader/$QT_VER/macos/bin:$BREW_BIN:$BREW_SBIN:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/Library/Apple/usr/bin:$PATH"
 export LDFLAGS="-L$BREW_X64_PATH/lib -Wl,-rpath,$BREW_X64_PATH/lib"
 export CPPFLAGS="-I$BREW_X64_PATH/include -msse -msse2 -mcx16 -no-pie"
 export LIBRARY_PATH="$BREW_X64_PATH/lib"
@@ -43,6 +47,7 @@ git submodule update --init --recursive --depth 1
 
 # 3rdparty fixes
 sed -i '' "s/extern const double NSAppKitVersionNumber;/const double NSAppKitVersionNumber = 1343;/g" 3rdparty/hidapi/hidapi/mac/hid.c
+sed -i '' -e 's/GLEW 1.13.0/GLEW/g' 3rdparty/CMakeLists.txt # Remove the GLEW limitation
 
 mkdir build && cd build || exit 1
 
@@ -53,6 +58,7 @@ mkdir build && cd build || exit 1
     -DLLVM_INCLUDE_UTILS=OFF -DLLVM_USE_PERF=OFF -DLLVM_ENABLE_Z3_SOLVER=OFF \
     -DUSE_NATIVE_INSTRUCTIONS=OFF \
     -DUSE_SYSTEM_MVK=OFF \
+    -DCMAKE_PREFIX_PATH="$Qt6_PREFIX" \
     $CMAKE_EXTRA_OPTS \
     -DLLVM_TARGET_ARCH=X86_64 -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_IGNORE_PATH="$BREW_PATH/lib" \
     -G Ninja
