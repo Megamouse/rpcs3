@@ -25,6 +25,12 @@ option(USE_PRECOMPILED_HEADERS "Use precompiled headers" OFF)
 option(USE_SDL "Enables SDL input handler" OFF)
 option(USE_SYSTEM_SDL "Prefer system SDL instead of the builtin one" OFF)
 
+if(WIN32 OR APPLE)
+    option(USE_SYSTEM_FFMPEG OFF)
+else()
+    option(USE_SYSTEM_FFMPEG ON)
+endif()
+
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/buildfiles/cmake")
 
 include(CheckCXXCompilerFlag)
