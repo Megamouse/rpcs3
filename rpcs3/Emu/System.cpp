@@ -798,7 +798,7 @@ bool Emulator::BootRsxCapture(const std::string& path)
 	g_fxo->init<named_thread<progress_dialog_server>>();
 
 	// Initialize performance monitor
-	g_fxo->init<named_thread<perf_monitor>>();
+	g_fxo->init<perf_monitor, named_thread<perf_monitor>>();
 
 	// PS3 'executable'
 	m_state = system_state::ready;
@@ -1875,7 +1875,7 @@ game_boot_result Emulator::Load(const std::string& title_id, bool is_disc_patch,
 		g_fxo->init<named_thread<progress_dialog_server>>();
 
 		// Initialize performance monitor
-		g_fxo->init<named_thread<perf_monitor>>();
+		g_fxo->init<perf_monitor, named_thread<perf_monitor>>();
 
 		// Set title to actual disc title if necessary
 		const std::string disc_sfo_dir = vfs::get("/dev_bdvd/PS3_GAME/PARAM.SFO");

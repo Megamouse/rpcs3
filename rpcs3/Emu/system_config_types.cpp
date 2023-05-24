@@ -153,6 +153,7 @@ void fmt_class_string<detail_level>::format(std::string& out, u64 arg)
 		case detail_level::low: return "Low";
 		case detail_level::medium: return "Medium";
 		case detail_level::high: return "High";
+		case detail_level::full: return "Full";
 		}
 
 		return unknown;

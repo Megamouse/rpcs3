@@ -1128,6 +1128,7 @@ QString emu_settings::GetLocalizedSetting(const QString& original, emu_settings_
 		case detail_level::low: return tr("Low", "Detail Level");
 		case detail_level::medium: return tr("Medium", "Detail Level");
 		case detail_level::high: return tr("High", "Detail Level");
+		case detail_level::full: return tr("Full", "Detail Level");
 		}
 		break;
 	case emu_settings_type::PerfOverlayPosition:

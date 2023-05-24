@@ -224,6 +224,7 @@ enum class detail_level
 	low,
 	medium,
 	high,
+	full
 };
 
 enum class screen_quadrant

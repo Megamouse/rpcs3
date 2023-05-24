@@ -4,12 +4,18 @@
 #include "Emu/RSX/RSXThread.h"
 #include "Emu/Cell/SPUThread.h"
 #include "Emu/Cell/PPUThread.h"
+#include "Emu/perf_monitor.hpp"
 
 #include <algorithm>
 #include <utility>
 #include <charconv>
 
 #include "util/cpu_stats.hpp"
+
+inline usz count_digits(usz number)
+{
+	return number == 0 ? 1 : static_cast<usz>(log10(number) + 1);
+};
 
 namespace rsx
 {
@@ -240,6 +246,7 @@ namespace rsx
 			case detail_level::low: m_titles.set_text(""); break;
 			case detail_level::medium: m_titles.set_text(fmt::format("\n\n%s", title1_medium)); break;
 			case detail_level::high: m_titles.set_text(fmt::format("\n\n%s\n\n\n\n\n\n%s", title1_high, title2)); break;
+			case detail_level::full: m_titles.set_text(fmt::format("\n\n%s\n\n\n\n\n\n%s\n\n\n%s", title1_high, title2, title3)); break;
 			}
 			m_titles.auto_resize();
 			m_titles.refresh();
@@ -247,6 +254,10 @@ namespace rsx
 
 		void perf_metrics_overlay::init()
 		{
+			m_per_core_cpu_usage.resize(utils::get_thread_count());
+			m_cores_digits = count_digits(utils::get_thread_count());
+			m_cores_placeholder = std::string(m_cores_digits, ' ');
+
 			m_padding = m_font_size / 2;
 			m_fps_graph.set_one_percent_sort_high(false);
 			m_frametime_graph.set_one_percent_sort_high(true);
@@ -469,6 +480,15 @@ namespace rsx
 
 					switch (m_detail)
 					{
+					case detail_level::full:
+					{
+						if (auto monitor = g_fxo->try_get<perf_monitor>())
+						{
+							monitor->get_data(m_total_cpu_usage, m_per_core_cpu_usage);
+						}
+
+						[[fallthrough]];
+					}
 					case detail_level::high:
 					{
 						m_frametime = std::max(0.f, static_cast<float>(elapsed_update / m_frames));
@@ -543,32 +563,56 @@ namespace rsx
 				case detail_level::low:
 				{
 					fmt::append(perf_text, "FPS : %05.2f\n"
-					                         "CPU : %04.1f %%",
+					                       "CPU : %04.1f %%",
 					    m_fps, m_cpu_usage);
 					break;
 				}
 				case detail_level::medium:
 				{
 					fmt::append(perf_text, "FPS : %05.2f\n\n"
-					                         "%s\n"
-					                         " PPU   : %04.1f %%\n"
-					                         " SPU   : %04.1f %%\n"
-					                         " RSX   : %04.1f %%\n"
-					                         " Total : %04.1f %%",
+					                       "%s\n"
+					                       " PPU   : %04.1f %%\n"
+					                       " SPU   : %04.1f %%\n"
+					                       " RSX   : %04.1f %%\n"
+					                       " Total : %04.1f %%",
 					    m_fps, std::string(title1_medium.size(), ' '), m_ppu_usage, m_spu_usage, m_rsx_usage, m_cpu_usage, std::string(title2.size(), ' '));
 					break;
 				}
 				case detail_level::high:
 				{
 					fmt::append(perf_text, "FPS : %05.2f (%03.1fms)\n\n"
-					                         "%s\n"
-					                         " PPU   : %04.1f %% (%2u)\n"
-					                         " SPU   : %04.1f %% (%2u)\n"
-					                         " RSX   : %04.1f %% ( 1)\n"
-					                         " Total : %04.1f %% (%2u)\n\n"
-					                         "%s\n"
-					                         " RSX   : %02u %%",
+					                       "%s\n"
+					                       " PPU   : %04.1f %% (%2u)\n"
+					                       " SPU   : %04.1f %% (%2u)\n"
+					                       " RSX   : %04.1f %% ( 1)\n"
+					                       " Total : %04.1f %% (%2u)\n\n"
+					                       "%s\n"
+					                       " RSX   : %02u %%",
 					    m_fps, m_frametime, std::string(title1_high.size(), ' '), m_ppu_usage, m_ppus, m_spu_usage, m_spus, m_rsx_usage, m_cpu_usage, m_total_threads, std::string(title2.size(), ' '), m_rsx_load);
+					break;
+				}
+				case detail_level::full:
+				{
+					fmt::append(perf_text, "FPS : %05.2f (%03.1fms)\n\n"
+					                       "%s\n"
+					                       " PPU   : %04.1f %% (%2u)\n"
+					                       " SPU   : %04.1f %% (%2u)\n"
+					                       " RSX   : %04.1f %% ( 1)\n"
+					                       " Total : %04.1f %% (%2u)\n\n"
+					                       "%s\n"
+					                       " RSX   : %02u %%\n\n"
+					                       "%s\n"
+					                       " CPU %s : %02.0f %%",
+					    m_fps, m_frametime,
+					    empty1_high, m_ppu_usage, m_ppus, m_spu_usage, m_spus, m_rsx_usage, m_cpu_usage, m_total_threads,
+					    empty2, m_rsx_load,
+					    empty3, m_cores_placeholder, m_total_cpu_usage);
+
+					for (usz i = 0; i < m_per_core_cpu_usage.size(); i++)
+					{
+						const usz core_padding = m_cores_digits - count_digits(i);
+						fmt::append(perf_text, "\n CPU %s%d : %02.0f %%", std::string(core_padding, ' '), i, m_per_core_cpu_usage[i]);
+					}
 					break;
 				}
 				}

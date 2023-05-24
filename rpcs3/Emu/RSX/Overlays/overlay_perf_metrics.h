@@ -57,7 +57,11 @@ namespace rsx
 
 			const std::string title1_medium{ "CPU Utilization:" };
 			const std::string title1_high{ "Host Utilization (CPU):" };
+			const std::string empty1_high{ "                       " };
 			const std::string title2{ "Guest Utilization (PS3):" };
+			const std::string empty2{ "                        " };
+			const std::string title3{ "CPU Usage:" };
+			const std::string empty3{ "          " };
 
 			f32 m_fps{0};
 			f32 m_frametime{0};
@@ -77,6 +81,11 @@ namespace rsx
 			f32 m_spu_usage{0};
 			f32 m_rsx_usage{0};
 			u32 m_rsx_load{0};
+
+			f64 m_total_cpu_usage{0.0};
+			std::vector<f64> m_per_core_cpu_usage;
+			usz m_cores_digits{};
+			std::string m_cores_placeholder;
 
 			void reset_transform(label& elm) const;
 			void reset_transforms();

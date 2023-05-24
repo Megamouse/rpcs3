@@ -13,8 +13,13 @@ void perf_monitor::operator()()
 	constexpr u64 log_interval_us = 10000000;   // Log every 10 seconds
 	u64 elapsed_us = 0;
 
+	double total_usage = 0.0;
+	std::vector<double> per_core_usage;
+
 	utils::cpu_stats stats;
 	stats.init_cpu_query();
+	stats.get_per_core_usage(per_core_usage, total_usage);
+	set_data(total_usage, per_core_usage);
 
 	u32 logged_pause = 0;
 	u64 last_pause_time = umax;
@@ -34,6 +39,7 @@ void perf_monitor::operator()()
 		double total_usage = 0.0;
 
 		stats.get_per_core_usage(per_core_usage, total_usage);
+		set_data(total_usage, per_core_usage);
 
 		if (elapsed_us >= log_interval_us)
 		{
@@ -80,4 +86,22 @@ void perf_monitor::operator()()
 
 perf_monitor::~perf_monitor()
 {
+}
+
+void perf_monitor::get_data(double& total_usage, std::vector<double>& per_core_usage)
+{
+	if (m_dirty.exchange(false)) [[unlikely]]
+	{
+		std::lock_guard lock(m_mutex);
+		total_usage = m_total_usage;
+		per_core_usage = m_per_core_usage;
+	}
+}
+
+void perf_monitor::set_data(double total_usage, std::vector<double> per_core_usage)
+{
+	std::lock_guard lock(m_mutex);
+	m_total_usage = total_usage;
+	m_per_core_usage = std::move(per_core_usage);
+	m_dirty = true;
 }
