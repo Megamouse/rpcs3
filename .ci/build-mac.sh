@@ -69,6 +69,7 @@ mkdir build && cd build || exit 1
     -DUSE_SYSTEM_MVK=OFF \
     $CMAKE_EXTRA_OPTS \
     -DLLVM_TARGET_ARCH=X86_64 \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=12.6 \
     -DCMAKE_OSX_ARCHITECTURES=x86_64 \
     -DCMAKE_IGNORE_PATH="$BREW_PATH/lib" \
     -G Ninja
