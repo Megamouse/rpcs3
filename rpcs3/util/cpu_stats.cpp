@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include "windows.h"
 #include "tlhelp32.h"
+#include "psapi.h"
 #ifdef _MSC_VER
 #pragma comment(lib, "pdh.lib")
 #endif
@@ -364,6 +365,32 @@ namespace utils
 		m_usr_cpu  = timeSample.tms_utime;
 
 		return std::clamp(percent, 0.0, 100.0);
+#endif
+	}
+
+	void cpu_stats::get_memory_usage()
+	{
+#ifdef _WIN32
+		MEMORYSTATUSEX memInfo{};
+		memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+
+		if (!GlobalMemoryStatusEx(&memInfo))
+		{
+			perf_log.error("Failed to query global memory status: error=%s", fmt::win_error{GetLastError(), nullptr});
+			return;
+		}
+
+		PROCESS_MEMORY_COUNTERS_EX pmc{};
+		if (!GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc)))
+		{
+			perf_log.error("Failed to query process memory information: error=%s", fmt::win_error{GetLastError(), nullptr});
+			return;
+		}
+
+		const DWORDLONG phys_mem_used = memInfo.ullTotalPhys - memInfo.ullAvailPhys;
+
+		constexpr auto to_mb = [](u64 bytes) -> float { return bytes / (1024.0f * 1024 * 1024); };
+		perf_log.error("MEM: total=%.2f, free=%.2f, used=%.2f, byProc=%.2f, byProc=%.2f", to_mb(memInfo.ullTotalPhys), to_mb(memInfo.ullAvailPhys), to_mb(phys_mem_used), to_mb(pmc.WorkingSetSize), to_mb(pmc.PrivateUsage));
 #endif
 	}
 

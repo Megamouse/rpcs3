@@ -34,6 +34,7 @@ void perf_monitor::operator()()
 		double total_usage = 0.0;
 
 		stats.get_per_core_usage(per_core_usage, total_usage);
+		stats.get_memory_usage();
 
 		if (elapsed_us >= log_interval_us)
 		{

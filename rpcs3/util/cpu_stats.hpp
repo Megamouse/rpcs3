@@ -35,6 +35,8 @@ namespace utils
 		void init_cpu_query();
 		void get_per_core_usage(std::vector<double>& per_core_usage, double& total_usage);
 
+		void get_memory_usage();
+
 		static u32 get_current_thread_count();
 	};
 }
