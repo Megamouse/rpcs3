@@ -31,7 +31,7 @@ namespace rsx
 			add_dropdown(&g_cfg.audio.renderer, "Audio Backend");
 
 			add_checkbox(&g_cfg.audio.enable_buffering, "Enable Buffering");
-			add_signed_slider(&g_cfg.audio.desired_buffer_duration, "Desired Audio Buffer Duration", " ms", 1);
+			add_signed_slider(&g_cfg.audio.desired_buffer_duration_ms, "Desired Audio Buffer Duration", " ms", 1);
 
 			add_checkbox(&g_cfg.audio.enable_time_stretching, "Enable Time Stretching");
 			add_signed_slider(&g_cfg.audio.time_stretching_threshold, "Time Stretching Threshold", " %", 1);

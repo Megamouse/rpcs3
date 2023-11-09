@@ -1367,7 +1367,7 @@ rsxaudio_backend_thread::emu_audio_cfg rsxaudio_backend_thread::get_emu_cfg()
 	emu_audio_cfg cfg =
 	{
 		.audio_device = g_cfg.audio.audio_device,
-		.desired_buffer_duration = g_cfg.audio.desired_buffer_duration,
+		.desired_buffer_duration = g_cfg.audio.desired_buffer_duration_ms,
 		.time_stretching_threshold = g_cfg.audio.time_stretching_threshold / 100.0,
 		.buffering_enabled = static_cast<bool>(g_cfg.audio.enable_buffering),
 		.convert_to_s16 = static_cast<bool>(g_cfg.audio.convert_to_s16),

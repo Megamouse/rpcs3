@@ -146,7 +146,7 @@ struct audio_port
 	u64 global_counter = 0; // copy of global counter
 	u64 active_counter = 0;
 	u32 size = 0;
-	u64 timestamp = 0; // copy of global timestamp
+	u64 timestamp_us = 0; // copy of global timestamp
 
 	struct level_set_t
 	{
@@ -207,7 +207,7 @@ struct cell_audio_config
 	{
 		std::string audio_device{};
 		bool buffering_enabled = false;
-		s64 desired_buffer_duration = 0;
+		s64 desired_buffer_duration_ms = 0;
 		bool enable_time_stretching = false;
 		s64 time_stretching_threshold = 0;
 		bool convert_to_s16 = false;
@@ -227,9 +227,9 @@ struct cell_audio_config
 	u32 backend_ch_cnt = 8;
 	u32 audio_channels = 2;
 	u32 audio_sampling_rate = DEFAULT_AUDIO_SAMPLING_RATE;
-	u32 audio_block_period = 0;
+	u32 audio_block_period_us = 0;
 	u32 audio_sample_size = 0;
-	f64 audio_min_buffer_duration = 0.0;
+	f64 audio_min_buffer_duration_sec = 0.0;
 
 	u32 audio_buffer_length = 0;
 
@@ -237,24 +237,24 @@ struct cell_audio_config
 	 * Buffering
 	 */
 
-	u64 desired_buffer_duration = 0;
+	u64 desired_buffer_duration_us = 0;
 
 	// We need a non-blocking backend (implementing play/pause/flush) to be able to do buffering correctly
 	// We also need to be able to query the current playing state
 	bool buffering_enabled = false;
 
-	u64 minimum_block_period = 0; // the block period will not be dynamically lowered below this value (usecs)
-	u64 maximum_block_period = 0; // the block period will not be dynamically increased above this value (usecs)
+	u64 minimum_block_period_us = 0; // the block period will not be dynamically lowered below this value (usecs)
+	u64 maximum_block_period_us = 0; // the block period will not be dynamically increased above this value (usecs)
 
 	u32 desired_full_buffers = 0;
 	u32 num_allocated_buffers = 0; // number of ringbuffer buffers
 
 	static constexpr f32 period_average_alpha = 0.02f; // alpha factor for the m_average_period rolling average
 
-	static constexpr s64 period_comparison_margin = 250; // when comparing the current period time with the desired period, if it is below this number of usecs we do not wait any longer
+	static constexpr s64 period_comparison_margin_us = 250; // when comparing the current period time with the desired period, if it is below this number of usecs we do not wait any longer
 
-	u64 fully_untouched_timeout = 0; // timeout if the game has not touched any audio buffer yet
-	u64 partially_untouched_timeout = 0; // timeout if the game has not touched all audio buffers yet
+	u64 fully_untouched_timeout_us = 0; // timeout if the game has not touched any audio buffer yet
+	u64 partially_untouched_timeout_us = 0; // timeout if the game has not touched all audio buffers yet
 
 	/*
 	 * Time Stretching
@@ -297,9 +297,6 @@ private:
 	atomic_t<bool> backend_device_changed = false;
 	bool playing = false;
 
-	u64 update_timestamp = 0;
-	u64 play_timestamp = 0;
-
 	u64 last_remainder = 0;
 
 	f32 frequency_ratio = RESAMPLER_MAX_FREQ_VAL;
@@ -332,7 +329,7 @@ public:
 	float* get_current_buffer() const;
 
 	u64 get_enqueued_samples() const;
-	u64 get_enqueued_playtime() const;
+	u64 get_enqueued_playtime_us() const;
 
 	bool is_playing() const
 	{
@@ -367,8 +364,13 @@ private:
 	std::unique_ptr<audio_ringbuffer> ringbuffer{};
 
 	void reset_ports(s32 offset = 0);
-	void advance(u64 timestamp);
+	void advance(u64 timestamp_us);
 	std::tuple<u32, u32, u32, u32> count_port_buffer_tags();
+
+	// Tells the game that we are done mixing and that it should prepare new samples
+	void send_mix_event(bool before_mix, std::unique_lock<shared_mutex>* lock);
+
+	void mix();
 	template <AudioChannelCnt channels, AudioChannelCnt downmix>
 	void mix(float* out_buffer, s32 offset = 0);
 	void finish_port_volume_stepping();
@@ -409,8 +411,8 @@ public:
 	u64 m_last_period_end = 0;
 	u64 m_counter = 0;
 	u64 m_start_time = 0;
-	u64 m_dynamic_period = 0;
-	f32 m_average_playtime = 0.0f;
+	u64 m_dynamic_period_us = 0;
+	f32 m_average_playtime_us = 0.0f;
 	bool m_backend_failed = false;
 	bool m_audio_should_restart = false;
 
