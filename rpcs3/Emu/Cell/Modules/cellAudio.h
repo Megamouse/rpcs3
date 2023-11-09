@@ -377,7 +377,7 @@ private:
 
 	constexpr static u64 get_thread_wait_delay(u64 time_left)
 	{
-		return (time_left > 350) ? time_left - 250 : 100;
+		return (time_left > (cell_audio_config::period_comparison_margin_us + 100)) ? time_left - cell_audio_config::period_comparison_margin_us : 100;
 	}
 
 	void update_config(bool backend_changed);

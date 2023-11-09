@@ -9,6 +9,7 @@
 #include "util/video_provider.h"
 
 #include <cmath>
+#pragma optimize("", off)
 
 LOG_CHANNEL(cellAudio);
 
@@ -206,7 +207,7 @@ void audio_ringbuffer::backend_state_callback(AudioStateEvent event)
 
 u64 audio_ringbuffer::get_timestamp()
 {
-	return get_system_time();
+	return get_system_time(); // get_guest_system_time ?
 }
 
 float* audio_ringbuffer::get_current_buffer() const
@@ -266,11 +267,6 @@ void audio_ringbuffer::enqueue(bool enqueue_silence, bool force)
 	else
 	{
 		// Since time stretching step is skipped, we can commit to buffer directly
-		static u64 last = 0;
-		const u64 now = get_system_time();
-		const u64 elapsed = now - last;
-		last = now;
-		cellAudio.error("Elapsed = %.3f", elapsed / 1000.0);
 		commit_data(buf, AUDIO_BUFFER_SAMPLES);
 	}
 }
@@ -552,7 +548,6 @@ void cell_audio_thread::advance(u64 timestamp_us)
 	m_counter++;
 	m_last_period_end = timestamp_us;
 	m_dynamic_period_us = 0;
-	event_period++;
 
 	send_mix_event(false, &lock);
 }
@@ -740,7 +735,7 @@ void cell_audio_thread::operator()()
 		}
 
 		const bool emu_paused = Emu.IsPaused();
-		const u64 period_start = ringbuffer->update(emu_paused || m_backend_failed);
+		[[maybe_unused]] const u64 update_timestamp = ringbuffer->update(emu_paused || m_backend_failed);
 
 		if (emu_paused)
 		{
@@ -760,13 +755,14 @@ void cell_audio_thread::operator()()
 		//     If CELL_AUDIO_EVENTFLAG_BEFOREMIX is specified, we immediately send the CELL_AUDIO_EVENT_MIX event and the game can process audio.
 		//     We then have to wait for a maximum of ~2.6ms for cellAudioSendAck and then mix immediately.
 
+		const u64 period_start = m_last_period_end;
 		const u64 time_since_last_period_us = period_start - m_last_period_end;
 
 		// Handle audio restart
 		if (m_audio_should_restart)
 		{
 			// align to 5.(3)ms on global clock - some games seem to prefer this
-			const s64 audio_period_alignment_delta = ((period_start - m_start_time) % cfg.audio_block_period_us) + (cfg.audio_block_period_us / 2);
+			const s64 audio_period_alignment_delta = (period_start - m_start_time) % cfg.audio_block_period_us;
 			if (audio_period_alignment_delta > cfg.period_comparison_margin_us)
 			{
 				thread_ctrl::wait_for(audio_period_alignment_delta - cfg.period_comparison_margin_us);
@@ -816,25 +812,51 @@ void cell_audio_thread::operator()()
 			m_backend_failed = false;
 		}
 
-	while (thread_ctrl::state() != thread_state::aborting)
-	{
-		const u64 timestamp_us = get_system_time();
-
-		const u64 period_end = (m_counter * cfg.audio_block_period_us) + m_start_time;
-		const s64 period_time_left = period_end - timestamp_us;
-
-		if (period_time_left < cfg.period_comparison_margin_us)
 		{
-			break;
+			std::unique_lock lock(mutex);
+			event_period++;
+			send_mix_event(true, &lock);
 		}
 
-		if (!cfg.buffering_enabled)
-		{
-			thread_ctrl::wait_for(get_thread_wait_delay(period_time_left));
-			continue;
-		}
+		const u64 period_end = period_start + cfg.audio_block_period_us;
+		const u64 period_half = period_start + (cfg.audio_block_period_us / 2);
 
+		while (thread_ctrl::state() != thread_state::aborting)
 		{
+			// Check for ack
+			if ([this, period_start]()
+				{
+					std::unique_lock lock(mutex);
+
+					for (const cell_audio_thread::key_info& k : keys)
+					{
+						if (k.ack_timestamp > period_start)
+						{
+							//return true;
+						}
+					}
+					return false;
+				}())
+			{
+				// We have to mix and enqueue the new samples immediately
+				break;
+			}
+
+			const u64 timestamp_us = get_system_time();
+			const s64 period_half_time_left = period_half - timestamp_us;
+
+			if (period_half_time_left <= cfg.period_comparison_margin_us)
+			{
+				// We have to mix and enqueue the new samples when half our period is over
+				break;
+			}
+
+			if (!cfg.buffering_enabled)
+			{
+				thread_ctrl::wait_for(get_thread_wait_delay(period_half_time_left));
+				continue;
+			}
+
 			const u64 enqueued_samples = ringbuffer->get_enqueued_samples();
 			const f32 frequency_ratio = ringbuffer->get_frequency_ratio();
 			const u64 enqueued_playtime_us = ringbuffer->get_enqueued_playtime_us();
@@ -957,7 +979,6 @@ void cell_audio_thread::operator()()
 				cellAudio.error("enqueueing: untouched=%u/%u (expected=%u), incomplete=%u/%u enqueued_buffers=%llu", untouched, active_ports, untouched_expected, incomplete, active_ports, enqueued_buffers);
 			}
 		}
-	}
 
 		// Mix
 		mix();
@@ -966,7 +987,21 @@ void cell_audio_thread::operator()()
 		ringbuffer->enqueue();
 
 		// Advance time
-		advance(period_start);
+		advance(period_end);
+
+		// Wait for the next period
+		const u64 timestamp_us = get_system_time();
+		const s64 period_time_left = period_end - timestamp_us;
+		if (period_time_left > 0)
+		{
+			thread_ctrl::wait_for(period_time_left);
+		}
+
+		static u64 last = 0;
+		const u64 now = get_system_time();
+		const u64 elapsed = now - last;
+		last = now;
+		cellAudio.error("Elapsed = %.3f", elapsed / 1000.0);
 	}
 
 	// Destroy ringbuffer
