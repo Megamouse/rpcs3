@@ -124,6 +124,71 @@ error_code cellSailDescriptorCreateDatabase(vm::ptr<CellSailDescriptor> pSelf, v
 {
 	cellSail.warning("cellSailDescriptorCreateDatabase(pSelf=*0x%x, pDatabase=*0x%x, size=0x%x, arg=0x%llx)", pSelf, pDatabase, size, arg);
 
+	if (!pSelf)
+	{
+		return CELL_SAIL_ERROR_INVALID_ARG;
+	}
+
+	constexpr usz CELL_SAIL_DB_SIZE = 0x80;
+	
+	const u8 state = pSelf->internalData[0x38];
+
+	if (state != CELL_SAIL_PLAYER_STATE_BOOT_TRANSITION &&
+		state != CELL_SAIL_PLAYER_STATE_OPEN_TRANSITION &&
+		state != CELL_SAIL_PLAYER_STATE_START_TRANSITION)
+	{
+		return CELL_SAIL_ERROR_INVALID_STATE;
+	}
+
+	const s32 iVar2 = *reinterpret_cast<s32*>(pSelf->internalData);
+
+	switch (iVar2)
+	{
+	case CELL_SAIL_STREAM_PAMF:
+	{
+		if (size < CELL_SAIL_DB_SIZE)
+			return CELL_SAIL_ERROR_INVALID_ARG;
+
+		if (!pDatabase)
+			return CELL_SAIL_ERROR_INVALID_ARG;
+
+		std::memcpy(pDatabase.get_ptr(), pSelf->internalData + 0x40, CELL_SAIL_DB_SIZE);
+		cellPamfReaderSetStreamWithTypeAndIndex(pDatabase, 0x14, 0);
+		break;
+	}
+	case CELL_SAIL_STREAM_MP4:
+	{
+		if (size < CELL_SAIL_DB_SIZE)
+			return CELL_SAIL_ERROR_INVALID_ARG;
+
+		uVar3 = *(undefined4*)(pSelf->internalData + 0x24);
+		ppcVar4 = *(code***)(PTR_DAT_00026f68 + 0x20);
+	LAB_0000b4f4:
+		EVar5 = (**ppcVar4)(uVar3, pSelf->internalData + 0x40, pDatabase);
+		if ((int)EVar5 < 1)
+		{
+			return EVar5;
+		}
+		break;
+	}
+	case CELL_SAIL_STREAM_AVI:
+	{
+		if (size < CELL_SAIL_DB_SIZE)
+			return CELL_SAIL_ERROR_INVALID_ARG;
+
+		uVar3 = *(undefined4*)(pSelf->internalData + 0x24);
+		ppcVar4 = *(code***)(PTR_DAT_00026f6c + 0x20);
+		goto LAB_0000b4f4;
+		break;
+	}
+	default:
+	{
+		return CELL_SAIL_ERROR_UNSUPPORTED_STREAM;
+	}
+	}
+
+	return CELL_OK;
+
 	switch (pSelf->streamType)
 	{
 		case CELL_SAIL_STREAM_PAMF:

@@ -1125,11 +1125,7 @@ struct CellSailMpegLayer3WaveFormat
 
 struct CellSailDescriptor
 {
-	b8 autoSelection;
-	b8 registered;
-	be_t<s32> streamType;
-	be_t<u32> buffer;
-	be_t<u32> sp_;
+	u8 internalData[256];
 };
 
 CHECK_MAX_SIZE(CellSailDescriptor, 0x100);
