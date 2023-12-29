@@ -237,6 +237,7 @@
      </property>
      <addaction name="confBuzzAct"/>
      <addaction name="confGHLtarAct"/>
+     <addaction name="confRB3GuitarAct"/>
      <addaction name="confTurntableAct"/>
      <addaction name="confUSIOAct"/>
      <addaction name="confPSMoveDS3Act"/>
@@ -1307,6 +1308,11 @@
   <action name="confGHLtarAct">
    <property name="text">
     <string>GHLtar</string>
+   </property>
+  </action>
+  <action name="confRB3GuitarAct">
+   <property name="text">
+    <string>Rock Band 3 Guitar</string>
    </property>
   </action>
   <action name="confTurntableAct">

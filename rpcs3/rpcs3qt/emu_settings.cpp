@@ -1088,6 +1088,15 @@ QString emu_settings::GetLocalizedSetting(const QString& original, emu_settings_
 		case ghltar_handler::two_controllers: return tr("2 controllers", "GHLtar handler");
 		}
 		break;
+	case emu_settings_type::RB3Guitar:
+		switch (static_cast<rb3_guitar_handler>(index))
+		{
+		case rb3_guitar_handler::null: return tr("Null", "RB3 Guitar handler");
+		case rb3_guitar_handler::one_controller: return tr("1 controller", "RB3 Guitar handler");
+		case rb3_guitar_handler::two_controllers: return tr("2 controllers", "RB3 Guitar handler");
+		case rb3_guitar_handler::three_controllers: return tr("3 controllers", "RB3 Guitar handler");
+		}
+		break;
 	case emu_settings_type::InternetStatus:
 		switch (static_cast<np_internet_status>(index))
 		{

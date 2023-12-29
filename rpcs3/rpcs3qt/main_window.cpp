@@ -2732,6 +2732,12 @@ void main_window::CreateConnects()
 		dlg->show();
 	});
 
+	connect(ui->confRB3GuitarAct, &QAction::triggered, this, [this]
+	{
+		emulated_pad_settings_dialog* dlg = new emulated_pad_settings_dialog(emulated_pad_settings_dialog::pad_type::rb3_guitar, this);
+		dlg->show();
+	});
+
 	connect(ui->confTurntableAct, &QAction::triggered, this, [this]
 	{
 		emulated_pad_settings_dialog* dlg = new emulated_pad_settings_dialog(emulated_pad_settings_dialog::pad_type::turntable, this);

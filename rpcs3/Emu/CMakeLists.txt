@@ -408,6 +408,8 @@ target_sources(rpcs3_emu PRIVATE
     Io/Skylander.cpp
     Io/GHLtar.cpp
     Io/midi_config_types.cpp
+    Io/rb3_guitar.cpp
+    Io/rb3_guitar_base.cpp
     Io/RB3MidiKeyboard.cpp
     Io/RB3MidiGuitar.cpp
     Io/RB3MidiDrums.cpp

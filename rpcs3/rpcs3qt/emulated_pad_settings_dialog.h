@@ -18,6 +18,7 @@ public:
 		buzz,
 		turntable,
 		ghltar,
+		rb3_guitar,
 		usio,
 		ds3gem
 	};

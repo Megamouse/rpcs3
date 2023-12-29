@@ -155,16 +155,24 @@ enum class buzz_handler
 
 enum class turntable_handler
 {
-	null,
-	one_controller,
-	two_controllers,
+	null = 0,
+	one_controller = 1,
+	two_controllers = 2,
 };
 
 enum class ghltar_handler
 {
-	null,
-	one_controller,
-	two_controllers,
+	null = 0,
+	one_controller = 1,
+	two_controllers = 2,
+};
+
+enum class rb3_guitar_handler
+{
+	null = 0,
+	one_controller = 1,
+	two_controllers = 2,
+	three_controllers = 3,
 };
 
 enum class microphone_handler

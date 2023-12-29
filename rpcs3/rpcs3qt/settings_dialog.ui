@@ -1599,14 +1599,57 @@
        <layout class="QVBoxLayout" name="inputTab_layout">
         <item>
          <layout class="QGridLayout" name="ioGridLayout" columnstretch="1,1,1">
-          <item row="2" column="2">
-           <widget class="QGroupBox" name="gb_ghltar_emulated">
+          <item row="0" column="1">
+           <widget class="QGroupBox" name="gb_camera_type">
             <property name="title">
-             <string>Guitar Hero Live Emulated Guitar</string>
+             <string>Camera Input</string>
             </property>
-            <layout class="QVBoxLayout" name="gb_ghltar_emulated_layout">
+            <layout class="QVBoxLayout" name="gb_camera_type_layout">
              <item>
-              <widget class="QComboBox" name="ghltarBox"/>
+              <widget class="QComboBox" name="cameraTypeBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QGroupBox" name="gb_camera_setting">
+            <property name="title">
+             <string>Camera Handler</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_camera_setting_layout">
+             <item>
+              <widget class="QComboBox" name="cameraBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="5" column="2">
+           <widget class="QGroupBox" name="gb_midi_2">
+            <property name="title">
+             <string>Emulated MIDI Device 2</string>
+            </property>
+            <layout class="QVBoxLayout" name="midLayout2">
+             <item>
+              <layout class="QHBoxLayout" name="midiHLayout2" stretch="1,2">
+               <item>
+                <widget class="QComboBox" name="midiTypeBox2"/>
+               </item>
+               <item>
+                <widget class="QComboBox" name="midiDeviceBox2"/>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QGroupBox" name="gb_buzz_emulated">
+            <property name="title">
+             <string>Buzz! Emulated Controller</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_buzz_emulated_layout">
+             <item>
+              <widget class="QComboBox" name="buzzBox"/>
              </item>
             </layout>
            </widget>
@@ -1619,6 +1662,37 @@
             <layout class="QVBoxLayout" name="gb_move_handler_layout">
              <item>
               <widget class="QComboBox" name="moveBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QGroupBox" name="gb_keyboard_handler">
+            <property name="title">
+             <string>Keyboard Handler</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_keyboard_handler_layout">
+             <item>
+              <widget class="QComboBox" name="keyboardHandlerBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="6" column="2">
+           <widget class="QGroupBox" name="gb_midi_3">
+            <property name="title">
+             <string>Emulated MIDI Device 3</string>
+            </property>
+            <layout class="QVBoxLayout" name="midLayout3">
+             <item>
+              <layout class="QHBoxLayout" name="midiHLayout3" stretch="1,2">
+               <item>
+                <widget class="QComboBox" name="midiTypeBox3"/>
+               </item>
+               <item>
+                <widget class="QComboBox" name="midiDeviceBox3"/>
+               </item>
+              </layout>
              </item>
             </layout>
            </widget>
@@ -1647,148 +1721,7 @@
             </layout>
            </widget>
           </item>
-          <item row="0" column="2">
-           <widget class="QGroupBox" name="gb_buzz_emulated">
-            <property name="title">
-             <string>Buzz! Emulated Controller</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_buzz_emulated_layout">
-             <item>
-              <widget class="QComboBox" name="buzzBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QGroupBox" name="gb_keyboard_handler">
-            <property name="title">
-             <string>Keyboard Handler</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_keyboard_handler_layout">
-             <item>
-              <widget class="QComboBox" name="keyboardHandlerBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QGroupBox" name="gb_pad_mode">
-            <property name="title">
-             <string>Pad Handler Mode</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_pad_mode_layout">
-             <item>
-              <widget class="QComboBox" name="padModeBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QGroupBox" name="gb_camera_type">
-            <property name="title">
-             <string>Camera Input</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_camera_type_layout">
-             <item>
-              <widget class="QComboBox" name="cameraTypeBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QGroupBox" name="gb_camera_flip">
-            <property name="title">
-             <string>Camera Flip</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_camera_flip_layout">
-             <item>
-              <widget class="QComboBox" name="cameraFlipBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QGroupBox" name="gb_camera_id">
-            <property name="title">
-             <string>Camera</string>
-            </property>
-            <layout class="QVBoxLayout" name="camera_id_layout">
-             <item>
-              <widget class="QComboBox" name="cameraIdBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QGroupBox" name="gb_camera_setting">
-            <property name="title">
-             <string>Camera Handler</string>
-            </property>
-            <layout class="QVBoxLayout" name="gb_camera_setting_layout">
-             <item>
-              <widget class="QComboBox" name="cameraBox"/>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <widget class="QGroupBox" name="gb_midi_1">
-            <property name="title">
-             <string>Emulated MIDI Device 1</string>
-            </property>
-            <layout class="QVBoxLayout" name="midLayout1">
-             <item>
-              <layout class="QHBoxLayout" name="midiHLayout1" stretch="1,2">
-               <item>
-                <widget class="QComboBox" name="midiTypeBox1"/>
-               </item>
-               <item>
-                <widget class="QComboBox" name="midiDeviceBox1"/>
-               </item>
-              </layout>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="6" column="2">
-           <widget class="QGroupBox" name="gb_midi_3">
-            <property name="title">
-             <string>Emulated MIDI Device 3</string>
-            </property>
-            <layout class="QVBoxLayout" name="midLayout3">
-             <item>
-              <layout class="QHBoxLayout" name="midiHLayout3" stretch="1,2">
-               <item>
-                <widget class="QComboBox" name="midiTypeBox3"/>
-               </item>
-               <item>
-                <widget class="QComboBox" name="midiDeviceBox3"/>
-               </item>
-              </layout>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="5" column="2">
-           <widget class="QGroupBox" name="gb_midi_2">
-            <property name="title">
-             <string>Emulated MIDI Device 2</string>
-            </property>
-            <layout class="QVBoxLayout" name="midLayout2">
-             <item>
-              <layout class="QHBoxLayout" name="midiHLayout2" stretch="1,2">
-               <item>
-                <widget class="QComboBox" name="midiTypeBox2"/>
-               </item>
-               <item>
-                <widget class="QComboBox" name="midiDeviceBox2"/>
-               </item>
-              </layout>
-             </item>
-            </layout>
-           </widget>
-          </item>
-          <item row="5" column="0" rowspan="2">
+          <item row="4" column="0" rowspan="2">
            <widget class="QGroupBox" name="gb_additional_io_settings">
             <property name="title">
              <string>Additional Settings</string>
@@ -1844,6 +1777,85 @@
                 </size>
                </property>
               </spacer>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QGroupBox" name="gb_pad_mode">
+            <property name="title">
+             <string>Pad Handler Mode</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_pad_mode_layout">
+             <item>
+              <widget class="QComboBox" name="padModeBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QGroupBox" name="gb_camera_id">
+            <property name="title">
+             <string>Camera</string>
+            </property>
+            <layout class="QVBoxLayout" name="camera_id_layout">
+             <item>
+              <widget class="QComboBox" name="cameraIdBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <widget class="QGroupBox" name="gb_ghltar_emulated">
+            <property name="title">
+             <string>Guitar Hero Live Emulated Guitar</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_ghltar_emulated_layout">
+             <item>
+              <widget class="QComboBox" name="ghltarBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <widget class="QGroupBox" name="gb_midi_1">
+            <property name="title">
+             <string>Emulated MIDI Device 1</string>
+            </property>
+            <layout class="QVBoxLayout" name="midLayout1">
+             <item>
+              <layout class="QHBoxLayout" name="midiHLayout1" stretch="1,2">
+               <item>
+                <widget class="QComboBox" name="midiTypeBox1"/>
+               </item>
+               <item>
+                <widget class="QComboBox" name="midiDeviceBox1"/>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QGroupBox" name="gb_camera_flip">
+            <property name="title">
+             <string>Camera Flip</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_camera_flip_layout">
+             <item>
+              <widget class="QComboBox" name="cameraFlipBox"/>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QGroupBox" name="gb_rb3_guitar_emulated">
+            <property name="title">
+             <string>Rock Band 3 Emulated Guitar</string>
+            </property>
+            <layout class="QVBoxLayout" name="gb_rb3_guitar_emulated_2">
+             <item>
+              <widget class="QComboBox" name="rb3GuitarBox"/>
              </item>
             </layout>
            </widget>

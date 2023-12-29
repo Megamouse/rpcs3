@@ -4,6 +4,7 @@
 #include "Emu/Io/buzz_config.h"
 #include "Emu/Io/gem_config.h"
 #include "Emu/Io/ghltar_config.h"
+#include "Emu/Io/rb3_guitar_config.h"
 #include "Emu/Io/turntable_config.h"
 #include "Emu/Io/usio_config.h"
 #include "util/asm.hpp"
@@ -75,6 +76,10 @@ emulated_pad_settings_dialog::emulated_pad_settings_dialog(pad_type type, QWidge
 		setWindowTitle(tr("Configure Emulated GHLtar"));
 		add_tabs<ghltar_btn>(tabs);
 		break;
+	case emulated_pad_settings_dialog::pad_type::rb3_guitar:
+		setWindowTitle(tr("Configure Emulated Rock Band 3 Guitar"));
+		add_tabs<rb3_guitar_btn>(tabs);
+		break;
 	case emulated_pad_settings_dialog::pad_type::usio:
 		setWindowTitle(tr("Configure Emulated USIO"));
 		add_tabs<usio_btn>(tabs);
@@ -114,6 +119,9 @@ void emulated_pad_settings_dialog::add_tabs(QTabWidget* tabs)
 		break;
 	case pad_type::ghltar:
 		players = g_cfg_ghltar.players.size();
+		break;
+	case pad_type::rb3_guitar:
+		players = g_cfg_rb3_guitar.players.size();
 		break;
 	case pad_type::usio:
 		players = g_cfg_usio.players.size();
@@ -160,6 +168,9 @@ void emulated_pad_settings_dialog::add_tabs(QTabWidget* tabs)
 			case pad_type::ghltar:
 				saved_btn_id = ::at32(g_cfg_ghltar.players, player)->get_pad_button(static_cast<ghltar_btn>(id));
 				break;
+			case pad_type::rb3_guitar:
+				saved_btn_id = ::at32(g_cfg_rb3_guitar.players, player)->get_pad_button(static_cast<rb3_guitar_btn>(id));
+				break;
 			case pad_type::usio:
 				saved_btn_id = ::at32(g_cfg_usio.players, player)->get_pad_button(static_cast<usio_btn>(id));
 				break;
@@ -191,6 +202,9 @@ void emulated_pad_settings_dialog::add_tabs(QTabWidget* tabs)
 					break;
 				case pad_type::ghltar:
 					::at32(g_cfg_ghltar.players, player)->set_button(static_cast<ghltar_btn>(id), btn_id);
+					break;
+				case pad_type::rb3_guitar:
+					::at32(g_cfg_rb3_guitar.players, player)->set_button(static_cast<rb3_guitar_btn>(id), btn_id);
 					break;
 				case pad_type::usio:
 					::at32(g_cfg_usio.players, player)->set_button(static_cast<usio_btn>(id), btn_id);
@@ -240,6 +254,12 @@ void emulated_pad_settings_dialog::load_config()
 			cfg_log.notice("Could not load ghltar config. Using defaults.");
 		}
 		break;
+	case emulated_pad_settings_dialog::pad_type::rb3_guitar:
+		if (!g_cfg_rb3_guitar.load())
+		{
+			cfg_log.notice("Could not load RB3 Guitar config. Using defaults.");
+		}
+		break;
 	case emulated_pad_settings_dialog::pad_type::usio:
 		if (!g_cfg_usio.load())
 		{
@@ -268,6 +288,9 @@ void emulated_pad_settings_dialog::save_config()
 	case emulated_pad_settings_dialog::pad_type::ghltar:
 		g_cfg_ghltar.save();
 		break;
+	case emulated_pad_settings_dialog::pad_type::rb3_guitar:
+		g_cfg_rb3_guitar.save();
+		break;
 	case emulated_pad_settings_dialog::pad_type::usio:
 		g_cfg_usio.save();
 		break;
@@ -289,6 +312,9 @@ void emulated_pad_settings_dialog::reset_config()
 		break;
 	case emulated_pad_settings_dialog::pad_type::ghltar:
 		g_cfg_ghltar.from_default();
+		break;
+	case emulated_pad_settings_dialog::pad_type::rb3_guitar:
+		g_cfg_rb3_guitar.from_default();
 		break;
 	case emulated_pad_settings_dialog::pad_type::usio:
 		g_cfg_usio.from_default();
@@ -320,6 +346,9 @@ void emulated_pad_settings_dialog::reset_config()
 				break;
 			case pad_type::ghltar:
 				def_btn_id = ::at32(g_cfg_ghltar.players, player)->default_pad_button(static_cast<ghltar_btn>(data.toInt()));
+				break;
+			case pad_type::rb3_guitar:
+				def_btn_id = ::at32(g_cfg_rb3_guitar.players, player)->default_pad_button(static_cast<rb3_guitar_btn>(data.toInt()));
 				break;
 			case pad_type::usio:
 				def_btn_id = ::at32(g_cfg_usio.players, player)->default_pad_button(static_cast<usio_btn>(data.toInt()));

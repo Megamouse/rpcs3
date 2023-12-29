@@ -19,6 +19,8 @@
 #include "Emu/Io/Infinity.h"
 #include "Emu/Io/GHLtar.h"
 #include "Emu/Io/ghltar_config.h"
+#include "Emu/Io/rb3_guitar.h"
+#include "Emu/Io/rb3_guitar_config.h"
 #include "Emu/Io/Buzz.h"
 #include "Emu/Io/buzz_config.h"
 #include "Emu/Io/Turntable.h"
@@ -37,6 +39,7 @@ LOG_CHANNEL(sys_usbd);
 
 cfg_buzz g_cfg_buzz;
 cfg_ghltars g_cfg_ghltar;
+cfg_rb3_guitars g_cfg_rb3_guitar;
 cfg_turntables g_cfg_turntable;
 cfg_usios g_cfg_usio;
 
@@ -429,39 +432,49 @@ usb_handler_thread::usb_handler_thread()
 		}
 	}
 
-	if (g_cfg.io.ghltar == ghltar_handler::one_controller || g_cfg.io.ghltar == ghltar_handler::two_controllers)
+	if (g_cfg.io.ghltar != ghltar_handler::null)
 	{
 		if (!g_cfg_ghltar.load())
 		{
 			sys_usbd.notice("Could not load ghltar config. Using defaults.");
 		}
 
-		sys_usbd.notice("Adding emulated GHLtar (1 player)");
-		usb_devices.push_back(std::make_shared<usb_device_ghltar>(0, get_new_location()));
-	}
-	if (g_cfg.io.ghltar == ghltar_handler::two_controllers)
-	{
-		sys_usbd.notice("Adding emulated GHLtar (2 players)");
-		usb_devices.push_back(std::make_shared<usb_device_ghltar>(1, get_new_location()));
+		for (u32 i = 0; i < static_cast<u32>(g_cfg.io.ghltar.get()); i++)
+		{
+			sys_usbd.notice("Adding emulated GHLtar (%d player)", i);
+			usb_devices.push_back(std::make_shared<usb_device_ghltar>(i, get_new_location()));
+		}
 	}
 
-	if (g_cfg.io.turntable == turntable_handler::one_controller || g_cfg.io.turntable == turntable_handler::two_controllers)
+	if (g_cfg.io.rb3_guitar != rb3_guitar_handler::null)
+	{
+		if (!g_cfg_rb3_guitar.load())
+		{
+			sys_usbd.notice("Could not load RB3 Guitar config. Using defaults.");
+		}
+
+		for (u32 i = 0; i < static_cast<u32>(g_cfg.io.rb3_guitar.get()); i++)
+		{
+			sys_usbd.notice("Adding emulated RB3 Guitar (%d player)", i);
+			usb_devices.push_back(std::make_shared<usb_device_rb3_guitar>(i, get_new_location(), ::at32(g_cfg_rb3_guitar.players, i)->twenty_two_fret.get()));
+		}
+	}
+
+	if (g_cfg.io.turntable != turntable_handler::null)
 	{
 		if (!g_cfg_turntable.load())
 		{
 			sys_usbd.notice("Could not load turntable config. Using defaults.");
 		}
 
-		sys_usbd.notice("Adding emulated turntable (1 player)");
-		usb_devices.push_back(std::make_shared<usb_device_turntable>(0, get_new_location()));
-	}
-	if (g_cfg.io.turntable == turntable_handler::two_controllers)
-	{
-		sys_usbd.notice("Adding emulated turntable (2 players)");
-		usb_devices.push_back(std::make_shared<usb_device_turntable>(1, get_new_location()));
+		for (u32 i = 0; i < static_cast<u32>(g_cfg.io.turntable.get()); i++)
+		{
+			sys_usbd.notice("Adding emulated turntable (%d player)", i);
+			usb_devices.push_back(std::make_shared<usb_device_turntable>(i, get_new_location()));
+		}
 	}
 
-	if (g_cfg.io.buzz == buzz_handler::one_controller || g_cfg.io.buzz == buzz_handler::two_controllers)
+	if (g_cfg.io.buzz != buzz_handler::null)
 	{
 		if (!g_cfg_buzz.load())
 		{
@@ -470,13 +483,14 @@ usb_handler_thread::usb_handler_thread()
 
 		sys_usbd.notice("Adding emulated Buzz! buzzer (1-4 players)");
 		usb_devices.push_back(std::make_shared<usb_device_buzz>(0, 3, get_new_location()));
-	}
-	if (g_cfg.io.buzz == buzz_handler::two_controllers)
-	{
-		// The current buzz emulation piggybacks on the pad input.
-		// Since there can only be 7 pads connected on a PS3 the 8th player is currently not supported
-		sys_usbd.notice("Adding emulated Buzz! buzzer (5-7 players)");
-		usb_devices.push_back(std::make_shared<usb_device_buzz>(4, 6, get_new_location()));
+
+		if (g_cfg.io.buzz == buzz_handler::two_controllers)
+		{
+			// The current buzz emulation piggybacks on the pad input.
+			// Since there can only be 7 pads connected on a PS3 the 8th player is currently not supported
+			sys_usbd.notice("Adding emulated Buzz! buzzer (5-7 players)");
+			usb_devices.push_back(std::make_shared<usb_device_buzz>(4, 6, get_new_location()));
+		}
 	}
 }
 

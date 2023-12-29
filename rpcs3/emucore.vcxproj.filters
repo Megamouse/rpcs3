@@ -1210,6 +1210,12 @@
     <ClCompile Include="Emu\RSX\Program\SPIRVCommon.cpp">
       <Filter>Emu\GPU\RSX\Program</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\Io\rb3_guitar.cpp">
+      <Filter>Emu\Io</Filter>
+    </ClCompile>
+    <ClCompile Include="Emu\Io\rb3_guitar_base.cpp">
+      <Filter>Emu\Io</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Crypto\aes.h">
@@ -2448,6 +2454,15 @@
     </ClInclude>
     <ClInclude Include="Emu\RSX\Program\SPIRVCommon.h">
       <Filter>Emu\GPU\RSX\Program</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Io\rb3_guitar.h">
+      <Filter>Emu\Io</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Io\rb3_guitar_config.h">
+      <Filter>Emu\Io</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Io\rb3_guitar_base.h">
+      <Filter>Emu\Io</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
