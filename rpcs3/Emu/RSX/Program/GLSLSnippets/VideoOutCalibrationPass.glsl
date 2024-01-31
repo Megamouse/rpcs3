@@ -1,6 +1,8 @@
 R"(
 #version 440
 
+#define STEREO_DEBUG_OUTPUT 0 // 0=off, 1=on+dual-color-interlace, 2=on+shift-interlace
+
 #define SAMPLER_BINDING(x) %sampler_binding
 
 layout(%set_decorator, binding=SAMPLER_BINDING(0)) uniform sampler2D fs0;
@@ -61,18 +63,104 @@ vec4 anaglyph(const in vec4 left, const in vec4 right)
 
 vec4 anaglyph_single_image()
 {
+#if STEREO_DEBUG_OUTPUT
+	const vec4 left  = texture(fs0, (tc0 * left_single_matrix) + vec2(+0.05f, 0.f));
+	const vec4 right = texture(fs0, (tc0 * left_single_matrix) + vec2(-0.05f, 0.f));
+#else
 	const vec4 left  = texture(fs0, tc0 * left_single_matrix);
 	const vec4 right = texture(fs0, (tc0 * left_single_matrix) + right_single_matrix);
+#endif
 
 	return anaglyph(left, right);
 }
 
 vec4 anaglyph_stereo_image()
 {
-	const vec4 left = texture(fs0, tc0);
+#if STEREO_DEBUG_OUTPUT
+	const vec4 left  = texture(fs0, tc0 + vec2(+0.05f, 0.f));
+	const vec4 right = texture(fs0, tc0 + vec2(-0.05f, 0.f));
+#else
+	const vec4 left  = texture(fs0, tc0);
 	const vec4 right = texture(fs1, tc0);
+#endif
 	
 	return anaglyph(left, right);
+}
+
+vec4 side_by_side(const in vec4 left, const in vec4 right)
+{
+	return (tc0.x < 0.5)
+#if STEREO_DEBUG_OUTPUT
+		? vec4(1.f, 0.f, 0.f, 1.f) : vec4(0.f, 0.f, 1.f, 1.f);
+#else
+		? left : right;
+#endif
+}
+
+vec4 side_by_side_single_image()
+{
+	return side_by_side(texture(fs0, tc0 * sbs_single_matrix),
+	                    texture(fs0, (tc0 * sbs_single_matrix) + vec2(-1.f, 0.510204f)));
+}
+
+vec4 side_by_side_stereo_image()
+{
+	return side_by_side(texture(fs0, (tc0 * sbs_multi_matrix)),
+	                    texture(fs1, (tc0 * sbs_multi_matrix) + vec2(-1.f, 0.f)));
+}
+
+vec4 over_under(const in vec4 left, const in vec4 right)
+{
+	return (tc0.y < 0.5)
+#if STEREO_DEBUG_OUTPUT
+		? vec4(1.f, 0.f, 0.f, 1.f) : vec4(0.f, 0.f, 1.f, 1.f);
+#else
+		? left : right;
+#endif
+}
+
+vec4 over_under_single_image()
+{
+	return over_under(texture(fs0, tc0 * ou_single_matrix),
+	                  texture(fs0, (tc0 * ou_single_matrix) + vec2(0.f, 0.020408f)));
+}
+
+vec4 over_under_stereo_image()
+{
+	return over_under(texture(fs0, tc0 * ou_multi_matrix),
+	                  texture(fs1, (tc0 * ou_multi_matrix) + vec2(0.f, -1.f)));
+}
+
+vec4 interlaced(const in vec4 left, const in vec4 right)
+{
+	return ((int(gl_FragCoord.y) & 1) > 0)
+#if (STEREO_DEBUG_OUTPUT == 1)
+		? vec4(1.f, 0.f, 0.f, 1.f) : vec4(0.f, 0.f, 1.f, 1.f);
+#else
+		? left : right;
+#endif
+}
+
+vec4 interlaced_single_image()
+{
+#if (STEREO_DEBUG_OUTPUT == 2)
+	return interlaced(texture(fs0, (tc0 * left_single_matrix) + vec2(+0.05f, 0.f)),
+	                  texture(fs0, (tc0 * left_single_matrix) + vec2(-0.05f, 0.f)));
+#else
+	return interlaced(texture(fs0, tc0 * left_single_matrix),
+	                  texture(fs0, (tc0 * left_single_matrix) + right_single_matrix));
+#endif
+}
+
+vec4 interlaced_stereo_image()
+{
+#if (STEREO_DEBUG_OUTPUT == 2)
+	return interlaced(texture(fs0, tc0 + vec2(+0.05f, 0.f)),
+	                  texture(fs0, tc0 + vec2(-0.05f, 0.f)));
+#else
+	return interlaced(texture(fs0, tc0),
+	                  texture(fs1, tc0));
+#endif
 }
 
 vec4 read_source()
@@ -94,17 +182,11 @@ vec4 read_source()
 			case STEREO_MODE_ANAGLYPH_AMBER_BLUE:
 				return anaglyph_single_image();
 			case STEREO_MODE_SIDE_BY_SIDE:
-				return (tc0.x < 0.5)
-					? texture(fs0, tc0 * sbs_single_matrix)
-					: texture(fs0, (tc0 * sbs_single_matrix) + vec2(-1.f, 0.510204f));
+				return side_by_side_single_image();
 			case STEREO_MODE_OVER_UNDER:
-				return (tc0.y < 0.5)
-					? texture(fs0, tc0 * ou_single_matrix)
-					: texture(fs0, (tc0 * ou_single_matrix) + vec2(0.f, 0.020408f));
+				return over_under_single_image();
 			case STEREO_MODE_INTERLACED:
-				return ((int(gl_FragCoord.y) & 1) > 0)
-					? texture(fs0, tc0 * left_single_matrix)
-					: texture(fs0, (tc0 * left_single_matrix) + right_single_matrix);
+				return interlaced_single_image();
 			default: // undefined behavior
 				return texture(fs0, tc0);
 		}
@@ -122,17 +204,11 @@ vec4 read_source()
 			case STEREO_MODE_ANAGLYPH_AMBER_BLUE:
 				return anaglyph_stereo_image();
 			case STEREO_MODE_SIDE_BY_SIDE:
-				return (tc0.x < 0.5)
-					? texture(fs0, (tc0 * sbs_multi_matrix))
-					: texture(fs1, (tc0 * sbs_multi_matrix) + vec2(-1.f, 0.f));
+				return side_by_side_stereo_image();
 			case STEREO_MODE_OVER_UNDER:
-				return (tc0.y < 0.5)
-					? texture(fs0, (tc0 * ou_multi_matrix))
-					: texture(fs1, (tc0 * ou_multi_matrix) + vec2(0.f, -1.f));
+				return over_under_stereo_image();
 			case STEREO_MODE_INTERLACED:
-				return ((int(gl_FragCoord.y) & 1) > 0)
-					? texture(fs0, tc0)
-					: texture(fs1, tc0);
+				return interlaced_stereo_image();
 			default: // undefined behavior
 				return texture(fs0, tc0);
 		}
