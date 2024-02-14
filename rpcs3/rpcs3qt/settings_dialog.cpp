@@ -1245,9 +1245,11 @@ settings_dialog::settings_dialog(std::shared_ptr<gui_settings> gui_settings, std
 #endif
 
 #ifndef _WIN32
+#ifndef HAVE_LIBEVDEV
 	// Remove raw mouse handler
 	remove_item(ui->mouseHandlerBox, static_cast<int>(mouse_handler::raw), static_cast<int>(g_cfg.io.mouse.def));
 	remove_item(ui->moveBox, static_cast<int>(move_handler::raw_mouse), static_cast<int>(g_cfg.io.move.def));
+#endif
 #endif
 
 	// Midi

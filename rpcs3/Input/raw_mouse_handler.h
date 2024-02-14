@@ -8,6 +8,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif HAVE_LIBEVDEV
+#include "evdev_gun_handler.h" // The gun handler does exactly what we need
+#include <thread>
 #endif
 
 static const std::map<std::string, int> raw_mouse_button_map
@@ -38,6 +41,8 @@ public:
 
 #ifdef _WIN32
 	void update_values(const RAWMOUSE& state);
+#elif HAVE_LIBEVDEV
+	void handle_event(int type, int code, int value);
 #endif
 
 	const std::string& device_name() const { return m_device_name; }
@@ -108,4 +113,9 @@ private:
 	std::function<void(const std::string&, s32, bool)> m_mouse_press_callback;
 
 	std::unique_ptr<named_thread<std::function<void()>>> m_thread;
+
+#ifdef HAVE_LIBEVDEV
+	evdev_gun_handler m_gun_handler{};
+	friend class raw_mouse;
+#endif
 };

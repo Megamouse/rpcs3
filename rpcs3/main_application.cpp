@@ -154,6 +154,7 @@ EmuCallbacks main_application::CreateCallbacks()
 			case move_handler::raw_mouse:
 			{
 				g_fxo->init<MouseHandlerBase, raw_mouse_handler>(Emu.DeserialManager());
+				g_fxo->get<MouseHandlerBase>().Init(4);
 				break;
 			}
 			default:
@@ -175,6 +176,7 @@ EmuCallbacks main_application::CreateCallbacks()
 		case mouse_handler::raw:
 		{
 			g_fxo->init<MouseHandlerBase, raw_mouse_handler>(Emu.DeserialManager());
+			g_fxo->get<MouseHandlerBase>().Init(4);
 			break;
 		}
 		}

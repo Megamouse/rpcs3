@@ -38,7 +38,10 @@ public:
 
 	void poll(u32 index);
 
+	const std::vector<evdev_gun>& get_devices() const { return m_devices; }
+
 	shared_mutex mutex;
+	std::function<void(int type, int code, int value)> event_callback;
 
 private:
 	atomic_t<bool> m_is_init{false};
@@ -56,6 +59,7 @@ private:
 		struct libevdev* device = nullptr;
 		std::map<int, int> buttons;
 		std::map<int, evdev_axis> axis;
+		std::string name;
 	};
 
 	std::vector<evdev_gun> m_devices;

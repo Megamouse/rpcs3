@@ -9,9 +9,11 @@
 
 #ifdef _WIN32
 #include <hidusage.h>
+#elif HAVE_LIBEVDEV
+#include "Emu/System.h"
 #endif
 
-#define RAW_MOUSE_DEBUG_CURSOR_ENABLED 0
+#define RAW_MOUSE_DEBUG_CURSOR_ENABLED 1
 #if RAW_MOUSE_DEBUG_CURSOR_ENABLED
 #include "Emu/RSX/Overlays/overlay_cursor.h"
 static inline void draw_overlay_cursor(u32 index, s32 x_pos, s32 y_pos, s32 x_max, s32 y_max)
@@ -211,6 +213,43 @@ void raw_mouse::update_values(const RAWMOUSE& state)
 		}
 	}
 }
+#elif HAVE_LIBEVDEV
+void raw_mouse::handle_event(int type, int code, int value)
+{
+	// TODO: scroll
+	switch (evt.type)
+	{
+	case EV_KEY:
+	{
+		// Only react to the button that changed
+		switch (code)
+		{
+		case BTN_LEFT: m_handler->Button(m_index, CELL_MOUSE_BUTTON_1, !!value); break;
+		case BTN_RIGHT: m_handler->Button(m_index, CELL_MOUSE_BUTTON_2, !!value); break;
+		case BTN_MIDDLE: m_handler->Button(m_index, CELL_MOUSE_BUTTON_3, !!value); break;
+		case BTN_1: m_handler->Button(m_index, CELL_MOUSE_BUTTON_4, !!value); break;
+		case BTN_2: m_handler->Button(m_index, CELL_MOUSE_BUTTON_5, !!value); break;
+		case BTN_3: m_handler->Button(m_index, CELL_MOUSE_BUTTON_6, !!value); break;
+		case BTN_4: m_handler->Button(m_index, CELL_MOUSE_BUTTON_7, !!value); break;
+		case BTN_5: m_handler->Button(m_index, CELL_MOUSE_BUTTON_8, !!value); break;
+		default: break;
+		}
+		break;
+	}
+	case EV_ABS:
+	{
+		// Get the current position whenever an axis changed
+		m_pos_x = m_handler->m_gun_handler.get_axis_x(m_index);
+		m_pos_y = m_handler->m_gun_handler.get_axis_y(m_index);
+		const int x_max = m_handler->m_gun_handler.get_axis_x_max(m_index);
+		const int y_max = m_handler->m_gun_handler.get_axis_y_max(m_index);
+		m_handler->Move(m_index, m_pos_x, m_pos_y, x_max, y_max);
+		break;
+	}
+	default:
+		break;
+	}
+}
 #endif
 
 raw_mouse_handler::raw_mouse_handler(bool is_for_gui)
@@ -285,7 +324,19 @@ void raw_mouse_handler::Init(const u32 max_connect)
 		{
 			update_devices();
 
+#if HAVE_LIBEVDEV
+			for (u32 i = 0; i < ::size32(m_raw_mice); i++)
+			{
+				handler.poll(i);
+			}
+
+			if (Emu.IsPaused())
+				thread_ctrl::wait_for(100'000);
+			else
+				thread_ctrl::wait_for(1'000);
+#else
 			thread_ctrl::wait_for(1'000'000);
+#endif
 		}
 
 		input_log.notice("raw_mouse_handler: thread stopped");
@@ -527,6 +578,24 @@ std::map<void*, raw_mouse> raw_mouse_handler::enumerate_devices(u32 max_connect)
 		input_log.trace("raw_mouse_handler: found device: '%s'", device_name);
 
 		raw_mice[device.hDevice] = raw_mouse(::size32(raw_mice), device_name, device.hDevice, this);
+	}
+#elif HAVE_LIBEVDEV
+	input_log.notice("raw_mouse_handler: initializing gun handler");
+
+	m_gun_handler.init();
+
+	for (const evdev_gun& gun : m_gun_handler.get_devices())
+	{
+		if (m_raw_mice.size() >= max_connect)
+		{
+			return;
+		}
+
+		m_raw_mice[gun.device] = raw_mouse(::size32(m_raw_mice), gun.name, nullptr, this);
+		m_gun_handler.event_callback = [device = gun.device](int type, int code, int value)
+		{
+			m_raw_mice[device].handle_event(type, code, value);
+		};
 	}
 #endif
 

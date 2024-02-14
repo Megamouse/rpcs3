@@ -168,9 +168,13 @@ void evdev_gun_handler::poll(u32 index)
 			{
 			case EV_KEY:
 				gun.buttons[evt.code] = evt.value;
+				if (event_callback)
+					event_callback(evt.type, evt.code, evt.value);
 				break;
 			case EV_ABS:
 				gun.axis[evt.code].value = evt.value;
+				if (event_callback)
+					event_callback(evt.type, evt.code, evt.value);
 				break;
 			default:
 				break;
@@ -274,6 +278,7 @@ bool evdev_gun_handler::init()
 
 				evdev_gun gun{};
 				gun.device = device;
+				gun.name = name;
 
 				for (int code : { ABS_X, ABS_Y })
 				{
