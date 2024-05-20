@@ -147,6 +147,8 @@ public:
 	void Scroll(u32 index, s8 x, s8 y);
 	void Move(u32 index, s32 x_pos_new, s32 y_pos_new, s32 x_max, s32 y_max, const bool is_relative = false, s32 x_delta = 0, s32 y_delta = 0);
 
+	void TabletEvent(u32 index, u16 x, u16 y, f32 pen_pressure);
+
 	void SetIntercepted(bool intercepted);
 
 	MouseInfo& GetInfo() { return m_info; }

@@ -6,6 +6,7 @@
 #include <QWindow>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QTabletEvent>
 
 namespace cfg
 {
@@ -24,6 +25,8 @@ public:
 	void MouseButtonUp(QMouseEvent* event);
 	void MouseScroll(QWheelEvent* event);
 	void MouseMove(QMouseEvent* event);
+
+	void TabletEvent(QTabletEvent* event);
 
 	bool eventFilter(QObject* obj, QEvent* ev) override;
 private:

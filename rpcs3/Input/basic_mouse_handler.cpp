@@ -94,6 +94,11 @@ bool basic_mouse_handler::eventFilter(QObject* target, QEvent* ev)
 		case QEvent::Wheel:
 			MouseScroll(static_cast<QWheelEvent*>(ev));
 			break;
+		case QEvent::TabletMove:
+		case QEvent::TabletPress:
+		case QEvent::TabletRelease:
+			TabletEvent(static_cast<QTabletEvent*>(ev));
+			break;
 		default:
 			return false;
 		}
@@ -195,4 +200,15 @@ void basic_mouse_handler::MouseMove(QMouseEvent* event)
 			MouseHandlerBase::Move(0, e_pos.x(), e_pos.y(), screen.width(), screen.height());
 		}
 	}
+}
+
+void basic_mouse_handler::TabletEvent(QTabletEvent* event)
+{
+	if (!event) return;
+
+	const QPoint pos = event->pos();
+	const u16 x = pos.x();
+	const u16 y = pos.y();
+	const f32 pen_pressure = std::clamp<f32>(event->pressure(), 0.0f, 0.1f);
+	MouseHandlerBase::TabletEvent(0, x, y, pen_pressure);
 }

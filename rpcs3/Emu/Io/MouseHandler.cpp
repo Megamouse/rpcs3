@@ -151,6 +151,95 @@ void MouseHandlerBase::Move(u32 index, s32 x_pos_new, s32 y_pos_new, s32 x_max, 
 	}
 }
 
+void MouseHandlerBase::TabletEvent(u32 index, u16 x, u16 y, f32 pen_pressure)
+{
+	std::lock_guard lock(mutex);
+
+	if (index >= m_mice.size() || m_info.status[index] != CELL_MOUSE_STATUS_CONNECTED)
+	{
+		return;
+	}
+
+	Mouse& mouse = m_mice[index];
+	MouseTabletDataList& datalist = GetTabletDataList(index);
+
+	if (datalist.size() > MOUSE_MAX_DATA_LIST_NUM)
+	{
+		datalist.pop_front();
+	}
+
+	// TODO
+	const bool is_eraser = false;
+	const bool is_pen_point_button_pressed = false;
+	const bool is_finger_button_1_pressed = false;
+	const bool is_finger_button_2_pressed = false;
+	const bool is_function_key_1_pressed = false;
+	const bool is_function_key_2_pressed = false;
+	const bool is_function_key_3_pressed = false;
+	const bool is_function_key_4_pressed = false;
+
+	u8 pen_bits{};
+
+	if (is_pen_point_button_pressed)
+	{
+		pen_bits |= 0x01;
+	}
+
+	if (is_finger_button_1_pressed)
+	{
+		pen_bits |= 0x02;
+	}
+
+	if (is_finger_button_2_pressed)
+	{
+		pen_bits |= 0x04;
+	}
+
+	if (is_eraser)
+	{
+		pen_bits |= 0xb0;
+	}
+	else
+	{
+		pen_bits |= 0x90;
+	}
+
+	u16 buttons = static_cast<u16>(pen_pressure * 0x07FF);
+
+	if (is_function_key_1_pressed)
+	{
+		buttons |= 0x0800;
+	}
+
+	if (is_function_key_2_pressed)
+	{
+		buttons |= 0x1000;
+	}
+
+	if (is_function_key_3_pressed)
+	{
+		buttons |= 0x2000;
+	}
+
+	if (is_function_key_4_pressed)
+	{
+		buttons |= 0x4000;
+	}
+
+	const u8 touch_wheel = 0; // TODO
+
+	MouseTabletData new_data{};
+	new_data.len = 9;
+	new_data.data[0] = 0x02;
+	new_data.data[1] = pen_bits;
+	write_to_ptr<u16>(&new_data.data[2], x);
+	write_to_ptr<u16>(&new_data.data[4], y);
+	write_to_ptr<u16>(&new_data.data[6], buttons);
+	new_data.data[8] = touch_wheel;
+
+	datalist.push_back(std::move(new_data));
+}
+
 void MouseHandlerBase::SetIntercepted(bool intercepted)
 {
 	std::lock_guard lock(mutex);
