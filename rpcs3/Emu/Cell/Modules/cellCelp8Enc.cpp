@@ -26,55 +26,95 @@ void fmt_class_string<CellCelp8EncError>::format(std::string& out, u64 arg)
 
 error_code cellCelp8EncQueryAttr(vm::ptr<CellCelp8EncAttr> attr)
 {
-	cellCelp8Enc.todo("cellCelp8EncQueryAttr(attr=*0x%x)", attr);
+	cellCelp8Enc.notice("cellCelp8EncQueryAttr(attr=*0x%x)", attr);
+
+	if (!attr)
+		return CELL_CELP8ENC_ERROR_ARG;
+
+	attr->workMemSize = 0x4000 + 0x7b00;
+	attr->celpEncVerUpper = 0x4000000;
+	attr->celpEncVerLower = 0x200;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncOpen(vm::ptr<CellCelp8EncResource> res, vm::pptr<void> handle)
 {
 	cellCelp8Enc.todo("cellCelp8EncOpen(res=*0x%x, handle=*0x%x)", res, handle);
+
+	if (!res || !handle || !res->startAddr || res->ppuThreadPriority >= 3072 || res->spuThreadPriority >= 256)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
-error_code cellCelp8EncOpenEx(vm::ptr<CellCelp8EncResource> res, vm::pptr<void> handle)
+error_code cellCelp8EncOpenEx(vm::ptr<CellCelp8EncResourceEx> res, vm::pptr<void> handle)
 {
 	cellCelp8Enc.todo("cellCelp8EncOpenEx(res=*0x%x, handle=*0x%x)", res, handle);
+
+	if (!res || !handle || !res->startAddr || !res->spurs || !res->maxContention || res->maxContention > 8)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncClose(vm::ptr<void> handle)
 {
 	cellCelp8Enc.todo("cellCelp8EncClose(handle=*0x%x)", handle);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncStart(vm::ptr<void> handle, vm::ptr<CellCelp8EncParam> param)
 {
 	cellCelp8Enc.todo("cellCelp8EncStart(handle=*0x%x, param=*0x%x)", handle, param);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncEnd(vm::ptr<void> handle)
 {
 	cellCelp8Enc.todo("cellCelp8EncEnd(handle=*0x%x)", handle);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncEncodeFrame(vm::ptr<void> handle, vm::ptr<CellCelp8EncPcmInfo> frameInfo)
 {
 	cellCelp8Enc.todo("cellCelp8EncEncodeFrame(handle=*0x%x, frameInfo=*0x%x)", handle, frameInfo);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncWaitForOutput(vm::ptr<void> handle)
 {
 	cellCelp8Enc.todo("cellCelp8EncWaitForOutput(handle=*0x%x)", handle);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 
 error_code cellCelp8EncGetAu(vm::ptr<void> handle, vm::ptr<void> outBuffer, vm::ptr<CellCelp8EncAuInfo> auItem)
 {
 	cellCelp8Enc.todo("cellCelp8EncGetAu(handle=*0x%x, outBuffer=*0x%x, auItem=*0x%x)", handle, outBuffer, auItem);
+
+	if (!handle)
+		return CELL_CELP8ENC_ERROR_ARG;
+
 	return CELL_OK;
 }
 

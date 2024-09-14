@@ -579,8 +579,8 @@ int adecRead(void* opaque, u8* buf, int buf_size)
 next:
 	if (adecIsAtracX(adec.type) && adec.reader.has_ats)
 	{
-		u8 code1 = vm::read8(adec.reader.addr + 2);
-		u8 code2 = vm::read8(adec.reader.addr + 3);
+		const u8 code1 = vm::read8(adec.reader.addr + 2);
+		const u8 code2 = vm::read8(adec.reader.addr + 3);
 		adec.ch_cfg = (code1 >> 2) & 0x7;
 		adec.frame_size = (((u32{code1} & 0x3) << 8) | code2) * 8 + 8;
 		adec.sample_rate = at3freq[code1 >> 5];
@@ -686,11 +686,32 @@ bool adecCheckType(s32 type)
 	case CELL_ADEC_TYPE_CELP:
 	case CELL_ADEC_TYPE_M4AAC:
 	case CELL_ADEC_TYPE_CELP8:
+	case CELL_ADEC_TYPE_INVALID1:
+	case CELL_ADEC_TYPE_M2AAC:
+	case CELL_ADEC_TYPE_EAC3:
+	case CELL_ADEC_TYPE_TRUEHD:
+	case CELL_ADEC_TYPE_DTS:
+	case CELL_ADEC_TYPE_LPCM_BLURAY:
+	case CELL_ADEC_TYPE_LPCM_DVD:
+	case CELL_ADEC_TYPE_WMA:
+	case CELL_ADEC_TYPE_DTSLBR:
+	case CELL_ADEC_TYPE_M4AAC_2CH:
+	case CELL_ADEC_TYPE_DTSHD:
+	case CELL_ADEC_TYPE_MPEG_L1:
+	case CELL_ADEC_TYPE_MP3S:
+	case CELL_ADEC_TYPE_M4AAC_2CH_MOD:
+	case CELL_ADEC_TYPE_INVALID2:
+	case CELL_ADEC_TYPE_INVALID3:
+	case CELL_ADEC_TYPE_RESERVED22:
+	case CELL_ADEC_TYPE_RESERVED23:
+	case CELL_ADEC_TYPE_DTSHDCORE:
+	case CELL_ADEC_TYPE_ATRAC3MULTI:
 	{
 		cellAdec.fatal("Unimplemented audio codec type (%d)", type);
 		break;
 	}
-	default: return false;
+	default:
+		return false;
 	}
 
 	return true;
@@ -700,7 +721,8 @@ error_code cellAdecQueryAttr(vm::ptr<CellAdecType> type, vm::ptr<CellAdecAttr> a
 {
 	cellAdec.warning("cellAdecQueryAttr(type=*0x%x, attr=*0x%x)", type, attr);
 
-	if (!adecCheckType(type->audioCodecType))
+	if (!type || !attr ||
+		!adecCheckType(type->audioCodecType))
 	{
 		return CELL_ADEC_ERROR_ARG;
 	}
@@ -717,29 +739,41 @@ error_code cellAdecOpen(vm::ptr<CellAdecType> type, vm::ptr<CellAdecResource> re
 {
 	cellAdec.warning("cellAdecOpen(type=*0x%x, res=*0x%x, cb=*0x%x, handle=*0x%x)", type, res, cb, handle);
 
-	if (!adecCheckType(type->audioCodecType))
+	if (!type || !res || !cb || !handle ||
+		!res->startAddr || !cb->cbFunc ||
+		res->ppuThreadPriority >= 3072 ||
+		res->spuThreadPriority >= 256 ||
+		res->ppuThreadStackSize < 0x1000 ||
+		!adecCheckType(type->audioCodecType))
 	{
 		return CELL_ADEC_ERROR_ARG;
 	}
 
 	fmt::throw_exception("cellAdec disabled, use LLE.");
+	return CELL_OK;
 }
 
 error_code cellAdecOpenEx(vm::ptr<CellAdecType> type, vm::ptr<CellAdecResourceEx> res, vm::ptr<CellAdecCb> cb, vm::ptr<u32> handle)
 {
 	cellAdec.warning("cellAdecOpenEx(type=*0x%x, res=*0x%x, cb=*0x%x, handle=*0x%x)", type, res, cb, handle);
 
-	if (!adecCheckType(type->audioCodecType))
+	if (!type || !res || !cb || !handle ||
+		!res->startAddr || !cb->cbFunc ||
+		res->ppuThreadPriority >= 3072 ||
+		//res->spuThreadPriority >= 256 || // HLE sets 0 anyway
+		res->ppuThreadStackSize < 0x1000 ||
+		!adecCheckType(type->audioCodecType))
 	{
 		return CELL_ADEC_ERROR_ARG;
 	}
 
 	fmt::throw_exception("cellAdec disabled, use LLE.");
+	return CELL_OK;
 }
 
 error_code cellAdecOpenExt(vm::ptr<CellAdecType> type, vm::ptr<CellAdecResourceEx> res, vm::ptr<CellAdecCb> cb, vm::ptr<u32> handle)
 {
-	cellAdec.warning("cellAdecOpenExt(type=*0x%x, res=*0x%x, cb=*0x%x, handle=*0x%x)", type, res, cb, handle);
+	cellAdec.notice("cellAdecOpenExt(type=*0x%x, res=*0x%x, cb=*0x%x, handle=*0x%x)", type, res, cb, handle);
 
 	return cellAdecOpenEx(type, res, cb, handle);
 }
@@ -778,7 +812,7 @@ error_code cellAdecStartSeq(u32 handle, u32 param)
 
 	const auto adec = idm::get<AudioDecoder>(handle);
 
-	if (!adec)
+	if (!adec || !param)
 	{
 		return CELL_ADEC_ERROR_ARG;
 	}
@@ -847,7 +881,18 @@ error_code cellAdecDecodeAu(u32 handle, vm::ptr<CellAdecAuInfo> auInfo)
 
 	const auto adec = idm::get<AudioDecoder>(handle);
 
-	if (!adec)
+	if (!adec || !auInfo || !auInfo->size)
+	{
+		return CELL_ADEC_ERROR_ARG;
+	}
+
+	// TODO
+	//if (adec->something != 0x200)
+	//{
+	//	return CELL_ADEC_ERROR_SEQ;
+	//}
+
+	if (!auInfo->startAddr)
 	{
 		return CELL_ADEC_ERROR_ARG;
 	}
@@ -893,7 +938,7 @@ error_code cellAdecGetPcm(u32 handle, vm::ptr<float> outBuffer)
 		// reverse byte order:
 		if (frame->format == AV_SAMPLE_FMT_FLTP && frame->ch_layout.nb_channels == 1)
 		{
-			float* in_f = reinterpret_cast<float*>(frame->extended_data[0]);
+			const f32* in_f = reinterpret_cast<const f32*>(frame->extended_data[0]);
 			for (u32 i = 0; i < af.size / 4; i++)
 			{
 				outBuffer[i] = in_f[i];
@@ -901,60 +946,57 @@ error_code cellAdecGetPcm(u32 handle, vm::ptr<float> outBuffer)
 		}
 		else if (frame->format == AV_SAMPLE_FMT_FLTP && frame->ch_layout.nb_channels == 2)
 		{
-			float* in_f[2];
-			in_f[0] = reinterpret_cast<float*>(frame->extended_data[0]);
-			in_f[1] = reinterpret_cast<float*>(frame->extended_data[1]);
+			const f32* in_0 = reinterpret_cast<const f32*>(frame->extended_data[0]);
+			const f32* in_1 = reinterpret_cast<const f32*>(frame->extended_data[1]);
 			for (u32 i = 0; i < af.size / 8; i++)
 			{
-				outBuffer[i * 2 + 0] = in_f[0][i];
-				outBuffer[i * 2 + 1] = in_f[1][i];
+				outBuffer[i * 2 + 0] = in_0[i];
+				outBuffer[i * 2 + 1] = in_1[i];
 			}
 		}
 		else if (frame->format == AV_SAMPLE_FMT_FLTP && frame->ch_layout.nb_channels == 6)
 		{
-			float* in_f[6];
-			in_f[0] = reinterpret_cast<float*>(frame->extended_data[0]);
-			in_f[1] = reinterpret_cast<float*>(frame->extended_data[1]);
-			in_f[2] = reinterpret_cast<float*>(frame->extended_data[2]);
-			in_f[3] = reinterpret_cast<float*>(frame->extended_data[3]);
-			in_f[4] = reinterpret_cast<float*>(frame->extended_data[4]);
-			in_f[5] = reinterpret_cast<float*>(frame->extended_data[5]);
+			const f32* in_0 = reinterpret_cast<const f32*>(frame->extended_data[0]);
+			const f32* in_1 = reinterpret_cast<const f32*>(frame->extended_data[1]);
+			const f32* in_2 = reinterpret_cast<const f32*>(frame->extended_data[2]);
+			const f32* in_3 = reinterpret_cast<const f32*>(frame->extended_data[3]);
+			const f32* in_4 = reinterpret_cast<const f32*>(frame->extended_data[4]);
+			const f32* in_5 = reinterpret_cast<const f32*>(frame->extended_data[5]);
 			for (u32 i = 0; i < af.size / 24; i++)
 			{
-				outBuffer[i * 6 + 0] = in_f[0][i];
-				outBuffer[i * 6 + 1] = in_f[1][i];
-				outBuffer[i * 6 + 2] = in_f[2][i];
-				outBuffer[i * 6 + 3] = in_f[3][i];
-				outBuffer[i * 6 + 4] = in_f[4][i];
-				outBuffer[i * 6 + 5] = in_f[5][i];
+				outBuffer[i * 6 + 0] = in_0[i];
+				outBuffer[i * 6 + 1] = in_1[i];
+				outBuffer[i * 6 + 2] = in_2[i];
+				outBuffer[i * 6 + 3] = in_3[i];
+				outBuffer[i * 6 + 4] = in_4[i];
+				outBuffer[i * 6 + 5] = in_5[i];
 			}
 		}
 		else if (frame->format == AV_SAMPLE_FMT_FLTP && frame->ch_layout.nb_channels == 8)
 		{
-			float* in_f[8];
-			in_f[0] = reinterpret_cast<float*>(frame->extended_data[0]);
-			in_f[1] = reinterpret_cast<float*>(frame->extended_data[1]);
-			in_f[2] = reinterpret_cast<float*>(frame->extended_data[2]);
-			in_f[3] = reinterpret_cast<float*>(frame->extended_data[3]);
-			in_f[4] = reinterpret_cast<float*>(frame->extended_data[4]);
-			in_f[5] = reinterpret_cast<float*>(frame->extended_data[5]);
-			in_f[6] = reinterpret_cast<float*>(frame->extended_data[6]);
-			in_f[7] = reinterpret_cast<float*>(frame->extended_data[7]);
+			const f32* in_0 = reinterpret_cast<const f32*>(frame->extended_data[0]);
+			const f32* in_1 = reinterpret_cast<const f32*>(frame->extended_data[1]);
+			const f32* in_2 = reinterpret_cast<const f32*>(frame->extended_data[2]);
+			const f32* in_3 = reinterpret_cast<const f32*>(frame->extended_data[3]);
+			const f32* in_4 = reinterpret_cast<const f32*>(frame->extended_data[4]);
+			const f32* in_5 = reinterpret_cast<const f32*>(frame->extended_data[5]);
+			const f32* in_6 = reinterpret_cast<const f32*>(frame->extended_data[6]);
+			const f32* in_7 = reinterpret_cast<const f32*>(frame->extended_data[7]);
 			for (u32 i = 0; i < af.size / 24; i++)
 			{
-				outBuffer[i * 8 + 0] = in_f[0][i];
-				outBuffer[i * 8 + 1] = in_f[1][i];
-				outBuffer[i * 8 + 2] = in_f[2][i];
-				outBuffer[i * 8 + 3] = in_f[3][i];
-				outBuffer[i * 8 + 4] = in_f[4][i];
-				outBuffer[i * 8 + 5] = in_f[5][i];
-				outBuffer[i * 8 + 6] = in_f[6][i];
-				outBuffer[i * 8 + 7] = in_f[7][i];
+				outBuffer[i * 8 + 0] = in_0[i];
+				outBuffer[i * 8 + 1] = in_1[i];
+				outBuffer[i * 8 + 2] = in_2[i];
+				outBuffer[i * 8 + 3] = in_3[i];
+				outBuffer[i * 8 + 4] = in_4[i];
+				outBuffer[i * 8 + 5] = in_5[i];
+				outBuffer[i * 8 + 6] = in_6[i];
+				outBuffer[i * 8 + 7] = in_7[i];
 			}
 		}
 		else if (frame->format == AV_SAMPLE_FMT_S16P && frame->ch_layout.nb_channels == 1)
 		{
-			s16* in_i = reinterpret_cast<s16*>(frame->extended_data[0]);
+			const s16* in_i = reinterpret_cast<const s16*>(frame->extended_data[0]);
 			for (u32 i = 0; i < af.size / 2; i++)
 			{
 				outBuffer[i] = in_i[i] / 32768.f;
@@ -962,13 +1004,12 @@ error_code cellAdecGetPcm(u32 handle, vm::ptr<float> outBuffer)
 		}
 		else if (frame->format == AV_SAMPLE_FMT_S16P && frame->ch_layout.nb_channels == 2)
 		{
-			s16* in_i[2];
-			in_i[0] = reinterpret_cast<s16*>(frame->extended_data[0]);
-			in_i[1] = reinterpret_cast<s16*>(frame->extended_data[1]);
+			const s16* in_0 = reinterpret_cast<const s16*>(frame->extended_data[0]);
+			const s16* in_1 = reinterpret_cast<const s16*>(frame->extended_data[1]);
 			for (u32 i = 0; i < af.size / 4; i++)
 			{
-				outBuffer[i * 2 + 0] = in_i[0][i] / 32768.f;
-				outBuffer[i * 2 + 1] = in_i[1][i] / 32768.f;
+				outBuffer[i * 2 + 0] = in_0[i] / 32768.f;
+				outBuffer[i * 2 + 1] = in_1[i] / 32768.f;
 			}
 		}
 		else
@@ -989,6 +1030,11 @@ error_code cellAdecGetPcmItem(u32 handle, vm::pptr<CellAdecPcmItem> pcmItem)
 	if (!adec)
 	{
 		return CELL_ADEC_ERROR_ARG;
+	}
+
+	if (!pcmItem)
+	{
+		return CELL_ADEC_ERROR_FATAL;
 	}
 
 	AdecFrame af;
