@@ -98,7 +98,7 @@ struct CellPngEncConfig // Size 28
 
 struct CellPngEncAttr // Size 16
 {
-	be_t<u32> memSize; // usz
+	be_t<u32> memSize;
 	u8 cmdQueueDepth;
 	u8 padding[3];
 	be_t<u32> versionUpper;
@@ -108,7 +108,7 @@ struct CellPngEncAttr // Size 16
 struct CellPngEncResource // Size 16
 {
 	vm::bptr<void> memAddr;
-	be_t<u32> memSize; // usz
+	be_t<u32> memSize;
 	be_t<s32> ppuThreadPriority;
 	be_t<s32> spuThreadPriority;
 };
@@ -116,7 +116,7 @@ struct CellPngEncResource // Size 16
 struct CellPngEncResourceEx // Size 24
 {
 	vm::bptr<void> memAddr;
-	be_t<u32> memSize; // usz
+	be_t<u32> memSize;
 	be_t<s32> ppuThreadPriority;
 	vm::bptr<void> spurs; // CellSpurs
 	u8 priority[8];
@@ -130,7 +130,7 @@ struct CellPngEncPicture // Size 40
 	be_t<u32> colorSpace; // CellPngEncColorSpace
 	be_t<u32> bitDepth;
 	b8 packedPixel;
-	u8 padding[3]; // TODO: is this correct?
+	u8 padding[3];
 	vm::bptr<void> pictureAddr;
 	be_t<u64> userData;
 };
@@ -157,7 +157,7 @@ struct CellPngEncOutputParam // Size 16
 	be_t<u32> location; // CellPngEncLocation
 	vm::bcptr<char> streamFileName;
 	vm::bptr<void> streamAddr;
-	be_t<u32> limitSize; // usz
+	be_t<u32> limitSize;
 };
 
 struct CellPngEncStreamInfo // Size 40
@@ -166,9 +166,9 @@ struct CellPngEncStreamInfo // Size 40
 	be_t<u32> location; // CellPngEncLocation
 	vm::bcptr<char> streamFileName;
 	vm::bptr<void> streamAddr;
-	be_t<u32> limitSize; // usz
-	be_t<u32> streamSize; // usz
+	be_t<u32> limitSize;
+	be_t<u32> streamSize;
 	be_t<u32> processedLine;
+	u8 padding[4];
 	be_t<u64> userData;
-	// TODO: where are the missing 4 bytes?
 };
