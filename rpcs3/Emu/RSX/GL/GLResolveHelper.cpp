@@ -56,7 +56,7 @@ namespace gl
 			if (!job)
 			{
 				const auto fmt = get_format_string(src->get_internal_format());
-				job.reset(new cs_resolve_task(fmt));
+				job = std::make_unique<cs_resolve_task>(fmt);
 			}
 
 			job->run(cmd, src, dst);
@@ -116,7 +116,7 @@ namespace gl
 			if (!job)
 			{
 				const auto fmt = get_format_string(src->get_internal_format());
-				job.reset(new cs_unresolve_task(fmt));
+				job = std::make_unique<cs_unresolve_task>(fmt);
 			}
 
 			job->run(cmd, dst, src);

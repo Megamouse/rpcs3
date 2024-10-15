@@ -447,7 +447,6 @@ int aes_setkey_enc( aes_context *ctx, const unsigned char *key, unsigned int key
     {
         aes_gen_tables();
         aes_init_done = 1;
-
     }
 #endif
 

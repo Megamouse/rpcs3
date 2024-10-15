@@ -221,6 +221,7 @@ lv2_spu_group::lv2_spu_group(utils::serial& ar) noexcept
 	}())
 	, run_state(ar.pop<spu_group_status>())
 	, exit_status(ar)
+	, join_state(0)
 {
 	for (auto& thread : threads)
 	{
@@ -1140,7 +1141,7 @@ error_code sys_spu_thread_group_start(ppu_thread& ppu, u32 id)
 	struct notify_on_exit
 	{
 		usz index = umax;
-		std::array<spu_thread*, 8> threads; // Raw pointer suffices, as long as group is referenced its SPUs exist
+		std::array<spu_thread*, 8> threads{}; // Raw pointer suffices, as long as group is referenced its SPUs exist
 
 		~notify_on_exit() noexcept
 		{
@@ -1324,7 +1325,7 @@ error_code sys_spu_thread_group_resume(ppu_thread& ppu, u32 id)
 	struct notify_on_exit
 	{
 		usz index = umax;
-		std::array<spu_thread*, 8> threads; // Raw pointer suffices, as long as group is referenced its SPUs exist
+		std::array<spu_thread*, 8> threads{}; // Raw pointer suffices, as long as group is referenced its SPUs exist
 
 		~notify_on_exit() noexcept
 		{
@@ -1337,7 +1338,7 @@ error_code sys_spu_thread_group_resume(ppu_thread& ppu, u32 id)
 
 	std::lock_guard lock(group->mutex);
 
-	CellError error;
+	CellError error{};
 
 	group->run_state.fetch_op([&error](spu_group_status& state)
 	{
@@ -1356,7 +1357,6 @@ error_code sys_spu_thread_group_resume(ppu_thread& ppu, u32 id)
 		else if (state == SPU_THREAD_GROUP_STATUS_WAITING_AND_SUSPENDED)
 		{
 			state = SPU_THREAD_GROUP_STATUS_WAITING;
-			error = CellError{};
 			return true;
 		}
 		else

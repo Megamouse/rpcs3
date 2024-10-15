@@ -35,8 +35,8 @@ save_data_list_dialog::save_data_list_dialog(const std::vector<SaveDataEntry>& e
 
 	setMinimumSize(QSize(400, 400));
 
-	m_gui_settings.reset(new gui_settings());
-	m_persistent_settings.reset(new persistent_settings());
+	m_gui_settings = std::make_shared<gui_settings>();
+	m_persistent_settings = std::make_shared<persistent_settings>();
 
 	// Table
 	m_list = new QTableWidget(this);

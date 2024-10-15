@@ -119,8 +119,8 @@ void camera_settings_dialog::handle_camera_change(int index)
 		return;
 	}
 
-	m_camera.reset(new QCamera(camera_info));
-	m_media_capture_session.reset(new QMediaCaptureSession(nullptr));
+	m_camera = std::make_unique<QCamera>(camera_info);
+	m_media_capture_session = std::make_unique<QMediaCaptureSession>(nullptr);
 	m_media_capture_session->setCamera(m_camera.get());
 	m_media_capture_session->setVideoSink(ui->videoWidget->videoSink());
 

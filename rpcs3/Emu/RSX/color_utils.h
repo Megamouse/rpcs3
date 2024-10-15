@@ -110,7 +110,7 @@ namespace rsx
 		return result;
 	}
 
-	static inline void get_g8b8_r8g8_colormask(bool& red, bool/*green*/, bool& blue, bool& alpha)
+	static inline void get_g8b8_r8g8_colormask(bool& red, bool /*green*/, bool& blue, bool& alpha)
 	{
 		red = blue;
 		blue = false;

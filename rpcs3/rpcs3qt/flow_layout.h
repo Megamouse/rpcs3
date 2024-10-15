@@ -65,7 +65,7 @@ public:
 
 	explicit flow_layout(QWidget* parent, int margin = -1, bool dynamic_spacing = false, int hSpacing = -1, int vSpacing = -1);
 	explicit flow_layout(int margin = -1, bool dynamic_spacing = false, int hSpacing = -1, int vSpacing = -1);
-	~flow_layout();
+	virtual ~flow_layout();
 
 	void clear();
 	const QList<QLayoutItem*>& item_list() const { return m_item_list; }

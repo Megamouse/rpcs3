@@ -144,7 +144,7 @@ audio_ringbuffer::audio_ringbuffer(cell_audio_config& _cfg)
 
 	for (u32 i = 0; i < cfg.num_allocated_buffers; i++)
 	{
-		buffer[i].reset(new float[buf_sz]{});
+		buffer[i] = std::make_unique<float[]>(buf_sz);
 	}
 
 	// Init audio dumper if enabled
@@ -667,7 +667,7 @@ void cell_audio_thread::update_config(bool backend_changed)
 	cfg.reset(backend_changed);
 
 	// Allocate ringbuffer
-	ringbuffer.reset(new audio_ringbuffer(cfg));
+	ringbuffer = std::make_unique<audio_ringbuffer>(cfg);
 
 	// Reset thread state
 	reset_counters();
@@ -700,7 +700,7 @@ void cell_audio_thread::operator()()
 	cfg.reset();
 
 	// Allocate ringbuffer
-	ringbuffer.reset(new audio_ringbuffer(cfg));
+	ringbuffer = std::make_unique<audio_ringbuffer>(cfg);
 
 	thread_ctrl::scoped_priority high_prio(+1);
 

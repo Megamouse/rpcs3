@@ -246,8 +246,6 @@ namespace rsx
 				return pos;
 			}
 
-			AUDIT(_loc < _size);
-
 			const auto remaining = (_size - _loc);
 			memmove(pos + 1, pos, remaining * sizeof(Ty));
 
@@ -273,8 +271,6 @@ namespace rsx
 				_data[_size++] = val;
 				return pos;
 			}
-
-			AUDIT(_loc < _size);
 
 			const u32 remaining = (_size - _loc);
 			memmove(pos + 1, pos, remaining * sizeof(Ty));

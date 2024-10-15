@@ -29,12 +29,12 @@ void fmt_class_string<cheat_type>::format(std::string& out, u64 arg)
 
 bool cheat_info::from_str(const std::string& cheat_line)
 {
-	auto cheat_vec = fmt::split(cheat_line, {"@@@"}, false);
+	const std::vector<std::string> cheat_vec = fmt::split(cheat_line, {"@@@"}, false);
 
 	s64 val64 = 0;
 	if (cheat_vec.size() != 5 || !try_to_int64(&val64, cheat_vec[2], 0, cheat_type_max - 1))
 	{
-		log_cheat.fatal("Failed to parse cheat line");
+		log_cheat.fatal("Failed to parse cheat line: '%s'", cheat_line);
 		return false;
 	}
 

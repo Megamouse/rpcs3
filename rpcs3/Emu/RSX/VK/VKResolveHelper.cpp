@@ -72,7 +72,7 @@ namespace vk
 					require_bgra_swap = true;
 				}
 
-				job.reset(new vk::cs_resolve_task(format_prefix, require_bgra_swap));
+				job = std::make_unique<vk::cs_resolve_task>(format_prefix, require_bgra_swap);
 			}
 
 			job->run(cmd, src, dst);
@@ -141,7 +141,7 @@ namespace vk
 					require_bgra_swap = true;
 				}
 
-				job.reset(new vk::cs_unresolve_task(format_prefix, require_bgra_swap));
+				job = std::make_unique<vk::cs_unresolve_task>(format_prefix, require_bgra_swap);
 			}
 
 			job->run(cmd, dst, src);

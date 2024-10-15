@@ -220,7 +220,7 @@ void user_manager_dialog::OnUserRemove()
 
 	const QString username = qstr(m_user_list[key].GetUsername());
 	const QString user_id = qstr(m_user_list[key].GetUserId());
-	const std::string user_dir = m_user_list[key].GetUserDir();
+	const std::string& user_dir = m_user_list[key].GetUserDir();
 
 	if (QMessageBox::question(this, tr("Delete Confirmation"), tr("Are you sure you want to delete the following user?\n\nUser ID: %0\nUsername: %1\n\n"
 		"This will remove all files in:\n%2").arg(user_id).arg(username).arg(qstr(user_dir)), QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
@@ -265,8 +265,8 @@ void user_manager_dialog::OnUserRename()
 		return;
 	}
 
-	const std::string user_id = m_user_list[key].GetUserId();
-	const std::string username = m_user_list[key].GetUsername();
+	const std::string& user_id = m_user_list[key].GetUserId();
+	const std::string& username = m_user_list[key].GetUsername();
 	const QString q_username = qstr(username);
 
 	QInputDialog* dialog = new QInputDialog(this);
@@ -365,7 +365,7 @@ void user_manager_dialog::OnUserLogin()
 	}
 
 	const u32 key = GetUserKey();
-	const std::string new_user = m_user_list[key].GetUserId();
+	const std::string& new_user = m_user_list[key].GetUserId();
 
 	main_application::InitializeEmulator(new_user, Emu.HasGui());
 

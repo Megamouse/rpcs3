@@ -131,13 +131,13 @@ void cheat_engine::save() const
 
 void cheat_engine::import_cheats_from_str(const std::string& str_cheats)
 {
-	auto cheats_vec = fmt::split(str_cheats, {"^^^"});
+	const std::vector<std::string> cheats_vec = fmt::split(str_cheats, {"^^^"});
 
-	for (auto& cheat_line : cheats_vec)
+	for (const std::string& cheat_line : cheats_vec)
 	{
 		cheat_info new_cheat;
 		if (new_cheat.from_str(cheat_line))
-			cheats[new_cheat.game][new_cheat.offset] = new_cheat;
+			cheats[new_cheat.game][new_cheat.offset] = std::move(new_cheat);
 	}
 }
 
@@ -193,7 +193,7 @@ bool cheat_engine::resolve_script(u32& final_offset, const u32 offset, const std
 		operand_sub
 	};
 
-	auto do_operation = [](const operand op, u32& param1, const u32 param2) -> u32
+	const auto do_operation = [](const operand op, u32& param1, const u32 param2) -> u32
 	{
 		switch (op)
 		{
@@ -279,8 +279,12 @@ bool cheat_engine::resolve_script(u32& final_offset, const u32 offset, const std
 				cur_op = operand_sub;
 				index++;
 				break;
-			case ' ': index++; break;
-			default: log_cheat.fatal("invalid character in redirection script"); return false;
+			case ' ':
+				index++;
+				break;
+			default:
+				log_cheat.fatal("invalid character in redirection script");
+				return false;
 			}
 		}
 	}
@@ -293,7 +297,7 @@ std::vector<u32> cheat_engine::search(const T value, const std::vector<u32>& to_
 {
 	std::vector<u32> results;
 
-	to_be_t<T> value_swapped = value;
+	const to_be_t<T> value_swapped = value;
 
 	if (Emu.IsStopped())
 		return {};
@@ -459,7 +463,7 @@ u32 cheat_engine::reverse_lookup(const u32 addr, const u32 max_offset, const u32
 {
 	for (u32 index = 0; index <= max_offset; index += 4)
 	{
-		std::vector<u32> ptrs = search(addr - index, {});
+		const std::vector<u32> ptrs = search(addr - index, {});
 
 		log_cheat.fatal("Found %d pointer(s) for addr 0x%x [offset: %d cur_depth:%d]", ptrs.size(), addr, index, cur_depth);
 
@@ -742,8 +746,8 @@ cheat_manager_dialog::cheat_manager_dialog(QWidget* parent)
 
 	connect(btn_apply, &QPushButton::clicked, [this](bool /*checked*/)
 	{
-		const int row     = tbl_cheats->currentRow();
-		cheat_info* cheat = g_cheat.get(tbl_cheats->item(row, cheat_table_columns::title)->text().toStdString(), tbl_cheats->item(row, cheat_table_columns::offset)->data(Qt::UserRole).toUInt());
+		const int row = tbl_cheats->currentRow();
+		const cheat_info* cheat = g_cheat.get(tbl_cheats->item(row, cheat_table_columns::title)->text().toStdString(), tbl_cheats->item(row, cheat_table_columns::offset)->data(Qt::UserRole).toUInt());
 
 		if (!cheat)
 		{

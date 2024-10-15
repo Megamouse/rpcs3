@@ -300,18 +300,18 @@ public:
 			{ 3, 'w' }
 		};
 
-		for (const auto& p : pos_to_swizzle)
+		for (const auto& [pos, swiz] : pos_to_swizzle)
 		{
-			swizzle[p.second] = swizzles[0].length() > p.first ? swizzles[0][p.first] : 0;
+			swizzle[swiz] = swizzles[0].length() > pos ? swizzles[0][pos] : 0;
 		}
 
 		for (uint i = 1; i < swizzles.size(); ++i)
 		{
 			std::unordered_map<char, char> new_swizzle;
 
-			for (const auto& p : pos_to_swizzle)
+			for (const auto& [pos, swiz] : pos_to_swizzle)
 			{
-				new_swizzle[p.second] = swizzle[swizzles[i].length() <= p.first ? '\0' : swizzles[i][p.first]];
+				new_swizzle[swiz] = swizzle[swizzles[i].length() <= pos ? '\0' : swizzles[i][pos]];
 			}
 
 			swizzle = new_swizzle;
@@ -320,10 +320,10 @@ public:
 		swizzles.clear();
 		std::string new_swizzle;
 
-		for (const auto& p : pos_to_swizzle)
+		for (const auto& [pos, swiz] : pos_to_swizzle)
 		{
-			if (swizzle[p.second] != '\0')
-				new_swizzle += swizzle[p.second];
+			if (swizzle[swiz] != '\0')
+				new_swizzle += swizzle[swiz];
 		}
 
 		swizzles.push_back(new_swizzle);

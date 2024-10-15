@@ -304,7 +304,7 @@ namespace vk
 			VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 			usage |= (this->info.usage & (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
 
-			resolve_surface.reset(new vk::viewable_image(
+			resolve_surface = std::make_unique<vk::viewable_image>(
 				*g_render_device,
 				g_render_device->get_memory_mapping().device_local,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -317,7 +317,7 @@ namespace vk
 				usage,
 				0,
 				VMM_ALLOCATION_POOL_SURFACE_CACHE,
-				format_class()));
+				format_class());
 
 			resolve_surface->native_component_map = native_component_map;
 			resolve_surface->change_layout(cmd, VK_IMAGE_LAYOUT_GENERAL);

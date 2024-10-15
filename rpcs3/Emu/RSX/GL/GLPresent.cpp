@@ -26,7 +26,7 @@ namespace gl
 		{
 			const auto target = static_cast<GLenum>(visual->get_target());
 			const auto ifmt = static_cast<GLenum>(visual->get_internal_format());
-			g_vis_texture.reset(new texture(target, visual->width(), visual->height(), 1, 1, 1, ifmt, visual->format_class()));
+			g_vis_texture = std::make_unique<texture>(target, visual->width(), visual->height(), 1, 1, 1, ifmt, visual->format_class());
 			glCopyImageSubData(visual->id(), target, 0, 0, 0, 0, g_vis_texture->id(), target, 0, 0, 0, 0, visual->width(), visual->height(), 1);
 		}
 	}

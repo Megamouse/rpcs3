@@ -5827,8 +5827,14 @@ u32 spu_thread::get_ch_count(u32 ch)
 	default: break;
 	}
 
-	ensure(ch < 128u);
-	spu_log.error("Unknown/illegal channel in RCHCNT (ch=%s)", spu_ch_name[ch]);
+	if (ch < 128u)
+	{
+		spu_log.error("Unknown/illegal channel in RCHCNT (ch=%s)", spu_ch_name[ch]);
+	}
+	else
+	{
+		spu_log.fatal("Unknown/illegal channel in RCHCNT (ch=%d)", ch);
+	}
 	return 0; // Default count
 }
 

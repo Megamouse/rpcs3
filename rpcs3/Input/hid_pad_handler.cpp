@@ -277,7 +277,7 @@ void hid_pad_handler<Device>::update_devices()
 		{
 			controller.second->close();
 			cfg_pad* config = controller.second->config;
-			controller.second.reset(new Device());
+			controller.second = std::make_shared<Device>();
 			controller.second->config = config;
 		}
 	}
