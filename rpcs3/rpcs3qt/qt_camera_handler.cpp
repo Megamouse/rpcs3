@@ -57,9 +57,9 @@ void qt_camera_handler::set_camera(const QCameraDevice& camera_info)
 	camera_log.success("Using camera: id=\"%s\", description=\"%s\", front_facing=%d", camera_info.id().toStdString(), camera_info.description(), front_facing);
 
 	// Create camera and video surface
-	m_media_capture_session.reset(new QMediaCaptureSession(nullptr));
-	m_video_sink.reset(new qt_camera_video_sink(front_facing, nullptr));
-	m_camera.reset(new QCamera(camera_info));
+	m_media_capture_session = std::make_unique<QMediaCaptureSession>(nullptr);
+	m_video_sink = std::make_unique<qt_camera_video_sink>(front_facing, nullptr);
+	m_camera = std::make_shared<QCamera>(camera_info);
 
 	connect(m_camera.get(), &QCamera::activeChanged, this, &qt_camera_handler::handle_camera_active);
 	connect(m_camera.get(), &QCamera::errorOccurred, this, &qt_camera_handler::handle_camera_error);

@@ -111,9 +111,9 @@ bool gui_application::Init()
 		}
 	}
 
-	m_emu_settings.reset(new emu_settings());
-	m_gui_settings.reset(new gui_settings());
-	m_persistent_settings.reset(new persistent_settings());
+	m_emu_settings = std::make_shared<emu_settings>();
+	m_gui_settings = std::make_shared<gui_settings>();
+	m_persistent_settings = std::make_shared<persistent_settings>();
 
 	if (!m_emu_settings->Init())
 	{

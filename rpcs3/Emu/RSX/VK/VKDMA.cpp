@@ -321,11 +321,11 @@ namespace vk
 
 		if (allow_host_buffers)
 		{
-			block.reset(new dma_block_EXT());
+			block = std::make_unique<dma_block_EXT>();
 		}
 		else
 		{
-			block.reset(new dma_block());
+			block = std::make_unique<dma_block>();
 		}
 
 		block->init(*g_render_device, base_address, expected_length);
@@ -395,7 +395,7 @@ namespace vk
 			}
 			else
 			{
-				entry.reset(new dma_block());
+				entry = std::make_unique<dma_block>();
 				entry->init(block_head, block, s_dma_block_length);
 			}
 		}

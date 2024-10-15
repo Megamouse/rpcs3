@@ -934,7 +934,7 @@ void evdev_joystick_handler::get_mapping(const pad_ensemble& binding)
 
 				if (!wrapper)
 				{
-					wrapper.reset(new key_event_wrapper());
+					wrapper = std::make_shared<key_event_wrapper>();
 				}
 
 				key_event_wrapper* key_wrapper = static_cast<key_event_wrapper*>(wrapper.get());
@@ -964,7 +964,7 @@ void evdev_joystick_handler::get_mapping(const pad_ensemble& binding)
 
 				if (!wrapper)
 				{
-					wrapper.reset(new axis_event_wrapper());
+					wrapper = std::make_shared<axis_event_wrapper>();
 				}
 
 				axis_event_wrapper* axis_wrapper = static_cast<axis_event_wrapper*>(wrapper.get());

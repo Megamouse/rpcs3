@@ -1331,7 +1331,7 @@ std::span<const char> package_reader::decrypt(u64 offset, u64 size, const uchar*
 	if (!local_buf)
 	{
 		// Allocate buffer with BUF_SIZE size or more if required
-		local_buf.reset(new u128[std::max<u64>(BUF_SIZE, sizeof(PKGEntry) * m_header.file_count) / sizeof(u128)]);
+		local_buf = std::make_unique<u128[]>(std::max<u64>(BUF_SIZE, sizeof(PKGEntry) * m_header.file_count) / sizeof(u128));
 	}
 
 	// Read the data and set available size
