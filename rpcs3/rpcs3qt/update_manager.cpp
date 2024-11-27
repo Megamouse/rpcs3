@@ -315,7 +315,7 @@ bool update_manager::handle_json(bool automatic, bool check_only, bool auto_acce
 						update_log.notice("JSON changelog entry does not contain a title string.");
 					}
 
-					m_changelog.push_back(entry);
+					m_changelog.push_back(std::move(entry));
 				}
 				else
 				{

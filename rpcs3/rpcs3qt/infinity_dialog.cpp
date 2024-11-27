@@ -575,7 +575,7 @@ bool figure_creator_dialog::create_blank_figure(u32 character, u8 series)
 	std::array<u8, 16> uid_data = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x89, 0x44, 0x00, 0xC2};
 	for (u8 i = 0; i < 7; i++)
 	{
-		u8 random = rand() % 255;
+		const u8 random = rand() % 255;
 		sha1_calc.push_back(random);
 		uid_data[i] = random;
 	}

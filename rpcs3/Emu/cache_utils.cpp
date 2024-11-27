@@ -66,10 +66,10 @@ namespace rpcs3::cache
 		}
 
 		// retrieve items to delete
-		for (const auto &item : cache_dir)
+		for (auto&& item : cache_dir)
 		{
 			if (item.name != "." && item.name != "..")
-				file_list.push_back(item);
+				file_list.push_back(std::move(item));
 		}
 
 		cache_dir.close();

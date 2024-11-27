@@ -152,9 +152,9 @@ void VKFragmentDecompilerThread::insertConstants(std::stringstream & OS)
 				in.name += "_stencil";
 				in.location = location;
 
-				inputs.push_back(in);
-
 				OS << "layout(set=0, binding=" << location++ << ") uniform u" << samplerType << " " << in.name << ";\n";
+
+				inputs.push_back(std::move(in));
 			}
 		}
 	}
@@ -223,7 +223,7 @@ void VKFragmentDecompilerThread::insertConstants(std::stringstream & OS)
 
 	in.location = m_binding_table.rasterizer_env_bind_slot;
 	in.name = "RasterizerHeap";
-	inputs.push_back(in);
+	inputs.push_back(std::move(in));
 }
 
 void VKFragmentDecompilerThread::insertGlobalFunctions(std::stringstream &OS)
@@ -433,7 +433,7 @@ void VKFragmentProgram::Delete()
 
 void VKFragmentProgram::SetInputs(std::vector<vk::glsl::program_input>& inputs)
 {
-	for (auto &it : inputs)
+	for (auto& it : inputs)
 	{
 		uniforms.push_back(it);
 	}

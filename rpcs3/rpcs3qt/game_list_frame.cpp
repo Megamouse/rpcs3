@@ -837,7 +837,7 @@ void game_list_frame::OnRefreshFinished()
 
 	for (auto&& g : m_games.pop_all())
 	{
-		m_game_data.push_back(g);
+		m_game_data.push_back(std::move(g));
 	}
 
 	const Localized localized;

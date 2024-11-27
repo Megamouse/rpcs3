@@ -37,8 +37,7 @@ namespace aarch64
 
         for (const auto& reg : clobbered)
         {
-            const auto clobber = fmt::format("~{%s}", gpr_names[static_cast<int>(reg)]);
-            instruction.constraints.push_back(clobber);
+            instruction.constraints.push_back(fmt::format("~{%s}", gpr_names[static_cast<int>(reg)]));
         }
     }
 

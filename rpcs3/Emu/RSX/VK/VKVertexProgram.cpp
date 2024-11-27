@@ -70,7 +70,7 @@ void VKVertexDecompilerThread::insertHeader(std::stringstream &OS)
 	in.domain = glsl::glsl_vertex_program;
 	in.name = "VertexContextBuffer";
 	in.type = vk::glsl::input_type_uniform_buffer;
-	inputs.push_back(in);
+	inputs.push_back(std::move(in));
 }
 
 void VKVertexDecompilerThread::insertInputs(std::stringstream& OS, const std::vector<ParamType>& /*inputs*/)
@@ -96,7 +96,7 @@ void VKVertexDecompilerThread::insertInputs(std::stringstream& OS, const std::ve
 	in.domain = glsl::glsl_vertex_program;
 	in.name = "vertex_layout_stream";
 	in.type = vk::glsl::input_type_texel_buffer;
-	this->inputs.push_back(in);
+	this->inputs.push_back(std::move(in));
 }
 
 void VKVertexDecompilerThread::insertConstants(std::stringstream & OS, const std::vector<ParamType> & constants)
@@ -104,9 +104,9 @@ void VKVertexDecompilerThread::insertConstants(std::stringstream & OS, const std
 	vk::glsl::program_input in;
 	u32 location = m_binding_table.vertex_textures_first_bind_slot;
 
-	for (const ParamType &PT : constants)
+	for (const ParamType& PT : constants)
 	{
-		for (const ParamItem &PI : PT.items)
+		for (const ParamItem& PI : PT.items)
 		{
 			if (PI.name.starts_with("vc["))
 			{
@@ -370,9 +370,9 @@ void VKVertexProgram::Delete()
 	shader.destroy();
 }
 
-void VKVertexProgram::SetInputs(std::vector<vk::glsl::program_input>& inputs)
+void VKVertexProgram::SetInputs(const std::vector<vk::glsl::program_input>& inputs)
 {
-	for (auto &it : inputs)
+	for (const auto& it : inputs)
 	{
 		uniforms.push_back(it);
 	}

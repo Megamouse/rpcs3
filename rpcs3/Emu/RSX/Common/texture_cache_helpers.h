@@ -882,7 +882,7 @@ namespace rsx
 					mip.src_h = attr.height;
 				}
 
-				sections.push_back(mip);
+				sections.push_back(std::move(mip));
 			}
 			else
 			{
@@ -907,7 +907,7 @@ namespace rsx
 						.dst_h = attr.height
 					};
 
-					sections.push_back(mip);
+					sections.push_back(std::move(mip));
 					break;
 				}
 				default:

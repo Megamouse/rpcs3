@@ -195,7 +195,7 @@ std::vector<compat::package_info> pkg_install_dialog::GetPathsToInstall() const
 			info.title_id  = item->data(Roles::TitleIdRole).toString();
 			info.changelog = item->data(Roles::ChangelogRole).toString();
 			info.version   = item->data(Roles::VersionRole).toString();
-			result.push_back(info);
+			result.push_back(std::move(info));
 		}
 	}
 

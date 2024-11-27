@@ -306,7 +306,7 @@ public:
 				new_swizzle[p.second] = swizzle[swizzles[i].length() <= p.first ? '\0' : swizzles[i][p.first]];
 			}
 
-			swizzle = new_swizzle;
+			swizzle = std::move(new_swizzle);
 		}
 
 		swizzles.clear();
@@ -318,7 +318,7 @@ public:
 				new_swizzle += swizzle[p.second];
 		}
 
-		swizzles.push_back(new_swizzle);
+		swizzles.push_back(std::move(new_swizzle));
 
 		return *this;
 	}

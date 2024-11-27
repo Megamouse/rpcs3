@@ -536,7 +536,7 @@ namespace
 			for (int row = 0; row < row_count; ++row)
 			{
 				rsx::memory_transfer_cmd cmd{ dst_, src_, width_in_bytes };
-				result.push_back(cmd);
+				result.push_back(std::move(cmd));
 				src_ += src_pitch_in_bytes;
 				dst_ += dst_pitch_in_bytes;
 			}

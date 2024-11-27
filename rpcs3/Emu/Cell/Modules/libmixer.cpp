@@ -35,36 +35,36 @@ struct SurMixerConfig
 {
 	std::mutex mutex;
 
-	u32 audio_port;
-	s32 priority;
-	u32 ch_strips_1;
-	u32 ch_strips_2;
-	u32 ch_strips_6;
-	u32 ch_strips_8;
+	u32 audio_port = 0;
+	s32 priority = 0;
+	u32 ch_strips_1 = 0;
+	u32 ch_strips_2 = 0;
+	u32 ch_strips_6 = 0;
+	u32 ch_strips_8 = 0;
 
 	vm::ptr<CellSurMixerNotifyCallbackFunction> cb;
 	vm::ptr<void> cb_arg;
 
-	f32 mixdata[8 * 256];
-	u64 mixcount;
+	f32 mixdata[8 * 256] {};
+	u64 mixcount = 0;
 };
 
 struct SSPlayer
 {
-	bool m_created; // SSPlayerCreate/Remove
-	bool m_connected; // AANConnect/Disconnect
-	bool m_active; // SSPlayerPlay/Stop
-	u32 m_channels; // 1 or 2
-	u32 m_addr;
-	u32 m_samples;
-	u32 m_loop_start;
-	u32 m_loop_mode;
-	u32 m_position;
-	float m_level;
-	float m_speed;
-	float m_x;
-	float m_y;
-	float m_z;
+	bool m_created = false; // SSPlayerCreate/Remove
+	bool m_connected = false; // AANConnect/Disconnect
+	bool m_active = false; // SSPlayerPlay/Stop
+	u32 m_channels = 0; // 1 or 2
+	u32 m_addr = 0;
+	u32 m_samples = 0;
+	u32 m_loop_start = 0;
+	u32 m_loop_mode = 0;
+	u32 m_position = 0;
+	float m_level = 0.0f;
+	float m_speed = 0.0f;
+	float m_x = 0.0f;
+	float m_y = 0.0f;
+	float m_z = 0.0f;
 };
 
 // TODO: use fxm
@@ -94,7 +94,8 @@ s32 cellAANAddData(u32 aan_handle, u32 aan_port, u32 offset, vm::ptr<float> addr
 		if (port >= g_surmx.ch_strips_8) type = 0;
 		break;
 	default:
-		type = 0; break;
+		type = 0;
+		break;
 	}
 
 	if (aan_handle != 0x11111111 || samples != 256 || !type || offset != 0)
@@ -205,13 +206,13 @@ s32 cellSSPlayerCreate(vm::ptr<u32> handle, vm::ptr<CellSSPlayerConfig> config)
 
 	std::lock_guard lock(g_surmx.mutex);
 
-	SSPlayer p;
+	SSPlayer p {};
 	p.m_created = true;
 	p.m_connected = false;
 	p.m_active = false;
 	p.m_channels = config->channels;
 
-	g_ssp.push_back(p);
+	g_ssp.push_back(std::move(p));
 	*handle = ::size32(g_ssp) - 1;
 	return CELL_OK;
 }

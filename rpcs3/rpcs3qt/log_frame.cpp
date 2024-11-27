@@ -402,7 +402,7 @@ void log_frame::CreateAndConnectActions()
 
 	connect(m_tty_input, &QLineEdit::returnPressed, [this]()
 	{
-		std::string text = m_tty_input->text().toStdString();
+		std::string text = m_tty_input->text().toStdString() + "\n";
 
 		{
 			std::lock_guard lock(g_tty_mutex);
@@ -411,23 +411,23 @@ void log_frame::CreateAndConnectActions()
 			{
 				for (int i = 3; i < 16; i++)
 				{
-					g_tty_input[i].push_back(text + "\n");
+					g_tty_input[i].push_back(text);
 				}
 			}
 			else
 			{
-				g_tty_input[m_tty_channel].push_back(text + "\n");
+				g_tty_input[m_tty_channel].push_back(text);
 			}
 		}
 
 		// Write to tty
 		if (m_tty_channel == -1)
 		{
-			text = "All channels > " + text + "\n";
+			text = "All channels > " + text;
 		}
 		else
 		{
-			text = fmt::format("Ch.%d > %s\n", m_tty_channel, text);
+			text = fmt::format("Ch.%d > %s", m_tty_channel, text);
 		}
 
 		if (g_tty)

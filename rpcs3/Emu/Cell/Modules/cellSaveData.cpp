@@ -1503,17 +1503,16 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 		for (auto&& entry : fs::dir(dir_path))
 		{
+			if (entry.is_directory) continue;
+
 			entry.name = vfs::unescape(entry.name);
 
-			if (!entry.is_directory)
+			if (check_filename(entry.name, false, false))
 			{
-				if (check_filename(entry.name, false, false))
-				{
-					continue; // system files are not included in the file list
-				}
-
-				files_sorted.push_back(entry);
+				continue; // system files are not included in the file list
 			}
+
+			files_sorted.push_back(std::move(entry));
 		}
 
 		// clang-format off

@@ -293,7 +293,7 @@ bool evdev_gun_handler::init()
 				if (is_valid)
 				{
 					evdev_log.notice("Lightgun: Adding device %d: %s, ABS_X(%i, %i), ABS_Y(%i, %i)", m_devices.size(), name, gun.axis[ABS_X].min, gun.axis[ABS_X].max, gun.axis[ABS_Y].min, gun.axis[ABS_Y].max);
-					m_devices.push_back(gun);
+					m_devices.push_back(std::move(gun));
 				}
 				else
 				{

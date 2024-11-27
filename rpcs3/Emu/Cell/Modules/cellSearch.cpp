@@ -552,17 +552,16 @@ error_code cellSearchStartListSearch(CellSearchListSearchType type, CellSearchSo
 
 			for (auto&& entry : fs::dir(vfs::get(vpath)))
 			{
+				if (!entry.is_directory) continue;
+
 				entry.name = vfs::unescape(entry.name);
 
-				if (entry.is_directory)
+				if (entry.name == "." || entry.name == "..")
 				{
-					if (entry.name == "." || entry.name == "..")
-					{
-						continue; // these dirs are not included in the dir list
-					}
-
-					dirs_sorted.push_back(entry);
+					continue; // these dirs are not included in the dir list
 				}
+
+				dirs_sorted.push_back(std::move(entry));
 			}
 
 			// clang-format off
@@ -811,14 +810,16 @@ error_code cellSearchStartContentSearchInList(vm::cptr<CellSearchContentId> list
 
 			for (auto&& entry : fs::dir(vfs::get(vpath)))
 			{
+				if (entry.is_directory) continue;
+
 				entry.name = vfs::unescape(entry.name);
 
-				if (entry.is_directory || entry.name == "." || entry.name == "..")
+				if (entry.name == "." || entry.name == "..")
 				{
 					continue;
 				}
 
-				files_sorted.push_back(entry);
+				files_sorted.push_back(std::move(entry));
 			}
 
 			// clang-format off

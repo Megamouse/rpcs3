@@ -40,7 +40,7 @@ namespace gl
 			used += size;
 			texture_pool pool;
 			pool.pool_size = size;
-			pools.push_back(pool);
+			pools.push_back(std::move(pool));
 		}
 	}
 

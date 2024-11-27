@@ -386,7 +386,7 @@ void log_viewer::filter_log()
 					if (const QString thread_name = match.captured(); !thread_name.isEmpty())
 					{
 						std::deque<QString>& actions = all_thread_actions[thread_name];
-						actions.push_back(line);
+						actions.push_back(std::move(line));
 
 						if (actions.size() > 10)
 						{

@@ -80,7 +80,7 @@ namespace vk
 		in.location = binding_table.vertex_constant_buffers_bind_slot;
 		in.name = "VertexConstantsBuffer";
 		in.type = vk::glsl::input_type_uniform_buffer;
-		m_vs_inputs.push_back(in);
+		m_vs_inputs.push_back(std::move(in));
 
 		// TODO: Bind textures if needed
 	}

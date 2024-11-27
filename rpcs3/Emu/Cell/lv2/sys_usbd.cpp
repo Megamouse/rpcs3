@@ -266,8 +266,7 @@ usb_handler_thread::usb_handler_thread()
 			{
 				sys_usbd.success("Found device: %s", s_name);
 				libusb_ref_device(list[index]);
-				std::shared_ptr<usb_device_passthrough> usb_dev = std::make_shared<usb_device_passthrough>(list[index], desc, get_new_location());
-				usb_devices.push_back(usb_dev);
+				usb_devices.push_back(std::make_shared<usb_device_passthrough>(list[index], desc, get_new_location()));
 				return true;
 			}
 			return false;

@@ -140,9 +140,9 @@ struct UsbDescriptorNode
 		memcpy(data, _data, _bLength - 2);
 	}
 
-	UsbDescriptorNode& add_node(const UsbDescriptorNode& newnode)
+	UsbDescriptorNode& add_node(UsbDescriptorNode&& newnode)
 	{
-		subnodes.push_back(newnode);
+		subnodes.push_back(std::move(newnode));
 		return subnodes.back();
 	}
 

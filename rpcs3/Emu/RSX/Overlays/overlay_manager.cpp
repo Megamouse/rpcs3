@@ -231,7 +231,7 @@ namespace rsx
 						if (m_input_token_stack)
 						{
 							// We actually have new items to read out. Skip the remaining list.
-							interrupted_items.push_back(input_context);
+							interrupted_items.push_back(std::move(input_context));
 							continue;
 						}
 
@@ -266,7 +266,7 @@ namespace rsx
 						// This dialog was exited prematurely, so we must re-run it's input routine later.
 						ensure(m_input_thread_interrupted);
 						ensure(m_input_token_stack);
-						interrupted_items.push_back(input_context);
+						interrupted_items.push_back(std::move(input_context));
 						continue;
 					}
 

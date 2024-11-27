@@ -80,7 +80,7 @@ namespace vk
 			vs_texture_bindings.fill(~0u);
 		}
 
-		program::program(VkDevice dev, VkPipeline p, VkPipelineLayout layout, const std::vector<program_input> &vertex_input, const std::vector<program_input>& fragment_inputs)
+		program::program(VkDevice dev, VkPipeline p, VkPipelineLayout layout, const std::vector<program_input>& vertex_input, const std::vector<program_input>& fragment_inputs)
 			: m_device(dev), pipeline(p), pipeline_layout(layout)
 		{
 			create_impl();
@@ -103,7 +103,7 @@ namespace vk
 		{
 			ensure(!linked); // "Cannot change uniforms in already linked program!"
 
-			for (auto &item : inputs)
+			for (auto& item : inputs)
 			{
 				uniforms[item.type].push_back(item);
 			}

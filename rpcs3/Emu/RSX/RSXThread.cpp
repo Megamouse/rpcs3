@@ -2354,7 +2354,7 @@ namespace rsx
 
 					// Read temp buffer (register array)
 					std::pair<u8, u32> volatile_range_info = std::make_pair(index, static_cast<u32>(vertex_push_buffers[index].data.size() * sizeof(u32)));
-					result.volatile_blocks.push_back(volatile_range_info);
+					result.volatile_blocks.push_back(std::move(volatile_range_info));
 					result.attribute_placement[index] = attribute_buffer_placement::transient;
 				}
 				else if (state.register_vertex_info[index].size > 0)
@@ -3709,7 +3709,7 @@ namespace rsx
 			// capture first tile state with nop cmd
 			rsx::frame_capture_data::replay_command replay_cmd;
 			replay_cmd.rsx_command = std::make_pair(NV4097_NO_OPERATION, 0);
-			frame_capture.replay_commands.push_back(replay_cmd);
+			frame_capture.replay_commands.push_back(std::move(replay_cmd));
 			capture::capture_display_tile_state(this, frame_capture.replay_commands.back());
 		}
 		else if (capture_current_frame)

@@ -1190,7 +1190,7 @@ namespace rsx
 						info.src_area.width = width;
 					}
 
-					result.push_back(info);
+					result.push_back(std::move(info));
 				}
 			};
 

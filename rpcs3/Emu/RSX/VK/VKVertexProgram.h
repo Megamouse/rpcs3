@@ -65,7 +65,7 @@ public:
 
 	void Decompile(const RSXVertexProgram& prog);
 	void Compile();
-	void SetInputs(std::vector<vk::glsl::program_input>& inputs);
+	void SetInputs(const std::vector<vk::glsl::program_input>& inputs);
 
 private:
 	void Delete();

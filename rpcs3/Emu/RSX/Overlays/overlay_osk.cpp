@@ -153,7 +153,7 @@ namespace rsx
 			m_update = true;
 		}
 
-		void osk_dialog::add_panel(const osk_panel& panel)
+		void osk_dialog::add_panel(osk_panel&& panel)
 		{
 			// On PS3 apparently only 7 panels are added, the rest is ignored
 			if (m_panels.size() < 7)
@@ -161,7 +161,7 @@ namespace rsx
 				// Don't add this panel if there already exists one with the same panel mode
 				if (std::none_of(m_panels.begin(), m_panels.end(), [&panel](const osk_panel& existing) { return existing.osk_panel_mode == panel.osk_panel_mode; }))
 				{
-					m_panels.push_back(panel);
+					m_panels.push_back(std::move(panel));
 				}
 			}
 		}

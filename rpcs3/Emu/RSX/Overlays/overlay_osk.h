@@ -112,7 +112,7 @@ namespace rsx
 			void Insert(const std::u16string& text) override;
 
 			void initialize_layout(const std::u32string& title, const std::u32string& initial_text);
-			void add_panel(const osk_panel& panel);
+			void add_panel(osk_panel&& panel);
 			void step_panel(bool next_panel);
 			void update_panel();
 			void update_layout();
