@@ -2712,7 +2712,7 @@ error_code cellGemGetInertialState(u32 gem_num, u32 state_flag, u64 timestamp, v
 
 		inertial_state->timestamp = (get_guest_system_time() - gem.start_timestamp_us);
 		inertial_state->counter = gem.inertial_counter++;
-		inertial_state->accelerometer[0] = 10; // Current gravity in m/s²
+		inertial_state->accelerometer[2] = -9.81f; // Current gravity in m/s²
 
 		switch (g_cfg.io.move)
 		{
@@ -2735,6 +2735,28 @@ error_code cellGemGetInertialState(u32 gem_num, u32 state_flag, u64 timestamp, v
 					inertial_state->gyro[0] = pad->move_data.gyro_x;
 					inertial_state->gyro[1] = pad->move_data.gyro_y;
 					inertial_state->gyro[2] = pad->move_data.gyro_z;
+
+					s32 ds3_pos_x, ds3_pos_y;
+					ds3_get_stick_values(gem_num, pad, ds3_pos_x, ds3_pos_y);
+
+					const auto get_stick_diff = [](s32 pos, f32& last_norm) -> f32
+					{
+						const f32 norm = std::clamp((pos - 128.0f) / 127.0f, -1.0f, 1.0f);
+						const f32 last = std::exchange(last_norm, norm);
+						if (norm > 0.0f && last >= norm) return 0.0f; // Ignore stick returning to center
+						if (norm < 0.0f && last <= norm) return 0.0f; // Ignore stick returning to center
+						const f32 stick_diff = norm - last;
+						return stick_diff;
+					};
+
+					static std::array<f32, CELL_GEM_MAX_NUM> last_norm_x {};
+					//static std::array<f32, CELL_GEM_MAX_NUM> last_norm_y {};
+
+					const f32 diff_h = get_stick_diff(ds3_pos_x, last_norm_x[gem_num]);
+					//const f32 diff_v = get_stick_diff(ds3_pos_y, last_norm_y[gem_num]);
+
+					cellGem.error("diff=%.2f, rad=%.2f", diff_h, -PadHandlerBase::degree_to_rad(diff_h * 180.0f));
+					inertial_state->gyro[1] = -PadHandlerBase::degree_to_rad(diff_h * 180.0f);
 				}
 			}
 
