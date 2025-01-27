@@ -142,6 +142,7 @@ add_library(rpcs3_ui STATIC
 
     ../Input/basic_keyboard_handler.cpp
     ../Input/basic_mouse_handler.cpp
+    ../Input/camera_video_sink.cpp
     ../Input/ds3_pad_handler.cpp
     ../Input/ds4_pad_handler.cpp
     ../Input/dualsense_pad_handler.cpp
@@ -158,6 +159,8 @@ add_library(rpcs3_ui STATIC
     ../Input/ps_move_tracker.cpp
     ../Input/raw_mouse_config.cpp
     ../Input/raw_mouse_handler.cpp
+    ../Input/sdl_camera_handler.cpp
+    ../Input/sdl_camera_video_sink.cpp
     ../Input/sdl_pad_handler.cpp
     ../Input/sdl_instance.cpp
     ../Input/skateboard_pad_handler.cpp
