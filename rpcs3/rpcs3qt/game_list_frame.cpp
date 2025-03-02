@@ -821,6 +821,7 @@ void game_list_frame::OnParsingFinished()
 		for (const std::string& path : legit_paths)
 		{
 			add_game(path);
+			std::this_thread::sleep_for(1s);
 		}
 	}));
 }

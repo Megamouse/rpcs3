@@ -125,7 +125,7 @@ void downloader::start(const std::string& url, bool follow_location, bool show_p
 				m_progress_dialog = nullptr; // The progress dialog deletes itself on close
 				Q_EMIT signal_download_canceled();
 			});
-			connect(m_progress_dialog, &QProgressDialog::finished, this, [this]()
+			connect(m_progress_dialog, &QProgressDialog::destroyed, this, [this]()
 			{
 				m_progress_dialog = nullptr; // The progress dialog deletes itself on close
 			});

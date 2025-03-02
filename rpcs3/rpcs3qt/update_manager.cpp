@@ -62,11 +62,11 @@ void update_manager::check_for_updates(bool automatic, bool check_only, bool aut
 	if (automatic)
 	{
 		// Don't check for updates on local builds
-		if (rpcs3::is_local_build())
-		{
-			update_log.notice("Skipped automatic update check: this is a local build");
-			return;
-		}
+		//if (rpcs3::is_local_build())
+		//{
+		//	update_log.notice("Skipped automatic update check: this is a local build");
+		//	return;
+		//}
 #ifdef __linux__
 		// Don't check for updates on startup if RPCS3 is not running from an AppImage.
 		if (!::getenv("APPIMAGE"))
@@ -141,7 +141,7 @@ bool update_manager::handle_json(bool automatic, bool check_only, bool auto_acce
 			update_log.warning("Update error: %s return code: %d", error_message, return_code);
 
 		// If a user clicks "Check for Updates" with a custom build ask him if he's sure he wants to update to latest version
-		if (!automatic && return_code == -1)
+		if (true || !automatic && return_code == -1)
 		{
 			hash_found = false;
 		}
