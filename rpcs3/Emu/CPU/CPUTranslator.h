@@ -2773,10 +2773,10 @@ struct llvm_ctlz
 	{
 		llvm::Value* v = a1.eval(ir);
 
-		if (llvm::isa<llvm::Constant>(v))
-		{
-			return llvm::ConstantFoldInstruction(ir->CreateIntrinsic(llvm::Intrinsic::ctlz, {v->getType()}, {v, ir->getFalse()}), llvm::DataLayout(""));
-		}
+		//if (llvm::isa<llvm::Constant>(v))
+		//{
+		//	return llvm::ConstantFoldInstruction(ir->CreateIntrinsic(llvm::Intrinsic::ctlz, {v->getType()}, {v, ir->getFalse()}), llvm::DataLayout(""));
+		//}
 
 		return ir->CreateIntrinsic(llvm::Intrinsic::ctlz, {v->getType()}, {v, ir->getFalse()});
 	}
@@ -2818,10 +2818,10 @@ struct llvm_ctpop
 	{
 		llvm::Value* v = a1.eval(ir);
 
-		if (llvm::isa<llvm::Constant>(v))
-		{
-			return llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::ctpop, v), llvm::DataLayout(""));
-		}
+		//if (llvm::isa<llvm::Constant>(v))
+		//{
+		//	return llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::ctpop, v), llvm::DataLayout(""));
+		//}
 
 		return ir->CreateUnaryIntrinsic(llvm::Intrinsic::ctpop, v);
 	}
@@ -2939,14 +2939,14 @@ struct llvm_fsqrt
 	{
 		llvm::Value* v = a1.eval(ir);
 
-		if (llvm::isa<llvm::Constant>(v))
-		{
-			if (auto c = llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::sqrt, v), llvm::DataLayout("")))
-			{
-				// Will fail in some cases (such as negative constant)
-				return c;
-			}
-		}
+		//if (llvm::isa<llvm::Constant>(v))
+		//{
+		//	if (auto c = llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::sqrt, v), llvm::DataLayout("")))
+		//	{
+		//		// Will fail in some cases (such as negative constant)
+		//		return c;
+		//	}
+		//}
 
 		return ir->CreateUnaryIntrinsic(llvm::Intrinsic::sqrt, v);
 	}
@@ -2985,10 +2985,10 @@ struct llvm_fabs
 	{
 		llvm::Value* v = a1.eval(ir);
 
-		if (llvm::isa<llvm::Constant>(v))
-		{
-			return llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::fabs, v), llvm::DataLayout(""));
-		}
+		//if (llvm::isa<llvm::Constant>(v))
+		//{
+		//	return llvm::ConstantFoldInstruction(ir->CreateUnaryIntrinsic(llvm::Intrinsic::fabs, v), llvm::DataLayout(""));
+		//}
 
 		return ir->CreateUnaryIntrinsic(llvm::Intrinsic::fabs, v);
 	}
@@ -3032,10 +3032,10 @@ struct llvm_fmuladd
 		llvm::Value* v2 = a2.eval(ir);
 		llvm::Value* v3 = a3.eval(ir);
 
-		if (llvm::isa<llvm::Constant>(v1) && llvm::isa<llvm::Constant>(v2) && llvm::isa<llvm::Constant>(v3))
-		{
-			return llvm::ConstantFoldInstruction(ir->CreateIntrinsic(llvm::Intrinsic::fma, {v1->getType()}, {v1, v2, v3}), llvm::DataLayout(""));
-		}
+		//if (llvm::isa<llvm::Constant>(v1) && llvm::isa<llvm::Constant>(v2) && llvm::isa<llvm::Constant>(v3))
+		//{
+		//	return llvm::ConstantFoldInstruction(ir->CreateIntrinsic(llvm::Intrinsic::fma, {v1->getType()}, {v1, v2, v3}), llvm::DataLayout(""));
+		//}
 
 		return ir->CreateIntrinsic(strict_fma ? llvm::Intrinsic::fma : llvm::Intrinsic::fmuladd, {v1->getType()}, {v1, v2, v3});
 	}
