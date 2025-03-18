@@ -4483,8 +4483,8 @@ extern void ppu_precompile(std::vector<std::string>& dir_queue, std::vector<ppu_
 			if (!src && !Emu.klic.empty() && src.open(path))
 			{
 				src = decrypt_self(src, reinterpret_cast<u8*>(&Emu.klic[0]));
-				
-				if (src) 
+
+				if (src)
 				{
 					ppu_log.error("Possible missed KLIC for precompilation of '%s', please report to developers.", path);
 				}
@@ -5159,9 +5159,9 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 
 			if (g_fxo->is_init<ppu_far_jumps_t>())
 			{
-				auto targets = g_fxo->get<ppu_far_jumps_t>().get_targets(func.addr, func.size);
+				const auto targets = g_fxo->get<ppu_far_jumps_t>().get_targets(func.addr, func.size);
 
-				for (auto [source, target] : targets)
+				for (const auto [source, target] : targets)
 				{
 					auto far_jump = ensure(g_fxo->get<ppu_far_jumps_t>().gen_jump(source));
 
@@ -5197,7 +5197,6 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 		std::string obj_name;
 		{
 			sha1_context ctx;
-			u8 output[20];
 			sha1_starts(&ctx);
 
 			int has_dcbz = !!g_cfg.core.accurate_cache_line_stores;
@@ -5327,6 +5326,7 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 				sha1_update(&ctx, reinterpret_cast<const u8*>(&forced_upd), sizeof(forced_upd));
 			}
 
+			u8 output[20];
 			sha1_finish(&ctx, output);
 
 			// Settings: should be populated by settings which affect codegen (TODO)

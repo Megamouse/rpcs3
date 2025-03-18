@@ -14,7 +14,7 @@
 
 LOG_CHANNEL(edat_log, "EDAT");
 
-void generate_key(int crypto_mode, int version, unsigned char *key_final, unsigned char *iv_final, unsigned char *key, unsigned char *iv)
+void generate_key(int crypto_mode, int version, unsigned char* key_final, unsigned char* iv_final, const unsigned char* key, const unsigned char* iv)
 {
 	int mode = crypto_mode & 0xF0000000;
 	uchar temp_iv[16]{};
@@ -42,7 +42,7 @@ void generate_key(int crypto_mode, int version, unsigned char *key_final, unsign
 	}
 }
 
-void generate_hash(int hash_mode, int version, unsigned char *hash_final, unsigned char *hash)
+void generate_hash(int hash_mode, int version, unsigned char* hash_final, const unsigned char* hash)
 {
 	int mode = hash_mode & 0xF0000000;
 	uchar temp_iv[16]{};
@@ -67,7 +67,7 @@ void generate_hash(int hash_mode, int version, unsigned char *hash_final, unsign
 	};
 }
 
-bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, unsigned char *out, usz length, unsigned char *key, unsigned char *iv, unsigned char *hash, unsigned char *test_hash)
+bool decrypt(int hash_mode, int crypto_mode, int version, const unsigned char* in, unsigned char* out, usz length, const unsigned char* key, const unsigned char* iv, const unsigned char* hash, const unsigned char* test_hash)
 {
 	// Setup buffers for key, iv and hash.
 	unsigned char key_final[0x10] = {};
@@ -116,7 +116,7 @@ bool decrypt(int hash_mode, int crypto_mode, int version, unsigned char *in, uns
 }
 
 // EDAT/SDAT functions.
-std::tuple<u64, s32, s32> dec_section(unsigned char* metadata)
+std::tuple<u64, s32, s32> dec_section(const unsigned char* metadata)
 {
 	std::array<u8, 0x10> dec;
 	dec[0x00] = (metadata[0xC] ^ metadata[0x8] ^ metadata[0x10]);
@@ -143,14 +143,14 @@ std::tuple<u64, s32, s32> dec_section(unsigned char* metadata)
 	return std::make_tuple(offset, length, compression_end);
 }
 
-u128 get_block_key(int block, NPD_HEADER *npd)
+u128 get_block_key(int block, const NPD_HEADER* npd)
 {
-	unsigned char empty_key[0x10] = {};
-	unsigned char *src_key = (npd->version <= 1) ? empty_key : npd->dev_hash;
+	constexpr unsigned char empty_key[0x10] = {};
+	const unsigned char* src_key = (npd->version <= 1) ? empty_key : npd->dev_hash;
 	u128 dest_key{};
 	std::memcpy(&dest_key, src_key, 0xC);
 
-	s32 swappedBlock = std::bit_cast<be_t<s32>>(block);
+	const s32 swappedBlock = std::bit_cast<be_t<s32>>(block);
 	std::memcpy(reinterpret_cast<uchar*>(&dest_key) + 0xC, &swappedBlock, sizeof(swappedBlock));
 	return dest_key;
 }
@@ -158,7 +158,7 @@ u128 get_block_key(int block, NPD_HEADER *npd)
 // for out data, allocate a buffer the size of 'edat->block_size'
 // Also, set 'in file' to the beginning of the encrypted data, which may be offset if inside another file, but normally just reset to beginning of file
 // returns number of bytes written, -1 for error
-s64 decrypt_block(const fs::file* in, u8* out, EDAT_HEADER *edat, NPD_HEADER *npd, u8* crypt_key, u32 block_num, u32 total_blocks, u64 size_left, bool is_out_buffer_aligned = false)
+s64 decrypt_block(const fs::file* in, u8* out, const EDAT_HEADER* edat, const NPD_HEADER* npd, const u8* crypt_key, u32 block_num, u32 total_blocks, u64 size_left, bool is_out_buffer_aligned = false)
 {
 	// Get metadata info and setup buffers.
 	const int metadata_section_size = ((edat->flags & EDAT_COMPRESSED_FLAG) != 0 || (edat->flags & EDAT_FLAG_0x20) != 0) ? 0x20 : 0x10;
@@ -304,7 +304,7 @@ s64 decrypt_block(const fs::file* in, u8* out, EDAT_HEADER *edat, NPD_HEADER *np
 	else
 	{
 		// IV is null if NPD version is 1 or 0.
-		u8* iv = (npd->version <= 1) ? empty_iv : npd->digest;
+		const u8* iv = (npd->version <= 1) ? empty_iv : npd->digest;
 
 		// Call main crypto routine on this data block.
 		if (!decrypt(hash_mode, crypto_mode, (npd->version == 4), enc_data, dec_data, length, key_result, iv, hash, hash_result))
@@ -342,7 +342,7 @@ s64 decrypt_block(const fs::file* in, u8* out, EDAT_HEADER *edat, NPD_HEADER *np
 }
 
 // set file offset to beginning before calling
-bool check_data(u8* key, EDAT_HEADER* edat, NPD_HEADER* npd, const fs::file* f, bool verbose)
+bool check_data(const u8* key, const EDAT_HEADER* edat, const NPD_HEADER* npd, const fs::file* f, bool verbose)
 {
 	u8 header[0xA0] = { 0 };
 	u8 empty_header[0xA0] = { 0 };
@@ -553,7 +553,7 @@ bool check_data(u8* key, EDAT_HEADER* edat, NPD_HEADER* npd, const fs::file* f, 
 	return true;
 }
 
-bool validate_dev_klic(const u8* klicensee, NPD_HEADER *npd)
+bool validate_dev_klic(const u8* klicensee, const NPD_HEADER* npd)
 {
 	if ((npd->license & 0x3) != 0x3)
 	{
@@ -566,9 +566,9 @@ bool validate_dev_klic(const u8* klicensee, NPD_HEADER *npd)
 	std::memcpy(dev, npd, 0x60);
 
 	// Fix endianness.
-	s32 version = std::bit_cast<be_t<s32>>(npd->version);
-	s32 license = std::bit_cast<be_t<s32>>(npd->license);
-	s32 type = std::bit_cast<be_t<s32>>(npd->type);
+	const s32 version = std::bit_cast<be_t<s32>>(npd->version);
+	const s32 license = std::bit_cast<be_t<s32>>(npd->license);
+	const s32 type = std::bit_cast<be_t<s32>>(npd->type);
 	std::memcpy(dev + 0x4, &version, 4);
 	std::memcpy(dev + 0x8, &license, 4);
 	std::memcpy(dev + 0xC, &type, 4);
@@ -578,13 +578,13 @@ bool validate_dev_klic(const u8* klicensee, NPD_HEADER *npd)
 	std::memcpy(&klic, klicensee, sizeof(klic));
 
 	// Generate klicensee xor key.
-	u128 key = klic ^ std::bit_cast<u128>(NP_OMAC_KEY_2);
+	const u128 key = klic ^ std::bit_cast<u128>(NP_OMAC_KEY_2);
 
 	// Hash with generated key and compare with dev_hash.
-	return cmac_hash_compare(reinterpret_cast<uchar*>(&key), 0x10, dev, 0x60, npd->dev_hash, 0x10);
+	return cmac_hash_compare(reinterpret_cast<const uchar*>(&key), 0x10, dev, 0x60, npd->dev_hash, 0x10);
 }
 
-bool validate_npd_hashes(std::string_view file_name, const u8* klicensee, NPD_HEADER* npd, EDAT_HEADER* edat, bool verbose)
+bool validate_npd_hashes(std::string_view file_name, const u8* klicensee, const NPD_HEADER* npd, const EDAT_HEADER* edat, bool verbose)
 {
 	// Ignore header validation in DEBUG data.
 	if (edat->flags & EDAT_DEBUG_DATA_FLAG)
@@ -718,7 +718,7 @@ bool VerifyEDATHeaderWithKLicense(const fs::file& input, const std::string& inpu
 }
 
 // Decrypts full file
-fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, u8 *custom_klic)
+fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, const u8* custom_klic)
 {
 	if (!input)
 	{
@@ -759,7 +759,7 @@ fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, 
 		break;
 	case 8:
 		{
-			if (custom_klic != NULL)
+			if (custom_klic)
 				memcpy(&devklic, custom_klic, 0x10);
 			else
 			{

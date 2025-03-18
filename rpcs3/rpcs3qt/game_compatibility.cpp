@@ -13,8 +13,6 @@
 
 LOG_CHANNEL(compat_log, "Compat");
 
-constexpr auto qstr = QString::fromStdString;
-
 game_compatibility::game_compatibility(std::shared_ptr<gui_settings> gui_settings, QWidget* parent)
 	: QObject(parent)
 	, m_gui_settings(std::move(gui_settings))
@@ -50,7 +48,7 @@ void game_compatibility::handle_download_finished(const QByteArray& content)
 
 		if (!file.open(QIODevice::WriteOnly))
 		{
-			compat_log.error("Database Error - Could not write database to file: %s", m_filepath);
+			compat_log.error("Database Error - Could not write database to file: '%s', error=%s", m_filepath, file.errorString());
 			return;
 		}
 
@@ -91,7 +89,7 @@ bool game_compatibility::ReadJSON(const QJsonObject& json_data, bool after_downl
 				break;
 			}
 			compat_log.error("%s: return code %d", error_message, return_code);
-			Q_EMIT DownloadError(qstr(error_message) + " " + QString::number(return_code));
+			Q_EMIT DownloadError(QString::fromStdString(error_message) + " " + QString::number(return_code));
 		}
 		else
 		{
@@ -113,13 +111,14 @@ bool game_compatibility::ReadJSON(const QJsonObject& json_data, bool after_downl
 	// Retrieve status data for every valid entry
 	for (const auto& key : json_results.keys())
 	{
-		if (!json_results[key].isObject())
+		const auto& value = json_results[key];
+		if (!value.isObject())
 		{
 			compat_log.error("Database Error - Unusable object %s", key);
 			continue;
 		}
 
-		QJsonObject json_result = json_results[key].toObject();
+		const QJsonObject json_result = value.toObject();
 
 		// Retrieve compatibility information from json
 		compat::status status = ::at32(Status_Data, json_result.value("status").toString("NoResult"));
@@ -135,7 +134,7 @@ bool game_compatibility::ReadJSON(const QJsonObject& json_data, bool after_downl
 		{
 			for (const QJsonValue& patch_set : patchsets_value.toArray())
 			{
-				compat::pkg_patchset set;
+				compat::pkg_patchset set {};
 				set.tag_id         = patch_set["tag_id"].toString().toStdString();
 				set.popup          = patch_set["popup"].toBool();
 				set.signoff        = patch_set["signoff"].toBool();
@@ -207,7 +206,7 @@ void game_compatibility::RequestCompatibility(bool online)
 
 		if (!file.open(QIODevice::ReadOnly))
 		{
-			compat_log.error("Database Error - Could not read database from file: %s", m_filepath);
+			compat_log.error("Database Error - Could not read database from file: '%s', error=%s", m_filepath, file.errorString());
 			return;
 		}
 
@@ -253,7 +252,7 @@ compat::status game_compatibility::GetStatusData(const QString& status) const
 
 compat::package_info game_compatibility::GetPkgInfo(const QString& pkg_path, game_compatibility* compat)
 {
-	compat::package_info info;
+	compat::package_info info {};
 
 	const package_reader reader(pkg_path.toStdString());
 	if (!reader.is_valid())
@@ -269,10 +268,10 @@ compat::package_info game_compatibility::GetPkgInfo(const QString& pkg_path, gam
 	const std::string changelog_key = "paramhip";
 
 	info.path     = pkg_path;
-	info.title    = qstr(std::string(psf::get_string(psf, title_key))); // Let's read this from the psf first
-	info.title_id = qstr(std::string(psf::get_string(psf, "TITLE_ID")));
-	info.category = qstr(std::string(psf::get_string(psf, "CATEGORY")));
-	info.version  = qstr(std::string(psf::get_string(psf, "APP_VER")));
+	info.title    = QString(psf::get_string(psf, title_key).data()); // Let's read this from the psf first
+	info.title_id = QString(psf::get_string(psf, "TITLE_ID").data());
+	info.category = QString(psf::get_string(psf, "CATEGORY").data());
+	info.version  = QString(psf::get_string(psf, "APP_VER").data());
 
 	if (!info.category.isEmpty())
 	{
@@ -306,7 +305,7 @@ compat::package_info game_compatibility::GetPkgInfo(const QString& pkg_path, gam
 	if (info.version.isEmpty())
 	{
 		// Fallback to VERSION
-		info.version = qstr(std::string(psf::get_string(psf, "VERSION")));
+		info.version = QString(psf::get_string(psf, "VERSION").data());
 	}
 
 	if (compat)
@@ -321,12 +320,12 @@ compat::package_info game_compatibility::GetPkgInfo(const QString& pkg_path, gam
 				{
 					if (const std::string localized_title = package.get_title(title_key); !localized_title.empty())
 					{
-						info.title = qstr(localized_title);
+						info.title = QString::fromStdString(localized_title);
 					}
 
 					if (const std::string localized_changelog = package.get_changelog(changelog_key); !localized_changelog.empty())
 					{
-						info.changelog = qstr(localized_changelog);
+						info.changelog = QString::fromStdString(localized_changelog);
 					}
 
 					// This should be an update since it was found in a patch set

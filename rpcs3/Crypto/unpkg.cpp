@@ -946,7 +946,7 @@ bool package_reader::fill_data(std::map<std::string, install_entry*>& all_instal
 	return true;
 }
 
-fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, u8 *custom_klic);
+fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, const u8* custom_klic);
 
 void package_reader::extract_worker()
 {

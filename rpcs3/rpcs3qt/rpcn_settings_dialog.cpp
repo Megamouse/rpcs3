@@ -35,7 +35,7 @@ bool validate_rpcn_username(std::string_view username)
 bool validate_email(std::string_view email)
 {
 	const QRegularExpressionValidator simple_email_validator(QRegularExpression("^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$"));
-	QString qstr_email = QString::fromStdString(std::string(email));
+	QString qstr_email = QString(email.data());
 	int pos            = 0;
 
 	if (qstr_email.isEmpty() || qstr_email.contains(' ') || qstr_email.contains('\t') || simple_email_validator.validate(qstr_email, pos) != QValidator::Acceptable)
