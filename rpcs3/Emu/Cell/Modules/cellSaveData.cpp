@@ -1314,11 +1314,11 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 			default: fmt::throw_exception("Unreachable");
 			}
 
-			const std::string dirStr = fixedSet->dirName.get_ptr();
+			const std::string dir_name = fixedSet->dirName.get_ptr();
 
 			for (u32 i = 0; i < save_entries.size(); i++)
 			{
-				if (save_entries[i].dirName == dirStr)
+				if (save_entries[i].dirName == dir_name)
 				{
 					selected = i;
 					break;
@@ -1337,21 +1337,40 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 				std::string message;
 
-				if (selected == -1)
+				// Load icon if possible
+				std::vector<u8> icon;
+				if (const auto picon = +fixedSet->newIcon)
 				{
-					message = get_localized_string(localized_string_id::CELL_SAVEDATA_SAVE_CONFIRMATION);
+					if (picon->title)
+						message = picon->title.get_ptr();
+
+					if (picon->iconBuf && picon->iconBufSize && picon->iconBufSize <= 225280)
+					{
+						const auto iconBuf = static_cast<u8*>(picon->iconBuf.get_ptr());
+						const auto iconEnd = iconBuf + picon->iconBufSize;
+						icon.assign(iconBuf, iconEnd);
+					}
 				}
-				else
+
+				cellSaveData.always()("message=%s, icon=%d", message, icon.size());
+
+				if (message.empty())
 				{
-					// Get information from the selected entry
-					message = get_confirmation_message(operation, ::at32(save_entries, selected));
+					if (selected == -1)
+					{
+						message = get_localized_string(localized_string_id::CELL_SAVEDATA_SAVE_CONFIRMATION);
+					}
+					else
+					{
+						// Get information from the selected entry
+						message = get_confirmation_message(operation, ::at32(save_entries, selected));
+					}
 				}
 
 				// Yield before a blocking dialog is being spawned
 				lv2_obj::sleep(ppu);
 
 				// Get user confirmation by opening a blocking dialog
-				// TODO: show fixedSet->newIcon
 				s32 return_code = CELL_MSGDIALOG_BUTTON_NONE;
 				error_code res = open_msg_dialog(true, CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL | CELL_MSGDIALOG_TYPE_BUTTON_TYPE_YESNO, vm::make_str(message), msg_dialog_source::_cellSaveData, vm::null, vm::null, vm::null, &return_code);
 
@@ -1384,7 +1403,7 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 			if (selected == -1)
 			{
-				save_entry.dirName = dirStr;
+				save_entry.dirName = dir_name;
 				save_entry.escaped = vfs::escape(save_entry.dirName);
 			}
 

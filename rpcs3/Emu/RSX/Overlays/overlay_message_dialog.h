@@ -35,6 +35,9 @@ namespace rsx
 			std::unique_ptr<image_info> background_image;
 			std::unique_ptr<image_info> background_overlay_image;
 
+			std::unique_ptr<image_view> icon_view;
+			std::unique_ptr<image_info> icon_info;
+
 			animation_color_interpolate fade_animation;
 
 			text_guard_t text_guard{};
@@ -49,7 +52,7 @@ namespace rsx
 			void on_button_pressed(pad_button button_press, bool is_auto_repeat) override;
 			void close(bool use_callback, bool stop_pad_interception) override;
 
-			error_code show(bool is_blocking, const std::string& text, const MsgDialogType& type, msg_dialog_source source, std::function<void(s32 status)> on_close);
+			error_code show(bool is_blocking, const std::string& text, const MsgDialogType& type, msg_dialog_source source, const std::vector<u8>& icon_buf, std::function<void(s32 status)> on_close);
 
 			void set_text(std::string text);
 			void update_custom_background();

@@ -207,7 +207,7 @@ namespace rsx
 				fade_animation.update(timestamp_us);
 		}
 
-		error_code message_dialog::show(bool is_blocking, const std::string& text, const MsgDialogType& type, msg_dialog_source source, std::function<void(s32 status)> on_close)
+		error_code message_dialog::show(bool is_blocking, const std::string& text, const MsgDialogType& type, msg_dialog_source source, const std::vector<u8>& icon_buf, std::function<void(s32 status)> on_close)
 		{
 			visible = false;
 			m_source = source;
@@ -268,6 +268,14 @@ namespace rsx
 				break;
 			default:
 				break;
+			}
+
+			if (!icon_buf.empty())
+			{
+				icon_info = std::make_unique<image_info>(icon_buf);
+				icon_view = std::make_unique<image_view>();
+				icon_view->set_raw_image(icon_info.get());
+				icon_view->set_size(160, 110);
 			}
 
 			this->on_close = std::move(on_close);

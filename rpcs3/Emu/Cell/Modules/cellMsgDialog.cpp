@@ -162,9 +162,9 @@ using msg_dlg_thread = named_thread<msg_dlg_thread_info>;
 error_code cellMsgDialogOpen2(u32 type, vm::cptr<char> msgString, vm::ptr<CellMsgDialogCallback> callback, vm::ptr<void> userData, vm::ptr<void> extParam);
 
 // wrapper to call for other hle dialogs
-error_code open_msg_dialog(bool is_blocking, u32 type, vm::cptr<char> msgString, msg_dialog_source source, vm::ptr<CellMsgDialogCallback> callback, vm::ptr<void> userData, vm::ptr<void> extParam, s32* return_code)
+error_code open_msg_dialog(bool is_blocking, u32 type, vm::cptr<char> msgString, msg_dialog_source source, vm::ptr<CellMsgDialogCallback> callback, vm::ptr<void> userData, vm::ptr<void> extParam, s32* return_code, const std::vector<u8>& icon_buf)
 {
-	cellSysutil.notice("open_msg_dialog(is_blocking=%d, type=0x%x, msgString=%s, source=%s, callback=*0x%x, userData=*0x%x, extParam=*0x%x, return_code=*0x%x)", is_blocking, type, msgString, source, callback, userData, extParam, return_code);
+	cellSysutil.notice("open_msg_dialog(is_blocking=%d, type=0x%x, msgString=%s, source=%s, callback=*0x%x, userData=*0x%x, extParam=*0x%x, return_code=*0x%x, icon_buf=%d)", is_blocking, type, msgString, source, callback, userData, extParam, return_code, icon_buf);
 
 	const MsgDialogType _type{ type };
 
@@ -187,7 +187,7 @@ error_code open_msg_dialog(bool is_blocking, u32 type, vm::cptr<char> msgString,
 
 		const auto notify = std::make_shared<atomic_t<u32>>(0);
 
-		const auto res = manager->create<rsx::overlays::message_dialog>()->show(is_blocking, msgString.get_ptr(), _type, source, [callback, userData, &return_code, is_blocking, notify](s32 status)
+		const auto res = manager->create<rsx::overlays::message_dialog>()->show(is_blocking, msgString.get_ptr(), _type, source, icon_buf, [callback, userData, &return_code, is_blocking, notify](s32 status)
 		{
 			if (is_blocking && return_code)
 			{
