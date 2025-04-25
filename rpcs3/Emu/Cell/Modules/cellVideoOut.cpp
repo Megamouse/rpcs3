@@ -284,10 +284,8 @@ error_code cellVideoOutGetConfiguration(u32 videoOut, vm::ptr<CellVideoOutConfig
 	return CELL_VIDEO_OUT_ERROR_UNSUPPORTED_VIDEO_OUT;
 }
 
-error_code cellVideoOutGetDeviceInfo(u32 videoOut, u32 deviceIndex, vm::ptr<CellVideoOutDeviceInfo> info)
+error_code getDeviceInfo(u32 videoOut, u32 deviceIndex, CellVideoOutDeviceInfo* info)
 {
-	cellSysutil.warning("cellVideoOutGetDeviceInfo(videoOut=%d, deviceIndex=%d, info=*0x%x)", videoOut, deviceIndex, info);
-
 	if (!info)
 	{
 		return CELL_VIDEO_OUT_ERROR_ILLEGAL_PARAMETER;
@@ -421,6 +419,18 @@ error_code cellVideoOutGetDeviceInfo(u32 videoOut, u32 deviceIndex, vm::ptr<Cell
 	return CELL_OK;
 }
 
+error_code cellVideoOutGetDeviceInfo(u32 videoOut, u32 deviceIndex, vm::ptr<CellVideoOutDeviceInfo> info)
+{
+	cellSysutil.warning("cellVideoOutGetDeviceInfo(videoOut=%d, deviceIndex=%d, info=*0x%x)", videoOut, deviceIndex, info);
+
+	if (!info)
+	{
+		return CELL_VIDEO_OUT_ERROR_ILLEGAL_PARAMETER;
+	}
+
+	return getDeviceInfo(videoOut, deviceIndex, info.get_ptr());
+}
+
 error_code cellVideoOutGetNumberOfDevice(u32 videoOut)
 {
 	cellSysutil.trace("cellVideoOutGetNumberOfDevice(videoOut=%d)", videoOut);
@@ -442,37 +452,25 @@ error_code cellVideoOutGetResolutionAvailability(u32 videoOut, u32 resolutionId,
 	{
 	case CELL_VIDEO_OUT_PRIMARY:
 	{
-		// NOTE: Result is boolean
-		if (aspect != CELL_VIDEO_OUT_ASPECT_AUTO && aspect != static_cast<u32>(::at32(g_video_out_aspect_id, g_cfg.video.aspect_ratio)))
-		{
-			return not_an_error(0);
-		}
+		CellVideoOutDeviceInfo info {};
+		[[maybe_unused]] error_code error = getDeviceInfo(videoOut, 0, &info);
 
-		if (resolutionId == static_cast<u32>(::at32(g_video_out_resolution_id, g_cfg.video.resolution)))
+		for (u32 i = 0; i < info.availableModeCount && i < 32; i++)
 		{
-			// Perfect match
-			return not_an_error(1);
-		}
+			const CellVideoOutDisplayMode& display_mode = info.availableModes[i];
 
-		if ((g_cfg.video.stereo_render_mode != stereo_render_mode_options::disabled) && g_cfg.video.resolution == video_resolution::_720p)
-		{
-			switch (resolutionId)
+			if ((aspect == CELL_VIDEO_OUT_ASPECT_AUTO || aspect == display_mode.aspect) &&
+				resolutionId == display_mode.resolutionId)
 			{
-			case CELL_VIDEO_OUT_RESOLUTION_720_3D_FRAME_PACKING:
-			case CELL_VIDEO_OUT_RESOLUTION_1024x720_3D_FRAME_PACKING:
-			case CELL_VIDEO_OUT_RESOLUTION_960x720_3D_FRAME_PACKING:
-			case CELL_VIDEO_OUT_RESOLUTION_800x720_3D_FRAME_PACKING:
-			case CELL_VIDEO_OUT_RESOLUTION_640x720_3D_FRAME_PACKING:
+				// NOTE: Result is boolean
 				return not_an_error(1);
-			default:
-				break;
 			}
 		}
 
 		return not_an_error(0);
 	}
-
-	case CELL_VIDEO_OUT_SECONDARY: return not_an_error(0);
+	case CELL_VIDEO_OUT_SECONDARY:
+		return not_an_error(0);
 	}
 
 	return CELL_VIDEO_OUT_ERROR_UNSUPPORTED_VIDEO_OUT;
