@@ -688,6 +688,13 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 		});
 		break;
 	}
+
+	case 0x10B: // Called by cellGcm*Cursor
+		break;
+
+	case 0x10C: // Called by cellGcm*Cursor
+		break;
+
 	case 0x10D: // Called by cellGcmInitCursor
 		break;
 
