@@ -83,6 +83,7 @@
   <ItemGroup Condition="'$(GTestInstalled)' == 'true'">
     <ClCompile Include="test.cpp" />
     <ClCompile Include="test_fmt.cpp" />
+    <ClCompile Include="test_simple_array.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" Condition="'$(GTestInstalled)' == 'true'">

@@ -28,6 +28,7 @@ namespace rsx
 			return (_data) ? u64(pos - _data) : 0ull;
 		}
 
+	protected:
 		bool is_local_storage() const
 		{
 			return _data == reinterpret_cast<const Ty*>(_local_storage);
@@ -173,8 +174,12 @@ namespace rsx
 			if (is_local_storage())
 			{
 				// Switch to heap storage
-				_data = static_cast<Ty*>(std::malloc(sizeof(Ty) * size));
-				std::memcpy(static_cast<void*>(_data), _local_storage, size_bytes());
+				ensure(_data = static_cast<Ty*>(std::malloc(sizeof(Ty) * size))); // "malloc() failed!"
+
+				if (const auto old_size = size_bytes())
+				{
+					std::memcpy(static_cast<void*>(_data), _local_storage, size_bytes());
+				}
 			}
 			else
 			{
