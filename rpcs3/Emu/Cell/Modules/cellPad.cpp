@@ -75,6 +75,7 @@ void pad_info::save(utils::serial& ar)
 
 void show_debug_overlay(const CellPadData& data, const Pad& pad, const pad_info& config)
 {
+	const pad_state& state = config.pad_states[pad.m_player_id];
 	const u32 setting = config.port_setting[pad.m_player_id];
 	const u16 d1 = data.button[CELL_PAD_BTN_OFFSET_DIGITAL1];
 	const u16 d2 = data.button[CELL_PAD_BTN_OFFSET_DIGITAL2];
@@ -126,33 +127,33 @@ void show_debug_overlay(const CellPadData& data, const Pad& pad, const pad_info&
 		"on", data.len >= CELL_PAD_LEN_CHANGE_DEFAULT ? "on" : "off",
 		(setting & CELL_PAD_SETTING_PRESS_ON) ? "on" : "off", data.len >= CELL_PAD_LEN_CHANGE_PRESS_ON ? "on" : "off",
 		(setting & CELL_PAD_SETTING_SENSOR_ON) ? "on" : "off", data.len >= CELL_PAD_LEN_CHANGE_SENSOR_ON ? "on" : "off",
-		pad.m_digital_1, d1,
-		pad.m_digital_2, d2,
-		pad.m_press_up, !!(d1 & CELL_PAD_CTRL_UP), data.button[CELL_PAD_BTN_OFFSET_PRESS_UP],
-		pad.m_press_down, !!(d1 & CELL_PAD_CTRL_DOWN), data.button[CELL_PAD_BTN_OFFSET_PRESS_DOWN],
-		pad.m_press_left, !!(d1 & CELL_PAD_CTRL_LEFT), data.button[CELL_PAD_BTN_OFFSET_PRESS_LEFT],
-		pad.m_press_right, !!(d1 & CELL_PAD_CTRL_RIGHT), data.button[CELL_PAD_BTN_OFFSET_PRESS_RIGHT],
-		pad.m_press_cross, !!(d2 & CELL_PAD_CTRL_CROSS), data.button[CELL_PAD_BTN_OFFSET_PRESS_CROSS],
-		pad.m_press_square, !!(d2 & CELL_PAD_CTRL_SQUARE), data.button[CELL_PAD_BTN_OFFSET_PRESS_SQUARE],
-		pad.m_press_circle, !!(d2 & CELL_PAD_CTRL_CIRCLE), data.button[CELL_PAD_BTN_OFFSET_PRESS_CIRCLE],
-		pad.m_press_triangle, !!(d2 & CELL_PAD_CTRL_TRIANGLE), data.button[CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE],
-		!!(pad.m_digital_1 & CELL_PAD_CTRL_START), !!(d1 & CELL_PAD_CTRL_START),
-		!!(pad.m_digital_1 & CELL_PAD_CTRL_SELECT), !!(d1 & CELL_PAD_CTRL_SELECT),
-		!!(pad.m_digital_1 & CELL_PAD_CTRL_PS), !!(d1 & CELL_PAD_CTRL_PS),
-		pad.m_press_L1, !!(d2 & CELL_PAD_CTRL_L1), data.button[CELL_PAD_BTN_OFFSET_PRESS_L1],
-		pad.m_press_L2, !!(d2 & CELL_PAD_CTRL_L2), data.button[CELL_PAD_BTN_OFFSET_PRESS_L2],
-		!!(pad.m_digital_1 & CELL_PAD_CTRL_L3), !!(d1 & CELL_PAD_CTRL_L3),
-		pad.m_press_R1, !!(d2 & CELL_PAD_CTRL_R1), data.button[CELL_PAD_BTN_OFFSET_PRESS_R1],
-		pad.m_press_R2, !!(d2 & CELL_PAD_CTRL_R2), data.button[CELL_PAD_BTN_OFFSET_PRESS_R2],
-		!!(pad.m_digital_1 & CELL_PAD_CTRL_R3), !!(d1 & CELL_PAD_CTRL_R3),
-		pad.m_analog_left_x, data.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X],
-		pad.m_analog_left_y, data.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y],
-		pad.m_analog_right_x, data.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X],
-		pad.m_analog_right_y, data.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y],
-		pad.m_sensor_x, data.button[CELL_PAD_BTN_OFFSET_SENSOR_X],
-		pad.m_sensor_y, data.button[CELL_PAD_BTN_OFFSET_SENSOR_Y],
-		pad.m_sensor_z, data.button[CELL_PAD_BTN_OFFSET_SENSOR_Z],
-		pad.m_sensor_g, data.button[CELL_PAD_BTN_OFFSET_SENSOR_G],
+		state.digital_1, d1,
+		state.digital_2, d2,
+		state.press_up, !!(d1 & CELL_PAD_CTRL_UP), data.button[CELL_PAD_BTN_OFFSET_PRESS_UP],
+		state.press_down, !!(d1 & CELL_PAD_CTRL_DOWN), data.button[CELL_PAD_BTN_OFFSET_PRESS_DOWN],
+		state.press_left, !!(d1 & CELL_PAD_CTRL_LEFT), data.button[CELL_PAD_BTN_OFFSET_PRESS_LEFT],
+		state.press_right, !!(d1 & CELL_PAD_CTRL_RIGHT), data.button[CELL_PAD_BTN_OFFSET_PRESS_RIGHT],
+		state.press_cross, !!(d2 & CELL_PAD_CTRL_CROSS), data.button[CELL_PAD_BTN_OFFSET_PRESS_CROSS],
+		state.press_square, !!(d2 & CELL_PAD_CTRL_SQUARE), data.button[CELL_PAD_BTN_OFFSET_PRESS_SQUARE],
+		state.press_circle, !!(d2 & CELL_PAD_CTRL_CIRCLE), data.button[CELL_PAD_BTN_OFFSET_PRESS_CIRCLE],
+		state.press_triangle, !!(d2 & CELL_PAD_CTRL_TRIANGLE), data.button[CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE],
+		!!(state.digital_1 & CELL_PAD_CTRL_START), !!(d1 & CELL_PAD_CTRL_START),
+		!!(state.digital_1 & CELL_PAD_CTRL_SELECT), !!(d1 & CELL_PAD_CTRL_SELECT),
+		!!(state.digital_1 & CELL_PAD_CTRL_PS), !!(d1 & CELL_PAD_CTRL_PS),
+		state.press_L1, !!(d2 & CELL_PAD_CTRL_L1), data.button[CELL_PAD_BTN_OFFSET_PRESS_L1],
+		state.press_L2, !!(d2 & CELL_PAD_CTRL_L2), data.button[CELL_PAD_BTN_OFFSET_PRESS_L2],
+		!!(state.digital_1 & CELL_PAD_CTRL_L3), !!(d1 & CELL_PAD_CTRL_L3),
+		state.press_R1, !!(d2 & CELL_PAD_CTRL_R1), data.button[CELL_PAD_BTN_OFFSET_PRESS_R1],
+		state.press_R2, !!(d2 & CELL_PAD_CTRL_R2), data.button[CELL_PAD_BTN_OFFSET_PRESS_R2],
+		!!(state.digital_1 & CELL_PAD_CTRL_R3), !!(d1 & CELL_PAD_CTRL_R3),
+		state.analog_left_x, data.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X],
+		state.analog_left_y, data.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y],
+		state.analog_right_x, data.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X],
+		state.analog_right_y, data.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y],
+		state.sensor_x, data.button[CELL_PAD_BTN_OFFSET_SENSOR_X],
+		state.sensor_y, data.button[CELL_PAD_BTN_OFFSET_SENSOR_Y],
+		state.sensor_z, data.button[CELL_PAD_BTN_OFFSET_SENSOR_Z],
+		state.sensor_g, data.button[CELL_PAD_BTN_OFFSET_SENSOR_G],
 		pad.m_product_id,
 		pad.m_vendor_id,
 		pad.m_device_type,
@@ -296,26 +297,23 @@ error_code cellPadEnd(ppu_thread& ppu)
 	return CELL_OK;
 }
 
-void clear_pad_buffer(const std::shared_ptr<Pad>& pad)
+void clear_pad_buffer(pad_state& pad)
 {
-	if (!pad)
-		return;
-
-	// Set 'm_buffer_cleared' to force a resend of everything
+	// Set 'buffer_cleared' to force a resend of everything
 	// might as well also reset everything in our pad 'buffer' to nothing as well
 
-	pad->m_buffer_cleared = true;
-	pad->m_analog_left_x = pad->m_analog_left_y = pad->m_analog_right_x = pad->m_analog_right_y = 128;
+	pad.buffer_cleared = true;
+	pad.analog_left_x = pad.analog_left_y = pad.analog_right_x = pad.analog_right_y = 128;
 
-	pad->m_digital_1 = pad->m_digital_2 = 0;
-	pad->m_press_right = pad->m_press_left = pad->m_press_up = pad->m_press_down = 0;
-	pad->m_press_triangle = pad->m_press_circle = pad->m_press_cross = pad->m_press_square = 0;
-	pad->m_press_L1 = pad->m_press_L2 = pad->m_press_R1 = pad->m_press_R2 = 0;
+	pad.digital_1 = pad.digital_2 = 0;
+	pad.press_right = pad.press_left = pad.press_up = pad.press_down = 0;
+	pad.press_triangle = pad.press_circle = pad.press_cross = pad.press_square = 0;
+	pad.press_L1 = pad.press_L2 = pad.press_R1 = pad.press_R2 = 0;
 
-	pad->m_sensor_x = DEFAULT_MOTION_X;
-	pad->m_sensor_y = DEFAULT_MOTION_Y;
-	pad->m_sensor_z = DEFAULT_MOTION_Z;
-	pad->m_sensor_g = DEFAULT_MOTION_G;
+	pad.sensor_x = DEFAULT_MOTION_X;
+	pad.sensor_y = DEFAULT_MOTION_Y;
+	pad.sensor_z = DEFAULT_MOTION_Z;
+	pad.sensor_g = DEFAULT_MOTION_G;
 }
 
 error_code cellPadClearBuf(u32 port_no)
@@ -342,7 +340,7 @@ error_code cellPadClearBuf(u32 port_no)
 	if (pad->is_fake_pad || !config.is_reportedly_connected(port_no) || !pad->is_connected())
 		return not_an_error(CELL_PAD_ERROR_NO_DEVICE);
 
-	clear_pad_buffer(pad);
+	clear_pad_buffer(config.pad_states[port_no]);
 
 	return CELL_OK;
 }
@@ -353,6 +351,7 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 	const auto handler = pad::get_pad_thread();
 	const auto& pad = handler->GetPads()[port_no];
 	const PadInfo& rinfo = handler->GetInfo();
+	pad_state& state = config.pad_states[port_no];
 
 	if (rinfo.system_info & CELL_PAD_INFO_INTERCEPTED)
 	{
@@ -367,7 +366,7 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 	{
 		// Needed for Hotline Miami and Ninja Gaiden Sigma after dialogs were closed and buttons are still pressed.
 		// Gran Turismo 6 would keep registering the Start button during OSK Dialogs if this wasn't cleared and if we'd return with len as CELL_PAD_LEN_NO_CHANGE.
-		clear_pad_buffer(pad);
+		clear_pad_buffer(state);
 	}
 	else if (pad->ldd)
 	{
@@ -380,8 +379,8 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 	}
 	else
 	{
-		const u16 d1Initial = pad->m_digital_1;
-		const u16 d2Initial = pad->m_digital_2;
+		const u16 d1Initial = state.digital_1;
+		const u16 d2Initial = state.digital_2;
 
 		// Check if this pad is configured as a skateboard which ignores sticks and pressure button values.
 		// Curiously it maps infrared on the press value of the face buttons for some reason.
@@ -454,16 +453,16 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 			case CELL_PAD_BTN_OFFSET_DIGITAL1:
 			{
 				if (pressed)
-					pad->m_digital_1 |= button.m_outKeyCode;
+					state.digital_1 |= button.m_outKeyCode;
 				else
-					pad->m_digital_1 &= ~button.m_outKeyCode;
+					state.digital_1 &= ~button.m_outKeyCode;
 
 				switch (button.m_outKeyCode)
 				{
-				case CELL_PAD_CTRL_LEFT: set_value(pad->m_press_left, value); break;
-				case CELL_PAD_CTRL_DOWN: set_value(pad->m_press_down, value); break;
-				case CELL_PAD_CTRL_RIGHT: set_value(pad->m_press_right, value); break;
-				case CELL_PAD_CTRL_UP: set_value(pad->m_press_up, value); break;
+				case CELL_PAD_CTRL_LEFT: set_value(state.press_left, value); break;
+				case CELL_PAD_CTRL_DOWN: set_value(state.press_down, value); break;
+				case CELL_PAD_CTRL_RIGHT: set_value(state.press_right, value); break;
+				case CELL_PAD_CTRL_UP: set_value(state.press_up, value); break;
 				// These arent pressure btns
 				case CELL_PAD_CTRL_R3:
 				case CELL_PAD_CTRL_L3:
@@ -476,20 +475,20 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 			case CELL_PAD_BTN_OFFSET_DIGITAL2:
 			{
 				if (pressed)
-					pad->m_digital_2 |= button.m_outKeyCode;
+					state.digital_2 |= button.m_outKeyCode;
 				else
-					pad->m_digital_2 &= ~button.m_outKeyCode;
+					state.digital_2 &= ~button.m_outKeyCode;
 
 				switch (button.m_outKeyCode)
 				{
-				case CELL_PAD_CTRL_SQUARE: set_value(pad->m_press_square, value); break;
-				case CELL_PAD_CTRL_CROSS: set_value(pad->m_press_cross, value); break;
-				case CELL_PAD_CTRL_CIRCLE: set_value(pad->m_press_circle, value); break;
-				case CELL_PAD_CTRL_TRIANGLE: set_value(pad->m_press_triangle, value); break;
-				case CELL_PAD_CTRL_R1: set_value(pad->m_press_R1, value); break;
-				case CELL_PAD_CTRL_L1: set_value(pad->m_press_L1, value); break;
-				case CELL_PAD_CTRL_R2: set_value(pad->m_press_R2, value); break;
-				case CELL_PAD_CTRL_L2: set_value(pad->m_press_L2, value); break;
+				case CELL_PAD_CTRL_SQUARE: set_value(state.press_square, value); break;
+				case CELL_PAD_CTRL_CROSS: set_value(state.press_cross, value); break;
+				case CELL_PAD_CTRL_CIRCLE: set_value(state.press_circle, value); break;
+				case CELL_PAD_CTRL_TRIANGLE: set_value(state.press_triangle, value); break;
+				case CELL_PAD_CTRL_R1: set_value(state.press_R1, value); break;
+				case CELL_PAD_CTRL_L1: set_value(state.press_L1, value); break;
+				case CELL_PAD_CTRL_R2: set_value(state.press_R2, value); break;
+				case CELL_PAD_CTRL_L2: set_value(state.press_L2, value); break;
 				default: break;
 				}
 				break;
@@ -498,18 +497,18 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 			{
 				switch (button.m_outKeyCode)
 				{
-				case CELL_PAD_CTRL_PRESS_RIGHT:    set_value(pad->m_press_right,    value, true); break;
-				case CELL_PAD_CTRL_PRESS_LEFT:     set_value(pad->m_press_left,     value, true); break;
-				case CELL_PAD_CTRL_PRESS_UP:       set_value(pad->m_press_up,       value, true); break;
-				case CELL_PAD_CTRL_PRESS_DOWN:     set_value(pad->m_press_down,     value, true); break;
-				case CELL_PAD_CTRL_PRESS_TRIANGLE: set_value(pad->m_press_triangle, value, true, 255, 63); break; // Infrared on RIDE Skateboard
-				case CELL_PAD_CTRL_PRESS_CIRCLE:   set_value(pad->m_press_circle,   value, true, 255, 63); break; // Infrared on RIDE Skateboard
-				case CELL_PAD_CTRL_PRESS_CROSS:    set_value(pad->m_press_cross,    value, true, 255, 63); break; // Infrared on RIDE Skateboard
-				case CELL_PAD_CTRL_PRESS_SQUARE:   set_value(pad->m_press_square,   value, true, 255, 63); break; // Infrared on RIDE Skateboard
-				case CELL_PAD_CTRL_PRESS_L1:       set_value(pad->m_press_L1,       value, true); break;
-				case CELL_PAD_CTRL_PRESS_R1:       set_value(pad->m_press_R1,       value, true); break;
-				case CELL_PAD_CTRL_PRESS_L2:       set_value(pad->m_press_L2,       value, true); break;
-				case CELL_PAD_CTRL_PRESS_R2:       set_value(pad->m_press_R2,       value, true); break;
+				case CELL_PAD_CTRL_PRESS_RIGHT:    set_value(state.press_right,    value, true); break;
+				case CELL_PAD_CTRL_PRESS_LEFT:     set_value(state.press_left,     value, true); break;
+				case CELL_PAD_CTRL_PRESS_UP:       set_value(state.press_up,       value, true); break;
+				case CELL_PAD_CTRL_PRESS_DOWN:     set_value(state.press_down,     value, true); break;
+				case CELL_PAD_CTRL_PRESS_TRIANGLE: set_value(state.press_triangle, value, true, 255, 63); break; // Infrared on RIDE Skateboard
+				case CELL_PAD_CTRL_PRESS_CIRCLE:   set_value(state.press_circle,   value, true, 255, 63); break; // Infrared on RIDE Skateboard
+				case CELL_PAD_CTRL_PRESS_CROSS:    set_value(state.press_cross,    value, true, 255, 63); break; // Infrared on RIDE Skateboard
+				case CELL_PAD_CTRL_PRESS_SQUARE:   set_value(state.press_square,   value, true, 255, 63); break; // Infrared on RIDE Skateboard
+				case CELL_PAD_CTRL_PRESS_L1:       set_value(state.press_L1,       value, true); break;
+				case CELL_PAD_CTRL_PRESS_R1:       set_value(state.press_R1,       value, true); break;
+				case CELL_PAD_CTRL_PRESS_L2:       set_value(state.press_L2,       value, true); break;
+				case CELL_PAD_CTRL_PRESS_R2:       set_value(state.press_R2,       value, true); break;
 				default: break;
 				}
 				break;
@@ -555,10 +554,10 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 
 			switch (stick.m_offset)
 			{
-			case CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X: set_value(pad->m_analog_left_x, value); break;
-			case CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y: set_value(pad->m_analog_left_y, value); break;
-			case CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X: set_value(pad->m_analog_right_x, value); break;
-			case CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y: set_value(pad->m_analog_right_y, value); break;
+			case CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X: set_value(state.analog_left_x, value); break;
+			case CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y: set_value(state.analog_left_y, value); break;
+			case CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X: set_value(state.analog_right_x, value); break;
+			case CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y: set_value(state.analog_right_y, value); break;
 			default: break;
 			}
 		}
@@ -569,16 +568,16 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 			{
 				switch (sensor.m_offset)
 				{
-				case CELL_PAD_BTN_OFFSET_SENSOR_X: set_value(pad->m_sensor_x, sensor.m_value, true); break;
-				case CELL_PAD_BTN_OFFSET_SENSOR_Y: set_value(pad->m_sensor_y, sensor.m_value, true); break;
-				case CELL_PAD_BTN_OFFSET_SENSOR_Z: set_value(pad->m_sensor_z, sensor.m_value, true); break;
-				case CELL_PAD_BTN_OFFSET_SENSOR_G: set_value(pad->m_sensor_g, sensor.m_value, true); break;
+				case CELL_PAD_BTN_OFFSET_SENSOR_X: set_value(state.sensor_x, sensor.m_value, true); break;
+				case CELL_PAD_BTN_OFFSET_SENSOR_Y: set_value(state.sensor_y, sensor.m_value, true); break;
+				case CELL_PAD_BTN_OFFSET_SENSOR_Z: set_value(state.sensor_z, sensor.m_value, true); break;
+				case CELL_PAD_BTN_OFFSET_SENSOR_G: set_value(state.sensor_g, sensor.m_value, true); break;
 				default: break;
 				}
 			}
 		}
 
-		if (d1Initial != pad->m_digital_1 || d2Initial != pad->m_digital_2)
+		if (d1Initial != state.digital_1 || d2Initial != state.digital_2)
 		{
 			btnChanged = true;
 		}
@@ -591,7 +590,7 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 		static std::array<steady_clock::time_point, CELL_PAD_MAX_PORT_NUM> last_update = { };
 		const auto now = steady_clock::now();
 
-		if (btnChanged || pad->m_buffer_cleared || now - last_update[port_no] >= 10ms)
+		if (btnChanged || state.buffer_cleared || now - last_update[port_no] >= 10ms)
 		{
 			data->len = CELL_PAD_LEN_CHANGE_SENSOR_ON;
 			last_update[port_no] = now;
@@ -601,7 +600,7 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 			data->len = CELL_PAD_LEN_NO_CHANGE;
 		}
 	}
-	else if (btnChanged || pad->m_buffer_cleared)
+	else if (btnChanged || state.buffer_cleared)
 	{
 		// only give back valid data if a controller state changed
 		data->len = (setting & CELL_PAD_SETTING_PRESS_ON) ? CELL_PAD_LEN_CHANGE_PRESS_ON : CELL_PAD_LEN_CHANGE_DEFAULT;
@@ -612,7 +611,7 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 		data->len = CELL_PAD_LEN_NO_CHANGE;
 	}
 
-	pad->m_buffer_cleared = false;
+	state.buffer_cleared = false;
 
 	// only update parts of the output struct depending on the controller setting
 	if (data->len > CELL_PAD_LEN_NO_CHANGE)
@@ -621,27 +620,27 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 		// bits 15-8 reserved, 7-4 = 0x7, 3-0: data->len/2;
 		data->button[1] = (0x7 << 4) | std::min(data->len / 2, 15);
 
-		data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] = pad->m_digital_1;
-		data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] = pad->m_digital_2;
-		data->button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X] = pad->m_analog_right_x;
-		data->button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y] = pad->m_analog_right_y;
-		data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X] = pad->m_analog_left_x;
-		data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y] = pad->m_analog_left_y;
+		data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] = state.digital_1;
+		data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] = state.digital_2;
+		data->button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X] = state.analog_right_x;
+		data->button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y] = state.analog_right_y;
+		data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X] = state.analog_left_x;
+		data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y] = state.analog_left_y;
 
 		if (setting & CELL_PAD_SETTING_PRESS_ON)
 		{
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_RIGHT] = pad->m_press_right;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_LEFT] = pad->m_press_left;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_UP] = pad->m_press_up;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_DOWN] = pad->m_press_down;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE] = pad->m_press_triangle;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_CIRCLE] = pad->m_press_circle;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_CROSS] = pad->m_press_cross;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_SQUARE] = pad->m_press_square;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_L1] = pad->m_press_L1;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_R1] = pad->m_press_R1;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_L2] = pad->m_press_L2;
-			data->button[CELL_PAD_BTN_OFFSET_PRESS_R2] = pad->m_press_R2;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_RIGHT] = state.press_right;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_LEFT] = state.press_left;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_UP] = state.press_up;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_DOWN] = state.press_down;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_TRIANGLE] = state.press_triangle;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_CIRCLE] = state.press_circle;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_CROSS] = state.press_cross;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_SQUARE] = state.press_square;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_L1] = state.press_L1;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_R1] = state.press_R1;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_L2] = state.press_L2;
+			data->button[CELL_PAD_BTN_OFFSET_PRESS_R2] = state.press_R2;
 		}
 		else
 		{
@@ -652,10 +651,10 @@ void pad_get_data(u32 port_no, CellPadData* data, bool get_periph_data = false)
 
 		if (data->len == CELL_PAD_LEN_CHANGE_SENSOR_ON)
 		{
-			data->button[CELL_PAD_BTN_OFFSET_SENSOR_X] = pad->m_sensor_x;
-			data->button[CELL_PAD_BTN_OFFSET_SENSOR_Y] = pad->m_sensor_y;
-			data->button[CELL_PAD_BTN_OFFSET_SENSOR_Z] = pad->m_sensor_z;
-			data->button[CELL_PAD_BTN_OFFSET_SENSOR_G] = pad->m_sensor_g;
+			data->button[CELL_PAD_BTN_OFFSET_SENSOR_X] = state.sensor_x;
+			data->button[CELL_PAD_BTN_OFFSET_SENSOR_Y] = state.sensor_y;
+			data->button[CELL_PAD_BTN_OFFSET_SENSOR_Z] = state.sensor_z;
+			data->button[CELL_PAD_BTN_OFFSET_SENSOR_G] = state.sensor_g;
 		}
 	}
 

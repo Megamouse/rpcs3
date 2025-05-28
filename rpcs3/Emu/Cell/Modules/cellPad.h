@@ -115,11 +115,46 @@ struct CellPadFilterIIRSos
 	be_t<s32> b2;
 };
 
+struct pad_state
+{
+	// These hold bits for their respective buttons
+	u16 digital_1{0};
+	u16 digital_2{0};
+
+	// All sensors go from 0-255
+	u16 analog_left_x{128};
+	u16 analog_left_y{128};
+	u16 analog_right_x{128};
+	u16 analog_right_y{128};
+
+	u16 press_right{0};
+	u16 press_left{0};
+	u16 press_up{0};
+	u16 press_down{0};
+	u16 press_triangle{0};
+	u16 press_circle{0};
+	u16 press_cross{0};
+	u16 press_square{0};
+	u16 press_L1{0};
+	u16 press_L2{0};
+	u16 press_R1{0};
+	u16 press_R2{0};
+
+	// Except for these...0-1023
+	u16 sensor_x{DEFAULT_MOTION_X};
+	u16 sensor_y{DEFAULT_MOTION_Y};
+	u16 sensor_z{DEFAULT_MOTION_Z};
+	u16 sensor_g{DEFAULT_MOTION_G};
+
+	bool buffer_cleared{true};
+};
+
 struct pad_info
 {
 	atomic_t<u32> max_connect = 0;
 	std::array<u32, CELL_PAD_MAX_PORT_NUM> port_setting{ 0 };
 	std::array<pad_data_internal, CELL_PAD_MAX_PORT_NUM> reported_info{};
+	std::array<pad_state, CELL_PAD_MAX_PORT_NUM> pad_states{};
 
 	SAVESTATE_INIT_POS(11);
 
