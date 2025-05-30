@@ -669,15 +669,14 @@ error_code sceNpTrophyRegisterContext(ppu_thread& ppu, u32 context, u32 handle, 
 	}
 
 	// Rename or discard certain entries based on the files found
-	const usz kTargetBufferLength = 31;
-	char target[kTargetBufferLength + 1]{};
+	std::array<char, 32> target{};
 	strcpy_trunc(target, fmt::format("TROP_%02d.SFM", static_cast<s32>(g_cfg.sys.language)));
 
-	if (trp.ContainsEntry(target))
+	if (trp.ContainsEntry(target.data()))
 	{
 		trp.RemoveEntry("TROPCONF.SFM");
 		trp.RemoveEntry("TROP.SFM");
-		trp.RenameEntry(target, "TROPCONF.SFM");
+		trp.RenameEntry(target.data(), "TROPCONF.SFM");
 	}
 	else if (trp.ContainsEntry("TROP.SFM"))
 	{
@@ -697,7 +696,7 @@ error_code sceNpTrophyRegisterContext(ppu_thread& ppu, u32 context, u32 handle, 
 		strcpy_trunc(target, fmt::format("TROP_%02d.SFM", i));
 		if (i != g_cfg.sys.language)
 		{
-			trp.RemoveEntry(target);
+			trp.RemoveEntry(target.data());
 		}
 	}
 
