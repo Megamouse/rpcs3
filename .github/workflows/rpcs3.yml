@@ -5,8 +5,6 @@ defaults:
     shell: bash
 on:
   push:
-    branches:
-      - master # Only trigger push event on 'master' branch
   pull_request:
   workflow_dispatch:
 
@@ -327,7 +325,7 @@ jobs:
 
   Windows_Build_Clang:
     # Only run push event on master branch of main repo, but run all PRs
-    if: github.event_name != 'push' || (github.repository == 'RPCS3/rpcs3' && github.ref_name == 'master')
+    if: always()
     name: RPCS3 Windows Clang
     runs-on: windows-2025
     strategy:
@@ -335,7 +333,10 @@ jobs:
         include:
           - msys2: clang64
             compiler: clang
-            arch: win64
+            arch: x86_64
+          - msys2: clangarm64
+            compiler: clang
+            arch: aarch64
     env:
       CCACHE_DIR: 'C:\ccache'
     steps:
@@ -351,23 +352,23 @@ jobs:
           update: true
           cache: true
           install: |
-            mingw-w64-clang-x86_64-clang
             mingw-w64-clang-x86_64-ccache
             mingw-w64-clang-x86_64-cmake
-            mingw-w64-clang-x86_64-lld
             mingw-w64-clang-x86_64-ninja
-            mingw-w64-clang-x86_64-llvm
-            mingw-w64-clang-x86_64-ffmpeg
-            mingw-w64-clang-x86_64-opencv
-            mingw-w64-clang-x86_64-glew
-            mingw-w64-clang-x86_64-vulkan
-            mingw-w64-clang-x86_64-vulkan-headers
-            mingw-w64-clang-x86_64-vulkan-loader
-            mingw-w64-clang-x86_64-gtest
-            mingw-w64-clang-x86_64-qt6-base
-            mingw-w64-clang-x86_64-qt6-declarative
-            mingw-w64-clang-x86_64-qt6-multimedia
-            mingw-w64-clang-x86_64-qt6-svg
+            mingw-w64-clang-${{ matrix.arch }}-clang
+            mingw-w64-clang-${{ matrix.arch }}-lld
+            mingw-w64-clang-${{ matrix.arch }}-llvm
+            mingw-w64-clang-${{ matrix.arch }}-ffmpeg
+            mingw-w64-clang-${{ matrix.arch }}-opencv
+            mingw-w64-clang-${{ matrix.arch }}-glew
+            mingw-w64-clang-${{ matrix.arch }}-vulkan
+            mingw-w64-clang-${{ matrix.arch }}-vulkan-headers
+            mingw-w64-clang-${{ matrix.arch }}-vulkan-loader
+            mingw-w64-clang-${{ matrix.arch }}-gtest
+            mingw-w64-clang-${{ matrix.arch }}-qt6-base
+            mingw-w64-clang-${{ matrix.arch }}-qt6-declarative
+            mingw-w64-clang-${{ matrix.arch }}-qt6-multimedia
+            mingw-w64-clang-${{ matrix.arch }}-qt6-svg
             base-devel
             curl
             git
@@ -378,8 +379,8 @@ jobs:
         id: restore-build-ccache
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ${{ runner.os }}-ccache-${{ matrix.compiler }}-${{ runner.arch }}-${{ github.run_id }}
-          restore-keys: ${{ runner.os }}-ccache-${{ matrix.compiler }}-${{ runner.arch }}-
+          key: ${{ runner.os }}-ccache-${{ matrix.compiler }}-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-ccache-${{ matrix.compiler }}-${{ matrix.arch }}-
 
       - name: Build RPCS3
         shell: msys2 {0}
@@ -399,7 +400,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@main
         with:
-          name: RPCS3 for Windows (${{ runner.arch }}, ${{ matrix.compiler }})
+          name: RPCS3 for Windows (${{ matrix.arch }}, ${{ matrix.compiler }})
           path: ${{ env.BUILD_ARTIFACTSTAGINGDIRECTORY }}
           compression-level: 0
           if-no-files-found: error

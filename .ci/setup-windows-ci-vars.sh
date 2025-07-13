@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-CPU_ARCH="${1:-win64}"
+CPU_ARCH="${1:-x86_64}"
 COMPILER="${2:-msvc}"
 
 # These are CI specific, so we wrap them for portability
