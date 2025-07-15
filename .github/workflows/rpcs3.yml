@@ -414,20 +414,33 @@ jobs:
     env:
       CCACHE_DIR: 'C:\ccache'
       VCPKG_TRIPLET: x64-windows
+      USE_PREBUILT_VCPKG_INSTALL: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@main
         with:
           fetch-depth: 0
 
+      - name: Download and extract prebuilt vcpkg
+        if: env.USE_PREBUILT_VCPKG_INSTALL == 'true'
+        run: |
+          curl -L -o vcpkg.7z.001 https://github.com/Megamouse/rpcs3/releases/download/vcpkg-prebuilt-v1.0/vcpkg.7z.001
+          curl -L -o vcpkg.7z.002 https://github.com/Megamouse/rpcs3/releases/download/vcpkg-prebuilt-v1.0/vcpkg.7z.002
+          curl -L -o vcpkg.7z.003 https://github.com/Megamouse/rpcs3/releases/download/vcpkg-prebuilt-v1.0/vcpkg.7z.003
+          curl -L -o vcpkg.7z.004 https://github.com/Megamouse/rpcs3/releases/download/vcpkg-prebuilt-v1.0/vcpkg.7z.004
+          7z x vcpkg.7z.001 -o.\
+
       - name: Clone vcpkg
+        if: env.USE_PREBUILT_VCPKG_INSTALL != 'true'
         run: git clone --depth 1 --branch 2025.06.13 https://github.com/microsoft/vcpkg.git
 
       - name: Bootstrap vcpkg
+        if: env.USE_PREBUILT_VCPKG_INSTALL != 'true'
         shell: pwsh
         run: .\vcpkg\bootstrap-vcpkg.bat
 
       - name: Restore vcpkg cache
+        if: env.USE_PREBUILT_VCPKG_INSTALL != 'true'
         uses: actions/cache/restore@main
         id: restore-vcpkg-cache
         with:
@@ -438,6 +451,7 @@ jobs:
           restore-keys: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ runner.arch }}-
 
       - name: Install dependencies with vcpkg
+        if: env.USE_PREBUILT_VCPKG_INSTALL != 'true'
         shell: pwsh
         run: |
           .\vcpkg\vcpkg.exe install `
@@ -455,7 +469,7 @@ jobs:
             --clean-after-build
 
       - name: Save vcpkg cache
-        if: github.ref == 'refs/heads/master'
+        if: env.USE_PREBUILT_VCPKG_INSTALL != 'true' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@main
         with:
           path: |
