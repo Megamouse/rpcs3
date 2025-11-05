@@ -44,8 +44,8 @@ protected:
 private:
 	static void random_uid(u8* uid_buffer);
 	static u8 generate_checksum(const std::array<u8, 32>& data, u32 num_of_bytes);
-	static std::array<u8, 8> decrypt(const u8* buf, std::optional<std::array<u8, 16>> key);
-	static std::array<u8, 8> encrypt(const u8* buf, std::optional<std::array<u8, 16>> key);
+	static std::array<u8, 8> decrypt(const u8* buf, const std::optional<std::array<u8, 16>>& key);
+	static std::array<u8, 8> encrypt(const u8* buf, const std::optional<std::array<u8, 16>>& key);
 	static std::array<u8, 16> generate_figure_key(const std::array<u8, 0x2D * 0x04>& buf);
 	static u32 scramble(const std::array<u8, 7>& uid, u8 count);
 	static std::array<u8, 4> pwd_generate(const std::array<u8, 7>& uid);

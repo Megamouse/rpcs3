@@ -93,7 +93,7 @@ u32 dimensions_toypad::get_next()
 	return m_random_d;
 }
 
-std::array<u8, 8> dimensions_toypad::decrypt(const u8* buf, std::optional<std::array<u8, 16>> key)
+std::array<u8, 8> dimensions_toypad::decrypt(const u8* buf, const std::optional<std::array<u8, 16>>& key)
 {
 	// Value to decrypt is separated in to two little endian 32 bit unsigned integers
 	u32 data_one = read_from_ptr<le_t<u32>>(buf);
@@ -139,7 +139,7 @@ std::array<u8, 8> dimensions_toypad::decrypt(const u8* buf, std::optional<std::a
 	return decrypted;
 }
 
-std::array<u8, 8> dimensions_toypad::encrypt(const u8* buf, std::optional<std::array<u8, 16>> key)
+std::array<u8, 8> dimensions_toypad::encrypt(const u8* buf, const std::optional<std::array<u8, 16>>& key)
 {
 	// Value to encrypt is separated in to two little endian 32 bit unsigned integers
 
@@ -188,7 +188,7 @@ std::array<u8, 8> dimensions_toypad::encrypt(const u8* buf, std::optional<std::a
 
 std::array<u8, 16> dimensions_toypad::generate_figure_key(const std::array<u8, 0x2D * 0x04>& buf)
 {
-	std::array<u8, 7> uid = {buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]};
+	const std::array<u8, 7> uid = {buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]};
 
 	std::array<u8, 16> figure_key = {};
 
@@ -258,7 +258,7 @@ void dimensions_toypad::random_uid(u8* uid_buffer)
 
 	for (u8 i = 1; i < 7; i++)
 	{
-		u8 random = rand() % 255;
+		const u8 random = rand() % 255;
 		uid_buffer[i] = random;
 	}
 }
@@ -505,7 +505,7 @@ bool dimensions_toypad::create_blank_character(std::array<u8, 0x2D * 0x04>& buf,
 	{
 		// LEGO Dimensions figures use NTAG213 tag types, and the UID for these is stored in
 		// bytes 0, 1, 2, 4, 5, 6 and 7 (out of 180 bytes)
-		std::array<u8, 7> uid = {buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]};
+		const std::array<u8, 7> uid = {buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]};
 		const std::array<u8, 16> figure_key = generate_figure_key(buf);
 
 		std::array<u8, 8> value_to_encrypt = {};
@@ -595,7 +595,7 @@ void usb_device_dimensions::interrupt_transfer(u32 buf_size, u8* buf, u32 endpoi
 	{
 		// Read Endpoint, if a request has not been sent via the write endpoint, set expected result as
 		// EHCI_CC_HALTED so the game doesn't report the Toypad as being disconnected.
-		std::optional<std::array<u8, 32>> response = g_dimensionstoypad.pop_added_removed_response();
+		const std::optional<std::array<u8, 32>> response = g_dimensionstoypad.pop_added_removed_response();
 		if (response)
 		{
 			std::memcpy(buf, response.value().data(), 0x20);

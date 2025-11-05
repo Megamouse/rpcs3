@@ -46,9 +46,9 @@ void infinity_base::get_blank_response(u8 sequence, std::array<u8, 32>& reply_bu
 
 void infinity_base::descramble_and_seed(u8* buf, u8 sequence, std::array<u8, 32>& reply_buf)
 {
-	u64 value = u64(buf[4]) << 56 | u64(buf[5]) << 48 | u64(buf[6]) << 40 | u64(buf[7]) << 32 |
-	            u64(buf[8]) << 24 | u64(buf[9]) << 16 | u64(buf[10]) << 8 | u64(buf[11]);
-	u32 seed = descramble(value);
+	const u64 value = u64(buf[4]) << 56 | u64(buf[5]) << 48 | u64(buf[6]) << 40 | u64(buf[7]) << 32 |
+	                  u64(buf[8]) << 24 | u64(buf[9]) << 16 | u64(buf[10]) << 8 | u64(buf[11]);
+	const u32 seed = descramble(value);
 	generate_seed(seed);
 	get_blank_response(sequence, reply_buf);
 }
@@ -154,10 +154,9 @@ void infinity_base::get_present_figures(u8 sequence, std::array<u8, 32>& reply_b
 	int x = 3;
 	for (u8 i = 0; i < figures.size(); i++)
 	{
-		u8 slot = i == 0 ? 0x10 : (i < 4) ? 0x20 :
-		                                    0x30;
 		if (figures[i].present)
 		{
+			const u8 slot = i == 0 ? 0x10 : (i < 4) ? 0x20 : 0x30;
 			reply_buf[x] = slot + figures[i].order_added;
 			reply_buf[x + 1] = 0x09;
 			x += 2;
@@ -245,7 +244,7 @@ void infinity_base::get_figure_identifier(u8 fig_num, u8 sequence, std::array<u8
 {
 	std::lock_guard lock(infinity_mutex);
 
-	infinity_figure& figure = get_figure_by_order(fig_num);
+	const infinity_figure& figure = get_figure_by_order(fig_num);
 
 	reply_buf[0] = 0xaa;
 	reply_buf[1] = 0x09;
@@ -301,7 +300,6 @@ bool infinity_base::remove_figure(u8 position)
 u32 infinity_base::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file in_file, u8 position)
 {
 	std::lock_guard lock(infinity_mutex);
-	u8 order_added;
 
 	std::vector<u8> sha1_calc = {SHA1_CONSTANT.begin(), SHA1_CONSTANT.end() - 1};
 	for (int i = 0; i < 7; i++)
@@ -330,8 +328,8 @@ u32 infinity_base::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file 
 	std::array<u8, 16> infinity_decrypted_block{};
 	aes_crypt_ecb(&aes, AES_DECRYPT, &buf[16], infinity_decrypted_block.data());
 
-	u32 number = u32(infinity_decrypted_block[1]) << 16 | u32(infinity_decrypted_block[2]) << 8 |
-	             u32(infinity_decrypted_block[3]);
+	const u32 number = u32(infinity_decrypted_block[1]) << 16 | u32(infinity_decrypted_block[2]) << 8 |
+	                   u32(infinity_decrypted_block[3]);
 
 	infinity_figure& figure = ::at32(figures, position);
 
@@ -343,7 +341,7 @@ u32 infinity_base::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file 
 		figure.order_added = m_figure_order;
 		m_figure_order++;
 	}
-	order_added = figure.order_added;
+	const u8 order_added = figure.order_added;
 
 	position = derive_figure_position(position);
 	if (position == 0)
