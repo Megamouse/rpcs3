@@ -16,7 +16,7 @@ void skylander::save()
 
 	{
 		sky_file.seek(0, fs::seek_set);
-		sky_file.write(data.data(), 0x40 * 0x10);
+		sky_file.write(data.data(), data.size());
 	}
 }
 
@@ -158,7 +158,7 @@ u8 sky_portal::load_skylander(u8* buf, fs::file in_file)
 	std::lock_guard lock(sky_mutex);
 
 	const u32 sky_serial = read_from_ptr<le_t<u32>>(buf);
-	u8 found_slot  = 0xFF;
+	u8 found_slot = 0xFF;
 
 	// mimics spot retaining on the portal
 	for (u8 i = 0; i < 8; i++)

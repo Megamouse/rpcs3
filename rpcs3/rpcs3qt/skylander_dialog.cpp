@@ -14,7 +14,7 @@
 #include <QCompleter>
 
 skylander_dialog* skylander_dialog::inst = nullptr;
-std::optional<std::tuple<u8, u16, u16>> skylander_dialog::sky_slots[UI_SKY_NUM];
+std::array<std::optional<std::tuple<u8, u16, u16>>, UI_SKY_NUM> skylander_dialog::sky_slots = {};
 QString last_skylander_path;
 
 static const std::map<const std::pair<const u16, const u16>, const std::string> list_skylanders = {
@@ -747,7 +747,7 @@ skylander_dialog* skylander_dialog::get_dlg(QWidget* parent)
 
 void skylander_dialog::clear_skylander(u8 slot)
 {
-	if (const auto& slot_infos = sky_slots[slot])
+	if (const auto& slot_infos = ::at32(sky_slots, slot))
 	{
 		const auto& [cur_slot, id, var] = slot_infos.value();
 		g_skyportal.remove_skylander(cur_slot);

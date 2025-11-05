@@ -22,13 +22,14 @@ void infinity_figure::save()
 		return;
 	}
 	inf_file.seek(0, fs::seek_set);
-	inf_file.write(data.data(), 0x14 * 0x10);
+	inf_file.write(data.data(), data.size());
 }
 
-u8 infinity_base::generate_checksum(const std::array<u8, 32>& data, int num_of_bytes) const
+u8 infinity_base::generate_checksum(const std::array<u8, 32>& data, u32 num_of_bytes) const
 {
+	ensure(num_of_bytes <= data.size());
 	int checksum = 0;
-	for (int i = 0; i < num_of_bytes; i++)
+	for (u32 i = 0; i < num_of_bytes; i++)
 	{
 		checksum += data[i];
 	}
@@ -170,11 +171,11 @@ void infinity_base::get_present_figures(u8 sequence, std::array<u8, 32>& reply_b
 
 infinity_figure& infinity_base::get_figure_by_order(u8 order_added)
 {
-	for (u8 i = 0; i < figures.size(); i++)
+	for (infinity_figure& figure : figures)
 	{
-		if (figures[i].order_added == order_added)
+		if (figure.order_added == order_added)
 		{
-			return figures[i];
+			return figure;
 		}
 	}
 	return figures[0];
@@ -332,7 +333,7 @@ u32 infinity_base::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file 
 	u32 number = u32(infinity_decrypted_block[1]) << 16 | u32(infinity_decrypted_block[2]) << 8 |
 	             u32(infinity_decrypted_block[3]);
 
-	infinity_figure& figure = figures[position];
+	infinity_figure& figure = ::at32(figures, position);
 
 	figure.inf_file = std::move(in_file);
 	memcpy(figure.data.data(), buf.data(), figure.data.size());

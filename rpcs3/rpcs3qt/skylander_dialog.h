@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include "util/types.hpp"
 
@@ -41,8 +42,8 @@ protected:
 	void update_edits();
 
 protected:
-	QLineEdit* edit_skylanders[UI_SKY_NUM]{};
-	static std::optional<std::tuple<u8, u16, u16>> sky_slots[UI_SKY_NUM];
+	std::array<QLineEdit*, UI_SKY_NUM> edit_skylanders{};
+	static std::array<std::optional<std::tuple<u8, u16, u16>>, UI_SKY_NUM> sky_slots;
 
 private:
 	static skylander_dialog* inst;

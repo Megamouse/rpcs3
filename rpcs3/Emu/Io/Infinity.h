@@ -35,7 +35,7 @@ protected:
 	std::array<infinity_figure, 9> figures;
 
 private:
-	u8 generate_checksum(const std::array<u8, 32>& data, int num_of_bytes) const;
+	u8 generate_checksum(const std::array<u8, 32>& data, u32 num_of_bytes) const;
 	u32 descramble(u64 num_to_descramble);
 	u64 scramble(u32 num_to_scramble, u32 garbage);
 	void generate_seed(u32 seed);

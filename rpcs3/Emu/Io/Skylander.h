@@ -35,7 +35,7 @@ protected:
 	u8 interrupt_counter = 0;
 	u8 r = 0, g = 0, b = 0;
 
-	skylander skylanders[8];
+	std::array<skylander, 8> skylanders {};
 };
 
 extern sky_portal g_skyportal;

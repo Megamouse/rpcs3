@@ -726,7 +726,7 @@ void dimensions_dialog::move_figure(u8 pad, u8 index)
 		g_dimensionstoypad.move_figure(move_dlg.get_new_pad(), move_dlg.get_new_index(), pad, index);
 		if (index != move_dlg.get_new_index())
 		{
-			figure_slots[move_dlg.get_new_index()] = figure_slots[index];
+			::at32(figure_slots, move_dlg.get_new_index()) = figure_slots[index];
 			m_edit_figures[move_dlg.get_new_index()]->setText(m_edit_figures[index]->text());
 			figure_slots[index] = std::nullopt;
 			m_edit_figures[index]->setText(tr("None"));

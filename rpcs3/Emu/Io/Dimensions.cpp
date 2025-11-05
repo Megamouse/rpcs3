@@ -26,14 +26,14 @@ void dimensions_figure::save()
 		return;
 	}
 	dim_file.seek(0, fs::seek_set);
-	dim_file.write(data.data(), 0x2D * 0x04);
+	dim_file.write(data.data(), data.size());
 }
 
 u8 dimensions_toypad::generate_checksum(const std::array<u8, 32>& data, u32 num_of_bytes)
 {
-	int checksum = 0;
 	ensure(num_of_bytes <= data.size());
-	for (u8 i = 0; i < num_of_bytes; i++)
+	int checksum = 0;
+	for (u32 i = 0; i < num_of_bytes; i++)
 	{
 		checksum += data[i];
 	}

@@ -13,7 +13,7 @@ void kamen_rider_figure::save()
 		return;
 	}
 	kamen_file.seek(0, fs::seek_set);
-	kamen_file.write(data.data(), 0x14 * 0x10);
+	kamen_file.write(data.data(), data.size());
 }
 
 u8 rider_gate::generate_checksum(const std::array<u8, 64>& data, u32 num_of_bytes) const
@@ -65,13 +65,15 @@ void rider_gate::get_list_tags(std::array<u8, 64>& reply_buf, u8 command, u8 seq
 	{
 		if (figure.present)
 		{
+			ensure((index + 8) <= reply_buf.size());
+
 			reply_buf[index] = 0x09;
 			memcpy(&reply_buf[index + 1], figure.data.data(), 7);
 			index += 8;
 			reply_buf[1] += 8;
 		}
 	}
-	reply_buf[index] = generate_checksum(reply_buf, index);
+	::at32(reply_buf, index) = generate_checksum(reply_buf, index);
 }
 
 void rider_gate::query_block(std::array<u8, 64>& reply_buf, u8 command, u8 sequence, const u8* uid, u8 sector, u8 block)
@@ -157,7 +159,7 @@ u8 rider_gate::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file in_f
 	u8 found_slot = 0xFF;
 
 	// mimics spot retaining on the portal
-	for (auto i = 0; i < 7; i++)
+	for (u8 i = 0; i < 7; i++)
 	{
 		if (!figures[i].present)
 		{
