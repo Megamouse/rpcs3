@@ -212,10 +212,13 @@ void infinity_base::query_block(u8 fig_num, u8 block, std::array<u8, 32>& reply_
 	reply_buf[1] = 0x12;
 	reply_buf[2] = sequence;
 	reply_buf[3] = 0x00;
-	const u8 file_block = (block == 0) ? 1 : (block * 4);
-	if (figure.present && file_block < 20)
+	if (figure.present)
 	{
-		memcpy(&reply_buf[4], figure.data.data() + (16 * file_block), 16);
+		const u8 file_block = (block == 0) ? 1 : (block * 4);
+		if (file_block < 20)
+		{
+			memcpy(&reply_buf[4], figure.data.data() + (16 * file_block), 16);
+		}
 	}
 	reply_buf[20] = generate_checksum(reply_buf, 20);
 }
@@ -231,11 +234,14 @@ void infinity_base::write_block(u8 fig_num, u8 block, const u8* to_write_buf,
 	reply_buf[1] = 0x02;
 	reply_buf[2] = sequence;
 	reply_buf[3] = 0x00;
-	const u8 file_block = (block == 0) ? 1 : (block * 4);
-	if (figure.present && file_block < 20)
+	if (figure.present)
 	{
-		memcpy(figure.data.data() + (file_block * 16), to_write_buf, 16);
-		figure.save();
+		const u8 file_block = (block == 0) ? 1 : (block * 4);
+		if (file_block < 20)
+		{
+			memcpy(figure.data.data() + (file_block * 16), to_write_buf, 16);
+			figure.save();
+		}
 	}
 	reply_buf[4] = generate_checksum(reply_buf, 4);
 }
