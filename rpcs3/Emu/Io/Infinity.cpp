@@ -291,7 +291,7 @@ bool infinity_base::remove_figure(u8 position)
 
 	std::array<u8, 32> figure_change_response = {0xab, 0x04, position, 0x09, figure.order_added, 0x01};
 	figure_change_response[6] = generate_checksum(figure_change_response, 6);
-	m_figure_added_removed_responses.push(figure_change_response);
+	m_figure_added_removed_responses.push(std::move(figure_change_response));
 
 	figure.save();
 	figure.inf_file.close();
@@ -353,7 +353,7 @@ u32 infinity_base::load_figure(const std::array<u8, 0x14 * 0x10>& buf, fs::file 
 
 	std::array<u8, 32> figure_change_response = {0xab, 0x04, position, 0x09, order_added, 0x00};
 	figure_change_response[6] = generate_checksum(figure_change_response, 6);
-	m_figure_added_removed_responses.push(figure_change_response);
+	m_figure_added_removed_responses.push(std::move(figure_change_response));
 
 	return number;
 }
@@ -400,7 +400,7 @@ void usb_device_infinity::interrupt_transfer(u32 buf_size, u8* buf, u32 endpoint
 	{
 		// Respond after FF command
 		transfer->expected_time = get_timestamp() + 1000;
-		std::optional<std::array<u8, 32>> response = g_infinitybase.pop_added_removed_response();
+		const std::optional<std::array<u8, 32>> response = g_infinitybase.pop_added_removed_response();
 		if (response)
 		{
 			memcpy(buf, response.value().data(), 0x20);
@@ -484,6 +484,6 @@ void usb_device_infinity::interrupt_transfer(u32 buf_size, u8* buf, u32 endpoint
 			break;
 		}
 
-		m_queries.push(q_result);
+		m_queries.push(std::move(q_result));
 	}
 }

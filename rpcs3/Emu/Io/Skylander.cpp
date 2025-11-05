@@ -243,7 +243,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				ensure(buf_size == 2 || buf_size == 32);
 				q_result = {0x41, buf[1], 0xFF, 0x77, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				    0x00, 0x00};
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				g_skyportal.activate();
 				break;
 			}
@@ -259,7 +259,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				// Sync status from game?
 				ensure(buf_size == 7);
 				q_result[0] = 0x4A;
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				break;
 			}
 			case 'L':
@@ -276,7 +276,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				// play audio on the portal
 				ensure(buf_size == 2);
 				q_result = {0x4D, buf[1], 0x00, 0x19};
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				break;
 			}
 			case 'Q':
@@ -290,7 +290,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				ensure(block < 0x40);
 
 				g_skyportal.query_block(sky_num, block, q_result.data());
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				break;
 			}
 			case 'R':
@@ -299,7 +299,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				ensure(buf_size == 2 || buf_size == 32);
 				q_result = {
 				    0x52, 0x02, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				g_skyportal.deactivate();
 				break;
 			}
@@ -326,7 +326,7 @@ void usb_device_skylander::control_transfer(u8 bmRequestType, u8 bRequest, u16 w
 				ensure(block < 0x40);
 
 				g_skyportal.write_block(sky_num, block, &buf[3], q_result.data());
-				q_queries.push(q_result);
+				q_queries.push(std::move(q_result));
 				break;
 			}
 			default:

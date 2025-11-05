@@ -693,7 +693,7 @@ void usb_device_dimensions::interrupt_transfer(u32 buf_size, u8* buf, u32 endpoi
 			break;
 		}
 		}
-		m_queries.push(q_result);
+		m_queries.push(std::move(q_result));
 		break;
 	}
 	default:
