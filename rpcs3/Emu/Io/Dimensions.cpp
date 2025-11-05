@@ -100,25 +100,11 @@ std::array<u8, 8> dimensions_toypad::decrypt(const u8* buf, const std::optional<
 	u32 data_two = read_from_ptr<le_t<u32>>(buf, 4);
 
 	// Use the key as 4 32 bit little endian unsigned integers
-	u32 key_one;
-	u32 key_two;
-	u32 key_three;
-	u32 key_four;
-
-	if (key)
-	{
-		key_one = read_from_ptr<le_t<u32>>(key.value());
-		key_two = read_from_ptr<le_t<u32>>(key.value(), 4);
-		key_three = read_from_ptr<le_t<u32>>(key.value(), 8);
-		key_four = read_from_ptr<le_t<u32>>(key.value(), 12);
-	}
-	else
-	{
-		key_one = read_from_ptr<le_t<u32>>(COMMAND_KEY);
-		key_two = read_from_ptr<le_t<u32>>(COMMAND_KEY, 4);
-		key_three = read_from_ptr<le_t<u32>>(COMMAND_KEY, 8);
-		key_four = read_from_ptr<le_t<u32>>(COMMAND_KEY, 12);
-	}
+	const std::array<u8, 16>& key_value = key ? key.value() : COMMAND_KEY;
+	const u32 key_one = read_from_ptr<le_t<u32>>(key_value);
+	const u32 key_two = read_from_ptr<le_t<u32>>(key_value, 4);
+	const u32 key_three = read_from_ptr<le_t<u32>>(key_value, 8);
+	const u32 key_four = read_from_ptr<le_t<u32>>(key_value, 12);
 
 	u32 sum = 0xC6EF3720;
 	constexpr u32 delta = 0x9E3779B9;
@@ -147,25 +133,11 @@ std::array<u8, 8> dimensions_toypad::encrypt(const u8* buf, const std::optional<
 	u32 data_two = read_from_ptr<le_t<u32>>(buf, 4);
 
 	// Use the key as 4 32 bit little endian unsigned integers
-	u32 key_one;
-	u32 key_two;
-	u32 key_three;
-	u32 key_four;
-
-	if (key)
-	{
-		key_one = read_from_ptr<le_t<u32>>(key.value());
-		key_two = read_from_ptr<le_t<u32>>(key.value(), 4);
-		key_three = read_from_ptr<le_t<u32>>(key.value(), 8);
-		key_four = read_from_ptr<le_t<u32>>(key.value(), 12);
-	}
-	else
-	{
-		key_one = read_from_ptr<le_t<u32>>(COMMAND_KEY);
-		key_two = read_from_ptr<le_t<u32>>(COMMAND_KEY, 4);
-		key_three = read_from_ptr<le_t<u32>>(COMMAND_KEY, 8);
-		key_four = read_from_ptr<le_t<u32>>(COMMAND_KEY, 12);
-	}
+	const std::array<u8, 16>& key_value = key ? key.value() : COMMAND_KEY;
+	const u32 key_one = read_from_ptr<le_t<u32>>(key_value);
+	const u32 key_two = read_from_ptr<le_t<u32>>(key_value, 4);
+	const u32 key_three = read_from_ptr<le_t<u32>>(key_value, 8);
+	const u32 key_four = read_from_ptr<le_t<u32>>(key_value, 12);
 
 	u32 sum = 0;
 	constexpr u32 delta = 0x9E3779B9;
