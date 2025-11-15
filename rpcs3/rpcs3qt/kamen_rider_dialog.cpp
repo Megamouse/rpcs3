@@ -16,7 +16,7 @@
 #include <QCompleter>
 
 kamen_rider_dialog* kamen_rider_dialog::inst = nullptr;
-std::array<std::optional<std::tuple<u8, u8, u8>>, UI_FIG_NUM> kamen_rider_dialog::figure_slots = {};
+std::array<std::optional<kamen_rider_dialog::figure>, UI_FIG_NUM> kamen_rider_dialog::figure_slots = {};
 QString last_kamen_rider_path;
 
 static const std::map<const std::pair<const u8, const u8>, const std::string> list_kamen_riders = {
@@ -213,25 +213,22 @@ kamen_rider_creator_dialog::kamen_rider_creator_dialog(QWidget* parent)
 				return;
 			}
 
-			std::array<u8, 0x14 * 0x10> buf{};
-
-			buf[0] = 0x04;
-			buf[6] = 0x80;
-
 			std::random_device rd;
 			std::mt19937 mt(rd());
 			std::uniform_int_distribution<int> dist(0, 255);
 
+			std::array<u8, 0x14 * 0x10> buf{};
+			buf[0] = 0x04;
 			buf[1] = dist(mt);
 			buf[2] = dist(mt);
 			buf[3] = dist(mt);
 			buf[4] = dist(mt);
 			buf[5] = dist(mt);
-
+			buf[6] = 0x80;
 			buf[7] = 0x89;
 			buf[8] = 0x44;
 			buf[10] = 0xc2;
-			std::array<u8, 16> figure_data = {u8(dist(mt)), 0x03, 0x00, 0x00, 0x01, 0x0e, 0x0a, 0x0a, 0x10, fig_type, 0x01, fig_id};
+			const std::array<u8, 16> figure_data = {u8(dist(mt)), 0x03, 0x00, 0x00, 0x01, 0x0e, 0x0a, 0x0a, 0x10, fig_type, 0x01, fig_id};
 			write_to_ptr<le_t<u32>>(figure_data.data(), 0xC, kamen_rider_crc32(figure_data));
 			memcpy(&buf[16], figure_data.data(), figure_data.size());
 			fig_file.write(buf.data(), buf.size());
@@ -385,11 +382,12 @@ void kamen_rider_dialog::load_kamen_rider_path(u8 slot, const QString& path)
 
 	clear_kamen_rider(slot);
 
-	u8 fig_id = data[0x1B];
-	u8 fig_type = data[0x19];
-
-	u8 portal_slot = g_ridergate.load_figure(data, std::move(fig_file));
-	figure_slots[slot] = std::tuple(portal_slot, fig_id, fig_type);
+	figure_slots[slot] = figure
+	{
+		.slot = g_ridergate.load_figure(data, std::move(fig_file)),
+		.id = data[0x1B],
+		.type = data[0x19]
+	};
 
 	update_edits();
 }
@@ -401,15 +399,15 @@ void kamen_rider_dialog::update_edits()
 		QString display_string;
 		if (const auto& sd = figure_slots[i])
 		{
-			const auto& [portal_slot, fig_id, fig_type] = sd.value();
-			const auto found_fig = list_kamen_riders.find(std::make_pair(fig_id, fig_type));
+			const figure& fig = sd.value();
+			const auto found_fig = list_kamen_riders.find(std::make_pair(fig.id, fig.type));
 			if (found_fig != list_kamen_riders.cend())
 			{
 				display_string = QString::fromStdString(found_fig->second);
 			}
 			else
 			{
-				display_string = QString(tr("Unknown (Id:%1 Var:%2)")).arg(fig_id).arg(fig_type);
+				display_string = QString(tr("Unknown (Id:%1 Var:%2)")).arg(fig.id).arg(fig.type);
 			}
 		}
 		else
