@@ -214,7 +214,7 @@ struct vdec_context final
 	AVRational log_time_base{}; // Used to reduce log spam
 	AVRational log_framerate{}; // Used to reduce log spam
 
-	vdec_context(s32 type, u32 /*profile*/, u32 addr, u32 size, vm::ptr<CellVdecCbMsg> func, u32 arg)
+	vdec_context(s32 type, u32 profile, u32 addr, u32 size, vm::ptr<CellVdecCbMsg> func, u32 arg)
 		: type(type)
 		, mem_addr(addr)
 		, mem_size(size)
@@ -262,6 +262,15 @@ struct vdec_context final
 		if (!ctx)
 		{
 			fmt::throw_exception("avcodec_alloc_context3() failed (type=0x%x)", type);
+		}
+
+		if (type == CELL_VDEC_CODEC_TYPE_AVC_2 && profile == 4)
+		{
+			ctx->profile = FF_PROFILE_H264_BASELINE;
+			ctx->level = 20;
+			ctx->has_b_frames = 0;
+			ctx->refs = 1;
+			ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;
 		}
 
 		AVDictionary* opts = nullptr;
