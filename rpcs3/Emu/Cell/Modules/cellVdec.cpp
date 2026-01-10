@@ -228,6 +228,7 @@ struct vdec_context final
 			break;
 		}
 		case CELL_VDEC_CODEC_TYPE_AVC:
+		case CELL_VDEC_CODEC_TYPE_AVC_2:
 		{
 			codec = avcodec_find_decoder(AV_CODEC_ID_H264);
 			break;
@@ -664,10 +665,12 @@ extern void vdecEntry(ppu_thread& ppu, u32 vid)
 
 static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0 */, CellVdecAttr* attr)
 {
+	ensure(!!attr);
+
 	// Write 0 at start
 	attr->memSize = 0;
 
-	u32 decoderVerLower;
+	u32 decoderVerLower = 0;
 	u32 memSize = 0;
 
 	const bool new_sdk = g_ps3_process_info.sdk_ver > 0x20FFFF;
@@ -675,6 +678,7 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 	switch (type)
 	{
 	case CELL_VDEC_CODEC_TYPE_AVC:
+	case CELL_VDEC_CODEC_TYPE_AVC_2:
 	{
 		cellVdec.warning("cellVdecQueryAttr: AVC (profile=%d)", profile);
 
@@ -697,6 +701,15 @@ static error_code vdecQueryAttr(s32 type, u32 profile, u32 spec_addr /* may be 0
 		case CELL_VDEC_AVC_LEVEL_4P0: memSize = new_sdk ? 0x33A5FFD : 0x36A527D; break;
 		case CELL_VDEC_AVC_LEVEL_4P1: memSize = new_sdk ? 0x33A5FFD : 0x36A527D; break;
 		case CELL_VDEC_AVC_LEVEL_4P2: memSize = new_sdk ? 0x33A5FFD : 0x36A527D; break;
+		case 4:
+		{
+			if (CELL_VDEC_CODEC_TYPE_AVC_2)
+			{
+				memSize = 0x602978;
+				break;
+			}
+			return CELL_VDEC_ERROR_ARG;
+		}
 		default: return CELL_VDEC_ERROR_ARG;
 		}
 
@@ -1447,7 +1460,7 @@ error_code cellVdecGetPicItem(ppu_thread& ppu, u32 handle, vm::pptr<CellVdecPicI
 	const vm::addr_t picinfo_addr{info.addr() + ::offset32(&all_info_t::picInfo)};
 	info->picInfo_addr = picinfo_addr;
 
-	if (vdec->type == CELL_VDEC_CODEC_TYPE_AVC)
+	if (vdec->type == CELL_VDEC_CODEC_TYPE_AVC || vdec->type == CELL_VDEC_CODEC_TYPE_AVC_2)
 	{
 		const vm::ptr<CellVdecAvcInfo> avc = picinfo_addr;
 
