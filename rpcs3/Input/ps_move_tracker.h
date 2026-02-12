@@ -76,6 +76,8 @@ private:
 	void set_valid(ps_move_info& info, u32 index, bool valid);
 
 	void draw_sphere_size_range(f32 result_radius);
+	void draw_circle(std::vector<u8>& rgba, u32 width, u32 height, f32 x_center, f32 y_center, f32 radius, const std::array<u8, 4>& color, bool filled);
+	void draw_line(std::vector<u8>& rgba, u32 width, u32 height, f32 x0, f32 y0, f32 x1, f32 y1, const std::array<u8, 4>& color);
 
 	CellGemVideoConvertAttribute m_vc_attr {};
 

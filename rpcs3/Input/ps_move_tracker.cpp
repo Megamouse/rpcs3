@@ -328,25 +328,174 @@ void ps_move_tracker<DiagnosticsEnabled>::draw_sphere_size_range(f32 result_radi
 	if constexpr (!DiagnosticsEnabled) return;
 	if (!m_draw_overlays) return;
 
-	// Map memory
-	cv::Mat rgba(cv::Size(m_width, m_height), CV_8UC4, m_image_rgba_contours.data(), 0);
-
 	// Draw result, min and max radius
 	const f32 min_radius = m_min_radius * m_width;
 	const f32 max_radius = m_max_radius * m_width;
 	const f32 min_radius_clamped = std::max(0.0f, std::min(min_radius, max_radius));
-	const cv::Point2f center = cv::Point2f(m_width - 1 - max_radius, max_radius);
+	const f32 center_x = m_width - 1 - max_radius;
+	const f32 center_y = max_radius;
+
 	if (result_radius > 0.0f)
 	{
-		cv::circle(rgba, center, static_cast<int>(result_radius), cv::Scalar(255, 0, 0, 255), cv::FILLED);
+		draw_circle(m_image_rgba_contours, m_width, m_height, center_x, center_y, result_radius, {255, 0, 0, 255}, true);
 	}
 	if (min_radius_clamped > 0.0f && min_radius_clamped <= max_radius)
 	{
-		cv::circle(rgba, center, static_cast<int>(min_radius_clamped), cv::Scalar(0, 0, 0, 255), cv::FILLED);
+		draw_circle(m_image_rgba_contours, m_width, m_height, center_x, center_y, min_radius_clamped, {0, 0, 0, 255}, true);
 	}
 	if (max_radius > min_radius_clamped)
 	{
-		cv::circle(rgba, center, static_cast<int>(max_radius), cv::Scalar(0, 0, 0, 255), 1);
+		draw_circle(m_image_rgba_contours, m_width, m_height, center_x, center_y, max_radius, {0, 0, 0, 255}, false);
+	}
+}
+
+template <bool DiagnosticsEnabled>
+void ps_move_tracker<DiagnosticsEnabled>::draw_circle(std::vector<u8>& rgba, u32 width, u32 height, f32 x_center, f32 y_center, f32 radius, const std::array<u8, 4>& color, bool filled)
+{
+	ensure(rgba.size() == (width * height * 4));
+
+	const f32 y0 = std::round(y_center - radius);
+	const f32 y1 = std::round(y_center + radius);
+
+	if (y0 >= height || y1 < 0.0f)
+	{
+		return;
+	}
+
+	u32* dst = reinterpret_cast<u32*>(rgba.data());
+
+	const u32 pixel = std::bit_cast<u32>(color);
+	const f32 r2 = radius * radius;
+
+	const u32 y_start = static_cast<u32>(std::clamp(y0, 0.0f, height - 1.0f));
+	const u32 y_end = static_cast<u32>(std::clamp(y1, static_cast<f32>(y_start), height - 1.0f));
+
+	if (filled)
+	{
+		for (u32 y = y_start; y <= y_end; y++)
+		{
+			const f32 dy = y - y_center;
+			const f32 dx = std::sqrt(std::max(0.0f, r2 - dy * dy));
+
+			const f32 x0 = std::round(x_center - dx);
+			const f32 x1 = std::round(x_center + dx);
+
+			if (x0 >= width || x1 < 0.0f)
+			{
+				continue;
+			}
+
+			const u32 x_start = static_cast<u32>(std::clamp(x0, 0.0f, width - 1.0f));
+			const u32 x_end = static_cast<u32>(std::clamp(x1, static_cast<f32>(x_start), width - 1.0f));
+
+			u32* dst_begin = dst + (y * width + x_start);
+			const u32 count = x_end - x_start;
+
+			std::fill(dst_begin, dst_begin + count, pixel);
+		}
+	}
+	else
+	{
+		for (u32 y = y_start; y <= y_end; y++)
+		{
+			const f32 dy = y - y_center;
+			const f32 dx = std::sqrt(std::max(0.0f, r2 - dy * dy));
+
+			const s32 x_left = static_cast<s32>(std::round(x_center - dx));
+			if (x_left >= static_cast<s32>(width)) continue;
+
+			const s32 x_right = static_cast<s32>(std::round(x_center + dx));
+			if (x_right < 0) continue;
+
+			if (x_left >= 0)
+			{
+				dst[y * width + x_left] = pixel;
+			}
+
+			if (x_right < static_cast<s32>(width))
+			{
+				dst[y * width + x_right] = pixel;
+			}
+		}
+	}
+}
+
+template <bool DiagnosticsEnabled>
+void ps_move_tracker<DiagnosticsEnabled>::draw_line(std::vector<u8>& rgba, u32 width, u32 height, f32 x0, f32 y0, f32 x1, f32 y1, const std::array<u8, 4>& color)
+{
+	ensure(rgba.size() == (width * height * 4));
+
+	const f32 x_start_unclamped = std::round(std::min(x0, x1));
+	const f32 x_end_unclamped = std::round(std::max(x0, x1));
+
+	const f32 y_start_unclamped = std::round(std::min(y0, y1));
+	const f32 y_end_unclamped = std::round(std::max(y0, y1));
+
+	if (x_start_unclamped >= width || x_end_unclamped < 0.0f ||
+		y_start_unclamped >= height || y_end_unclamped < 0.0f)
+	{
+		return;
+	}
+
+	const u32 x_start = static_cast<u32>(std::clamp(x_start_unclamped, 0.0f, height - 1.0f));
+	const u32 x_end = static_cast<u32>(std::clamp(x_end_unclamped, static_cast<f32>(x_start), height - 1.0f));
+
+	const u32 y_start = static_cast<u32>(std::clamp(y_start_unclamped, 0.0f, height - 1.0f));
+	const u32 y_end = static_cast<u32>(std::clamp(y_end_unclamped, static_cast<f32>(y_start), height - 1.0f));
+
+	const u32 pixel = std::bit_cast<u32>(color);
+
+	u32* dst = reinterpret_cast<u32*>(rgba.data());
+
+	if (y_start == y_end)
+	{
+		u32* dst_begin = dst + (y_start * width + x_start);
+		const u32 count = x_end - x_start;
+
+		std::fill(dst_begin, dst_begin + count, pixel);
+		return;
+	}
+
+	if (x_start == x_end)
+	{
+		for (u32 y = y_start; y <= y_end; y++)
+		{
+			dst[y * width + x_start] = pixel;
+		}
+		return;
+	}
+
+	const s32 dx = x_end - x_start;
+	const s32 dy = y_end - y_start;
+
+	s32 err = dx - dy;
+	u32 x = x_start;
+	u32 y = y_start;
+
+	while (true)
+	{
+		if (x >= 0 && x < width &&
+			y >= 0 && y < height)
+		{
+			dst[y * width + x] = pixel;
+		}
+
+		if (x == x_end && y == y_end)
+			break;
+
+		const s32 e2 = 2 * err;
+
+		if (e2 > -dy)
+		{
+			err -= dy;
+			x++;
+		}
+
+		if (e2 < dx)
+		{
+			err += dx;
+			y++;
+		}
 	}
 }
 
@@ -365,7 +514,7 @@ void ps_move_tracker<DiagnosticsEnabled>::process_contours(ps_move_info& info, u
 	info.y_max = height;
 
 	// Map memory
-	cv::Mat binary(cv::Size(width, height), CV_8UC1, image_binary.data(), 0);
+	cv::Mat binary(height, width, CV_8UC1, image_binary.data(), 0);
 
 	// Filter image
 	for (u32 y = 0; y < height; y++)
@@ -522,7 +671,7 @@ void ps_move_tracker<DiagnosticsEnabled>::process_contours(ps_move_info& info, u
 	draw_sphere_size_range(info.radius);
 
 	// Map memory
-	cv::Mat rgba(cv::Size(width, height), CV_8UC4, m_image_rgba_contours.data(), 0);
+	cv::Mat rgba(height, width, CV_8UC4, m_image_rgba_contours.data(), 0);
 
 	if (!m_show_all_contours) [[likely]]
 	{
@@ -533,8 +682,8 @@ void ps_move_tracker<DiagnosticsEnabled>::process_contours(ps_move_info& info, u
 	}
 
 	static const cv::Scalar contour_color(255, 0, 0, 255);
-	static const cv::Scalar circle_color(0, 255, 0, 255);
-	static const cv::Scalar center_color(0, 0, 255, 255);
+	static const std::array<u8, 4> circle_color { 0, 255, 0, 255 };
+	static const std::array<u8, 4> center_color { 0, 0, 255, 255 };
 
 	// Draw contours
 	if (m_draw_contours)
@@ -550,9 +699,9 @@ void ps_move_tracker<DiagnosticsEnabled>::process_contours(ps_move_info& info, u
 			const cv::Point2f& center = centers[i];
 			const f32 radius = radii[i];
 
-			cv::circle(rgba, center, static_cast<int>(radius), circle_color, 1);
-			cv::line(rgba, center + cv::Point2f(-2.0f, 0.0f), center + cv::Point2f(2.0f, 0.0f), center_color, 1);
-			cv::line(rgba, center + cv::Point2f(0.0f, -2.0f), center + cv::Point2f(0.0f, 2.0f), center_color, 1);
+			draw_circle(m_image_rgba_contours, width, height, center.x, center.y, radius, circle_color, false);
+			draw_line(m_image_rgba_contours, width, height, center.x - 2.0f, center.y, center.x + 2.0f, center.y, center_color);
+			draw_line(m_image_rgba_contours, width, height, center.x, center.y - 2.0f, center.x, center.y + 2.0f, center_color);
 		}
 	}
 }
