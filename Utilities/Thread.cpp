@@ -8,15 +8,12 @@
 #include "Emu/RSX/RSXThread.h"
 #include "Thread.h"
 #include "Utilities/JIT.h"
+#include "rpcs3_version.h"
+#include "stack_trace.h"
 #include <cfenv>
 
 #ifdef ARCH_ARM64
 #include "Emu/CPU/Backends/AArch64/AArch64Signal.h"
-#endif
-
-#ifdef __cpp_lib_stacktrace
-#include "rpcs3_version.h"
-#include <stacktrace>
 #endif
 
 #ifdef _WIN32
@@ -2171,11 +2168,11 @@ void thread_base::start()
 #elif defined(__APPLE__)
 	pthread_attr_t attrs;
 	struct sched_param sp;
-    memset(&sp, 0, sizeof(struct sched_param));
-    sp.sched_priority=99;
+	memset(&sp, 0, sizeof(struct sched_param));
+	sp.sched_priority=99;
 	pthread_attr_init(&attrs);
 	pthread_attr_setstacksize(&attrs, 0x800000);
-	
+
 	pthread_attr_set_qos_class_np(&attrs, QOS_CLASS_USER_INTERACTIVE, 0);
 	pthread_attr_setschedpolicy(&attrs, SCHED_RR);
 	pthread_attr_setschedparam(&attrs, &sp);
@@ -2806,14 +2803,11 @@ void thread_base::exec()
 [[noreturn]] void thread_ctrl::emergency_exit(std::string_view reason)
 {
 	// Print stacktrace
-#ifdef __cpp_lib_stacktrace
 	if (rpcs3::is_local_build())
 	{
-		std::ostringstream oss;
-		oss << std::stacktrace::current();
-		sys_log.notice("StackTrace\n\n%s\n", oss.str());
+		const std::string bt = utils::get_stacktrace();
+		sys_log.notice("StackTrace\n\n%s\n", bt);
 	}
-#endif
 
 	if (const std::string info = dump_useful_thread_info(); !info.empty())
 	{
