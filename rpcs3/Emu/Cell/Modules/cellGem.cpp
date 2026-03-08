@@ -316,6 +316,35 @@ public:
 		return true;
 	}
 
+	std::deque<CellGemState> state_list {};
+
+	u64 find_gem_state(u64 timestamp, bool is_current_or_future)
+	{
+		if (state_list.empty()) return umax;
+
+		u64 closest_distance = umax;
+		u64 closest_index = umax;
+		u64 i = 0;
+		for (const CellGemState& state : state_list)
+		{
+			const u64 distance = (timestamp >= state.timestamp) ? (timestamp - state.timestamp) : (state.timestamp - timestamp);
+			if (distance < closest_distance)
+			{
+				closest_distance = distance;
+				closest_index = i;
+			}
+
+			i++;
+		}
+
+		if (closest_index == umax && is_current_or_future)
+		{
+			return state_list.size() - 1;
+		}
+
+		return closest_index;
+	}
+
 	// helper functions
 	bool is_controller_ready(u32 gem_num) const
 	{
@@ -1806,6 +1835,7 @@ static inline void pos_to_gem_image_state(u32 gem_num, gem_config::gem_controlle
 
 	const f32 scaling_width = x_max / static_cast<f32>(shared_data.width);
 	const f32 scaling_height = y_max / static_cast<f32>(shared_data.height);
+	const f32 focal_length_pixels = (ps_move_tracker<>::get_focal_length_mm() * shared_data.width) / ps_move_tracker<>::get_sensor_width_mm();
 	const f32 mmPerPixel = controller.radius <= 0.0f ? 0.0f : (CELL_GEM_SPHERE_RADIUS_MM / controller.radius);
 
 	// Image coordinates in pixels
@@ -1827,6 +1857,8 @@ static inline void pos_to_gem_image_state(u32 gem_num, gem_config::gem_controlle
 	// Projected camera coordinates in mm
 	gem_image_state->projectionx = camera_x / controller.distance_mm;
 	gem_image_state->projectiony = camera_y / controller.distance_mm;
+	//gem_image_state->projectionx = centered_x / focal_length_pixels;
+	//gem_image_state->projectiony = centered_y / focal_length_pixels;
 
 	// Update visibility for fake handlers
 	if (g_cfg.io.move != move_handler::real)
@@ -3124,7 +3156,7 @@ error_code cellGemGetRumble(u32 gem_num, vm::ptr<u8> rumble)
 	return CELL_OK;
 }
 
-error_code cellGemGetState(u32 gem_num, u32 flag, u64 time_parameter, vm::ptr<CellGemState> gem_state)
+error_code cellGemGetState(u32 gem_num, u32 flag, s64 time_parameter, vm::ptr<CellGemState> gem_state)
 {
 	cellGem.warning("cellGemGetState(gem_num=%d, flag=0x%x, time=0x%llx, gem_state=*0x%x)", gem_num, flag, time_parameter, gem_state);
 
@@ -3147,25 +3179,7 @@ error_code cellGemGetState(u32 gem_num, u32 flag, u64 time_parameter, vm::ptr<Ce
 		return not_an_error(CELL_GEM_NOT_CONNECTED);
 	}
 
-	// TODO: Get the gem state at the specified time
-	//if (flag == CELL_GEM_STATE_FLAG_CURRENT_TIME)
-	//{
-	//	// now + time_parameter (time_parameter in microseconds). Positive values actually allow predictions for the future state.
-	//}
-	//else if (flag == CELL_GEM_STATE_FLAG_LATEST_IMAGE_TIME)
-	//{
-	//	// When the sphere was registered during the last camera frame (time_parameter may also have an impact)
-	//}
-	//else // CELL_GEM_STATE_FLAG_TIMESTAMP
-	//{
-	//	// As specified by time_parameter.
-	//}
-
-	if (false) // TODO: check if there is data for the specified time_parameter and flag
-	{
-		return CELL_GEM_TIME_OUT_OF_RANGE;
-	}
-
+	const u64 current_timestamp = (get_guest_system_time() - gem.start_timestamp_us);
 	auto& controller = gem.controllers[gem_num];
 
 	*gem_state = {};
@@ -3180,7 +3194,7 @@ error_code cellGemGetState(u32 gem_num, u32 flag, u64 time_parameter, vm::ptr<Ce
 			gem_state->tracking_flags |= CELL_GEM_TRACKING_FLAG_VISIBLE;
 		}
 
-		gem_state->timestamp = (get_guest_system_time() - gem.start_timestamp_us);
+		gem_state->timestamp = current_timestamp;
 		gem_state->camera_pitch_angle = 0.f;
 
 		switch (g_cfg.io.move)
@@ -3218,6 +3232,50 @@ error_code cellGemGetState(u32 gem_num, u32 flag, u64 time_parameter, vm::ptr<Ce
 		case move_handler::null:
 			fmt::throw_exception("Unreachable");
 		}
+	}
+
+	u64 timestamp = 0;
+
+	switch (flag)
+	{
+	case CELL_GEM_STATE_FLAG_CURRENT_TIME:
+	{
+		// now + time_parameter (time_parameter in microseconds). Positive values actually allow predictions for the future state.
+		timestamp = current_timestamp + time_parameter;
+		break;
+	}
+	case CELL_GEM_STATE_FLAG_LATEST_IMAGE_TIME:
+	{
+		// When the sphere was registered during the last camera frame (time_parameter may also have an impact)
+		auto& g_camera = g_fxo->get<camera_thread>();
+		std::lock_guard lock(g_camera.mutex);
+		timestamp = g_camera.frame_timestamp_us;
+		break;
+	}
+	case CELL_GEM_STATE_FLAG_TIMESTAMP:
+	default:
+	{
+		// As specified by time_parameter.
+		timestamp = time_parameter;
+		break;
+	}
+	}
+
+	gem.state_list.push_back(*gem_state);
+	if (gem.state_list.size() > 10000)
+	{
+		gem.state_list.pop_front();
+	}
+
+	const u64 state_index = gem.find_gem_state(timestamp, timestamp >= current_timestamp);
+	if (state_index == umax)
+	{
+		return CELL_GEM_TIME_OUT_OF_RANGE;
+	}
+
+	if (state_index != (gem.state_list.size() - 1))
+	{
+		*gem_state = ::at32(gem.state_list, state_index);
 	}
 
 	if (false) // TODO: check if we are computing colors

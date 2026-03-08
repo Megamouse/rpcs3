@@ -57,6 +57,9 @@ public:
 	static std::tuple<u8, u8, u8> hsv_to_rgb(u16 hue, f32 saturation, f32 value);
 	static std::tuple<s16, f32, f32> rgb_to_hsv(f32 r, f32 g, f32 b);
 
+	static constexpr f32 get_focal_length_mm() { return 3.5f; } // Based on common webcam specs
+	static constexpr f32 get_sensor_width_mm() { return 3.6f; } // Based on common webcam specs
+
 private:
 	struct ps_move_config
 	{

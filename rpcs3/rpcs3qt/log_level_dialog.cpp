@@ -49,6 +49,41 @@ log_level_dialog::log_level_dialog(QWidget* parent, std::shared_ptr<emu_settings
 	m_table->setHorizontalHeaderLabels({ tr("Channel"), tr("Level") });
 
 	int i = 0;
+	{
+		QComboBox* combo = new QComboBox();
+
+		for (const auto& [level, localized] : levels)
+		{
+			combo->addItem(localized, QString::fromStdString(level));
+		}
+
+		connect(combo, &QComboBox::currentIndexChanged, combo, [this, combo, channels](int index)
+		{
+			if (index < 0) return;
+
+			const QVariant var = combo->itemData(index);
+			if (!var.canConvert<QString>()) return;
+
+			std::map<std::string, std::string> settings = m_emu_settings->GetMapSetting(emu_settings_type::Log);
+
+			for (const std::string& channel : channels)
+			{
+				settings[channel] = var.toString().toStdString();
+			}
+
+			m_emu_settings->SetMapSetting(emu_settings_type::Log, settings);
+			reload_page();
+		});
+
+		QTableWidgetItem* item = new QTableWidgetItem(tr("All channels"));
+		item->setData(Qt::UserRole, QString());
+
+		m_table->setItem(i, 0, item);
+		m_table->setCellWidget(i, 1, combo);
+
+		i++;
+	}
+
 	for (const std::string& channel : channels)
 	{
 		QComboBox* combo = new QComboBox();
@@ -72,7 +107,11 @@ log_level_dialog::log_level_dialog(QWidget* parent, std::shared_ptr<emu_settings
 			m_emu_settings->SetMapSetting(emu_settings_type::Log, settings);
 		});
 
-		m_table->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(channel)));
+		const QString q_channel = QString::fromStdString(channel);
+		QTableWidgetItem* item = new QTableWidgetItem(q_channel);
+		item->setData(Qt::UserRole, q_channel);
+
+		m_table->setItem(i, 0, item);
 		m_table->setCellWidget(i, 1, combo);
 
 		i++;
@@ -136,12 +175,18 @@ void log_level_dialog::reload_page()
 		QTableWidgetItem* item = m_table->item(i, 0);
 		if (!item) continue;
 
-		const std::string channel = item->text().toStdString();
+		const QVariant var = item->data(Qt::UserRole);
+		if (!var.canConvert<QString>()) continue;
+
+		const std::string channel = var.toString().toStdString();
 
 		if (QComboBox* combo = static_cast<QComboBox*>(m_table->cellWidget(i, 1)))
 		{
 			combo->blockSignals(true);
-			combo->setCurrentIndex(combo->findData(def_str));
+			if (settings.empty() || !channel.empty())
+			{
+				combo->setCurrentIndex(combo->findData(def_str));
+			}
 			if (settings.contains(channel))
 			{
 				if (const int index = combo->findData(QString::fromStdString(settings.at(channel))); index >= 0)
