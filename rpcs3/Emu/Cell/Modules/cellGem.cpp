@@ -708,9 +708,21 @@ namespace gem
 			v = V(r, g, b);
 		}
 
-		static inline u8 Y(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp(0.299f * r + 0.587f * g + 0.114f * b, 0.0f, 255.0f)); }
-		static inline u8 U(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp(-0.169f * r - 0.331f * g + 0.499f * b + 128, 0.0f, 255.0f)); }
-		static inline u8 V(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp(0.499f * r - 0.460f * g - 0.040f * b + 128, 0.0f, 255.0f)); }
+		static constexpr s32 yuv_scale = 256;
+		static constexpr s32 factor_yr = 0.299f * yuv_scale;
+		static constexpr s32 factor_yg = 0.587f * yuv_scale;
+		static constexpr s32 factor_yb = 0.114f * yuv_scale;
+		static constexpr s32 factor_ur = 0.169f * yuv_scale;
+		static constexpr s32 factor_ug = 0.331f * yuv_scale;
+		static constexpr s32 factor_ub = 0.499f * yuv_scale;
+		static constexpr s32 factor_vr = 0.499f * yuv_scale;
+		static constexpr s32 factor_vg = 0.460f * yuv_scale;
+		static constexpr s32 factor_vb = 0.040f * yuv_scale;
+		static constexpr s32 factor_uvf =   128 * yuv_scale;
+
+		static inline u8 Y(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp(( factor_yr * r + factor_yg * g + factor_yb * b)              >> 8, 0, 255)); }
+		static inline u8 U(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp((-factor_ur * r - factor_ug * g + factor_ub * b + factor_uvf) >> 8, 0, 255)); }
+		static inline u8 V(u8 r, u8 g, u8 b) { return static_cast<u8>(std::clamp(( factor_vr * r - factor_vg * g - factor_vb * b + factor_uvf) >> 8, 0, 255)); }
 	};
 
 	template <bool use_gain>

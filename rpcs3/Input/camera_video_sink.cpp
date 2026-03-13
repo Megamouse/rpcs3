@@ -6,6 +6,19 @@
 
 LOG_CHANNEL(camera_log, "Camera");
 
+static constexpr s32 yuv_scale = 256;
+static constexpr s32 factor_yr = 0.257f * yuv_scale;
+static constexpr s32 factor_yg = 0.504f * yuv_scale;
+static constexpr s32 factor_yb = 0.098f * yuv_scale;
+static constexpr s32 factor_ur = 0.148f * yuv_scale;
+static constexpr s32 factor_ug = 0.291f * yuv_scale;
+static constexpr s32 factor_ub = 0.439f * yuv_scale;
+static constexpr s32 factor_vr = 0.439f * yuv_scale;
+static constexpr s32 factor_vg = 0.368f * yuv_scale;
+static constexpr s32 factor_vb = 0.071f * yuv_scale;
+static constexpr s32 factor_yf =     16 * yuv_scale;
+static constexpr s32 factor_uvf =   128 * yuv_scale;
+
 camera_video_sink::camera_video_sink(bool front_facing)
 	: m_front_facing(front_facing)
 {
@@ -124,27 +137,26 @@ bool camera_video_sink::present(u32 src_width, u32 src_height, u32 src_pitch, u3
 			for (u32 y = 0; y < height; y++)
 			{
 				const u8* src = src_line_ptr(y);
-				u8* yuv_row_ptr = &image_buffer.data[y * yuv_pitch];
+				u8* dst = &image_buffer.data[y * yuv_pitch];
 
-				for (u32 x = 0; x < width - 1; x += 2, src += 8)
+				for (u32 x = 0; x < width - 1; x += 2, src += 8, dst += 2 * yuv_bytes_per_pixel)
 				{
-					const f32 r1 = src[0];
-					const f32 g1 = src[1];
-					const f32 b1 = src[2];
-					const f32 r2 = src[4];
-					const f32 g2 = src[5];
-					const f32 b2 = src[6];
+					const u8 r1 = src[0];
+					const u8 g1 = src[1];
+					const u8 b1 = src[2];
+					const u8 r2 = src[4];
+					const u8 g2 = src[5];
+					const u8 b2 = src[6];
 
-					const f32 y0 =  (0.257f * r1) + (0.504f * g1) + (0.098f * b1) +  16.0f;
-					const f32 u  = -(0.148f * r1) - (0.291f * g1) + (0.439f * b1) + 128.0f;
-					const f32 v  =  (0.439f * r1) - (0.368f * g1) - (0.071f * b1) + 128.0f;
-					const f32 y1 =  (0.257f * r2) + (0.504f * g2) + (0.098f * b2) +  16.0f;
+					const u8 y0 = static_cast<u8>(std::clamp(( (factor_yr * r1) + (factor_yg * g1) + (factor_yb * b1) +  factor_yf) >> 8, 0, 255));
+					const u8 u  = static_cast<u8>(std::clamp((-(factor_ur * r1) - (factor_ug * g1) + (factor_ub * b1) + factor_uvf) >> 8, 0, 255));
+					const u8 v  = static_cast<u8>(std::clamp(( (factor_vr * r1) - (factor_vg * g1) - (factor_vb * b1) + factor_uvf) >> 8, 0, 255));
+					const u8 y1 = static_cast<u8>(std::clamp(( (factor_yr * r2) + (factor_yg * g2) + (factor_yb * b2) +  factor_yf) >> 8, 0, 255));
 
-					const s32 yuv_index = x * yuv_bytes_per_pixel;
-					yuv_row_ptr[yuv_index + y0_offset] = static_cast<u8>(std::clamp(y0, 0.0f, 255.0f));
-					yuv_row_ptr[yuv_index + u_offset]  = static_cast<u8>(std::clamp( u, 0.0f, 255.0f));
-					yuv_row_ptr[yuv_index + y1_offset] = static_cast<u8>(std::clamp(y1, 0.0f, 255.0f));
-					yuv_row_ptr[yuv_index + v_offset]  = static_cast<u8>(std::clamp( v, 0.0f, 255.0f));
+					dst[y0_offset] = y0;
+					dst[u_offset]  = u;
+					dst[y1_offset] = v;
+					dst[v_offset]  = y1;
 				}
 			}
 			break;
