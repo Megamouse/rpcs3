@@ -2393,28 +2393,28 @@ static bool gun_input_to_pad(u32 gem_no, be_t<u16>& digital_buttons, be_t<u16>& 
 	gun_thread& gun = g_fxo->get<gun_thread>();
 	std::scoped_lock lock(gun.handler.mutex);
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_left) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_left))
 		digital_buttons |= CELL_GEM_CTRL_T;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_right) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_right))
 		digital_buttons |= CELL_GEM_CTRL_MOVE;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_middle) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_middle))
 		digital_buttons |= CELL_GEM_CTRL_START;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_1) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_1))
 		digital_buttons |= CELL_GEM_CTRL_CROSS;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_2) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_2))
 		digital_buttons |= CELL_GEM_CTRL_CIRCLE;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_3) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_3))
 		digital_buttons |= CELL_GEM_CTRL_SELECT;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_5) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_5))
 		digital_buttons |= CELL_GEM_CTRL_TRIANGLE;
 
-	if (gun.handler.get_button(gem_no, gun_button::btn_6) == 1)
+	if (gun.handler.get_button(gem_no, gun_button::btn_6))
 		digital_buttons |= CELL_GEM_CTRL_SQUARE;
 
 	analog_t = gun.handler.get_button(gem_no, gun_button::btn_left) ? 255 : 0;
