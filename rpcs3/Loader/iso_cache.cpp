@@ -60,7 +60,7 @@ namespace iso_cache
 			return false;
 		}
 
-		auto [node, error] = yaml_load(yml_file.to_string());
+		const auto [node, error] = yaml_load(yml_file.to_string());
 		if (!error.empty())
 		{
 			iso_cache_log.warning("Failed to parse cache YAML for '%s': %s", iso_path, error);

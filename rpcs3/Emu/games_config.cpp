@@ -177,7 +177,7 @@ void games_config::load()
 
 	if (fs::file f{path, fs::read + fs::create})
 	{
-		auto [result, error] = yaml_load(f.to_string());
+		const auto [result, error] = yaml_load(f.to_string());
 
 		if (!error.empty())
 		{

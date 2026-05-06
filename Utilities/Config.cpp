@@ -670,7 +670,7 @@ std::string cfg::node::to_string() const
 
 bool cfg::node::from_string(std::string_view value, bool dynamic)
 {
-	auto [result, error] = yaml_load(std::string(value));
+	const auto [result, error] = yaml_load(std::string(value));
 
 	if (error.empty())
 	{
@@ -699,7 +699,7 @@ void cfg::node::restore_defaults()
 
 bool cfg::node::validate(std::string_view value)
 {
-	auto [result, error] = yaml_load(std::string(value));
+	const auto [result, error] = yaml_load(std::string(value));
 
 	if (error.empty())
 	{
@@ -755,7 +755,7 @@ void cfg::log_entry::from_default()
 
 std::pair<u16, u16> cfg::device_info::get_usb_ids() const
 {
-	auto string_to_hex = [](const std::string& str) -> u16
+	const auto string_to_hex = [](std::string_view str) -> u16
 	{
 		u16 value = 0x0000;
 		if (!str.empty() && std::from_chars(str.data(), str.data() + str.size(), value, 16).ec != std::errc{})

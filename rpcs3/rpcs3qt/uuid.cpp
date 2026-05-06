@@ -58,11 +58,16 @@ namespace gui
 
 		bool validate_uuid(const std::string& uuid)
 		{
+			if (uuid.empty() || !uuid.starts_with("{") || !uuid.ends_with("}"))
+			{
+				return false;
+			}
+
 			const QRegularExpressionValidator validator(QRegularExpression("^[a-fA-F0-9{}-]*$"));
 			QString test_string = QString::fromStdString(uuid);
 			int pos = 0;
 
-			if (uuid.empty() || !uuid.starts_with("{") || !uuid.ends_with("}") || validator.validate(test_string, pos) == QValidator::State::Invalid)
+			if (validator.validate(test_string, pos) == QValidator::State::Invalid)
 			{
 				return false;
 			}

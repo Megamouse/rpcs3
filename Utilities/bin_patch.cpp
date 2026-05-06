@@ -1966,7 +1966,7 @@ patch_engine::patch_map patch_engine::load_config()
 
 	if (fs::file f{ path })
 	{
-		auto [root, error] = yaml_load(f.to_string());
+		const auto [root, error] = yaml_load(f.to_string());
 
 		if (!error.empty())
 		{

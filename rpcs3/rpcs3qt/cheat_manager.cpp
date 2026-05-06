@@ -54,13 +54,15 @@ cheat_engine::cheat_engine()
 
 	if (fs::file cheat_file{path, fs::read + fs::create})
 	{
-		auto [yml_cheats, error] = yaml_load(cheat_file.to_string());
+		const auto [yml_cheats, yml_error] = yaml_load(cheat_file.to_string());
 
-		if (!error.empty())
+		if (!yml_error.empty())
 		{
-			log_cheat.error("Error parsing %s: %s", path, error);
+			log_cheat.error("Error parsing %s: %s", path, yml_error);
 			return;
 		}
+
+		std::string error;
 
 		for (const auto& yml_cheat : yml_cheats)
 		{
@@ -71,14 +73,14 @@ cheat_engine::cheat_engine()
 				const u32 offset = get_yaml_node_value<u32>(yml_offset.first, error);
 				if (!error.empty())
 				{
-					log_cheat.error("Error parsing %s: node key %s is not a u32 offset", path, yml_offset.first.Scalar());
+					log_cheat.error("Error parsing %s: node key %s is not a u32 offset (error=%s)", path, yml_offset.first.Scalar(), error);
 					return;
 				}
 
 				cheat_info cheat = get_yaml_node_value<cheat_info>(yml_offset.second, error);
 				if (!error.empty())
 				{
-					log_cheat.error("Error parsing %s: node %s is not a cheat_info node", path, yml_offset.first.Scalar());
+					log_cheat.error("Error parsing %s: node %s is not a cheat_info node (error=%s)", path, yml_offset.first.Scalar(), error);
 					return;
 				}
 

@@ -125,7 +125,7 @@ void emu_settings::LoadSettings(const std::string& title_id, bool create_config_
 	fs::create_path(title_id.empty() ? fs::get_config_dir(true) : rpcs3::utils::get_custom_config_dir());
 
 	// Load default config
-	auto [default_config, default_error] = yaml_load(g_cfg_defaults);
+	const auto [default_config, default_error] = yaml_load(g_cfg_defaults);
 
 	if (default_error.empty())
 	{
@@ -145,7 +145,7 @@ void emu_settings::LoadSettings(const std::string& title_id, bool create_config_
 		const std::string global_config_path = fs::get_config_dir(true) + "config.yml";
 		fs::g_tls_error = fs::error::ok;
 		fs::file config(global_config_path, fs::read + fs::create);
-		auto [global_config, global_error] = yaml_load(config ? config.to_string() : "");
+		const auto [global_config, global_error] = yaml_load(config ? config.to_string() : "");
 
 		if (config && global_error.empty())
 		{
@@ -162,7 +162,7 @@ void emu_settings::LoadSettings(const std::string& title_id, bool create_config_
 	else if (!db_config.empty())
 	{
 		// Add database config
-		auto [config, error] = yaml_load(db_config);
+		const auto [config, error] = yaml_load(db_config);
 
 		if (config && error.empty())
 		{
@@ -194,7 +194,7 @@ void emu_settings::LoadSettings(const std::string& title_id, bool create_config_
 		{
 			if (fs::file config{custom_config_path})
 			{
-				auto [custom_config, custom_error] = yaml_load(config.to_string());
+				const auto [custom_config, custom_error] = yaml_load(config.to_string());
 				config.close();
 
 				if (custom_error.empty())

@@ -558,7 +558,7 @@ namespace gui::utils
 		return s;
 	}
 
-	std::string steam_shortcut::fix_slashes(const std::string& s)
+	std::string steam_shortcut::fix_slashes(std::string_view s)
 	{
 #ifdef _WIN32
 		return fmt::replace_all(s, "/", "\\");

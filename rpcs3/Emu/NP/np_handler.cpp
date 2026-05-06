@@ -74,10 +74,12 @@ namespace np
 
 		if (fs::file history_file{get_players_history_path(), fs::read + fs::create})
 		{
-			auto [yml_players_history, error] = yaml_load(history_file.to_string());
+			const auto [yml_players_history, yml_error] = yaml_load(history_file.to_string());
 
-			if (!error.empty())
-				return parsing_error(error);
+			if (!yml_error.empty())
+				return parsing_error(yml_error);
+
+			std::string error;
 
 			for (const auto& player : yml_players_history)
 			{

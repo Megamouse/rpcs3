@@ -111,7 +111,7 @@ namespace gui::utils
 		static void append(std::string& s, const std::string& val);
 
 		static std::string quote(const std::string& s, bool force);
-		static std::string fix_slashes(const std::string& s);
+		static std::string fix_slashes(std::string_view s);
 		static std::string kv_string(const std::string& key, const std::string& value);
 		static std::string kv_int(const std::string& key, u32 value);
 		static std::string steamid64_to_32(const std::string& steam_id);

@@ -172,7 +172,7 @@ bool music_selection_context::load_playlist()
 		content = file.to_string();
 	}
 
-	auto [root, error] = yaml_load(content);
+	const auto [root, error] = yaml_load(content);
 
 	if (!error.empty() || !root)
 	{

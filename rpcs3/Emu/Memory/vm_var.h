@@ -160,11 +160,11 @@ namespace vm
 			return (varb<T, A>(value));
 		}
 
-		// Make char[] variable initialized from std::string
+		// Make char[] variable initialized from std::string_view
 		template <typename A = stack_allocator<ppu_thread>>
-		[[nodiscard]] auto make_str(const std::string& str)
+		[[nodiscard]] auto make_str(std::string_view str)
 		{
-			return (_var_base<char[], A>(size32(str) + 1, str.c_str()));
+			return (_var_base<char[], A>(size32(str) + 1, str.data()));
 		}
 
 		// Global HLE variable
