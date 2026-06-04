@@ -230,6 +230,7 @@ namespace vk
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
+
 	void instance::bind()
 	{
 		// Register some global states
@@ -242,12 +243,19 @@ namespace vk
 		enable_debugging();
 	}
 
-	std::vector<physical_device>& instance::enumerate_devices()
+	std::vector<physical_device>& instance::enumerate_devices(VkResult* error)
 	{
 		u32 num_gpus;
 		// This may fail on unsupported drivers, so just assume no devices
-		if (vkEnumeratePhysicalDevices(m_instance, &num_gpus, nullptr) != VK_SUCCESS)
+		const VkResult vk_error = vkEnumeratePhysicalDevices(m_instance, &num_gpus, nullptr);
+		if (vk_error != VK_SUCCESS)
+		{
+			if (error)
+			{
+				*error = vk_error;
+			}
 			return gpus;
+		}
 
 		if (gpus.size() != num_gpus)
 		{

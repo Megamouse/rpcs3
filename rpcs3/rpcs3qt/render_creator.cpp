@@ -39,7 +39,13 @@ render_creator::render_creator()
 		if (device_enum_context.create("RPCS3", true))
 		{
 			device_enum_context.bind();
-			const std::vector<vk::physical_device>& gpus = device_enum_context.enumerate_devices();
+			VkResult error = VK_SUCCESS;
+			const std::vector<vk::physical_device>& gpus = device_enum_context.enumerate_devices(&error);
+			if (error != VK_SUCCESS)
+			{
+				const auto& [error_message, severity] = vk::get_error_message(error);
+				cfg_log.warning("Vulkan device enumeration failed: %s", error_message);
+			}
 
 			lock.lock();
 
@@ -53,6 +59,7 @@ render_creator::render_creator()
 		}
 		else
 		{
+			cfg_log.warning("Vulkan device enumeration failed: could not create vulkan instance");
 			lock.lock();
 		}
 

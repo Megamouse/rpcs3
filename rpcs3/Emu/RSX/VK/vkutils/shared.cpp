@@ -98,7 +98,7 @@ namespace vk
 		return fault_message;
 	}
 
-	void die_with_error(VkResult error_code, std::string message, std::source_location src_loc)
+	std::pair<std::string, int> get_error_message(VkResult error_code, std::source_location src_loc)
 	{
 		std::string error_message, extra_info;
 		int severity = 0; // 0 - die, 1 - warn, 2 - nothing
@@ -109,7 +109,8 @@ namespace vk
 		case VK_EVENT_SET:
 		case VK_EVENT_RESET:
 		case VK_INCOMPLETE:
-			return;
+			severity = 2;
+			break;
 		case VK_SUBOPTIMAL_KHR:
 			error_message = "Present surface is suboptimal (VK_SUBOPTIMAL_KHR)";
 			severity = 1;
@@ -194,6 +195,13 @@ namespace vk
 		{
 			error_message = fmt::format("%s\n---------------- EXTRA INFORMATION --------------------\n%s", error_message, extra_info);
 		}
+
+		return { error_message, severity };
+	}
+
+	void die_with_error(VkResult error_code, std::string message, std::source_location src_loc)
+	{
+		const auto& [error_message, severity]= get_error_message(error_code, src_loc);
 
 		switch (severity)
 		{

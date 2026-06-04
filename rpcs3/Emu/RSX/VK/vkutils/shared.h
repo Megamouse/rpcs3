@@ -8,6 +8,7 @@ namespace vk
 #define CHECK_RESULT(expr) { VkResult _res = (expr); if (_res != VK_SUCCESS) vk::die_with_error(_res); }
 #define CHECK_RESULT_EX(expr, msg) { VkResult _res = (expr); if (_res != VK_SUCCESS) vk::die_with_error(_res, msg); }
 
+	std::pair<std::string, int> get_error_message(VkResult error_code, std::source_location src_loc = std::source_location::current());
 	void die_with_error(VkResult error_code, std::string message = {}, std::source_location src_loc = std::source_location::current());
 
 	VKAPI_ATTR VkBool32 VKAPI_CALL dbgFunc(VkFlags msgFlags, VkDebugReportObjectTypeEXT objType,
