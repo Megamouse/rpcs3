@@ -129,7 +129,11 @@ public:
 	const native_entry entry_point;
 
 	// Set name for debugger
+#ifdef _MSC_VER
+	static void set_name(std::string_view name);
+#else
 	static void set_name(std::string name);
+#endif
 
 private:
 	// Thread handle (platform-specific)

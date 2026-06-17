@@ -13,14 +13,14 @@
 #include "sys_overlay.h"
 #include "sys_fs.h"
 
-extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, const std::string& path, s64 file_offset, utils::serial* ar = nullptr);
+extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, std::string_view path, s64 file_offset, utils::serial* ar = nullptr);
 
 extern bool ppu_initialize(const ppu_module<lv2_obj>&, bool check_only = false, u64 file_size = 0);
 extern void ppu_finalize(const ppu_module<lv2_obj>& info, bool force_mem_release = false);
 
 LOG_CHANNEL(sys_overlay);
 
-static error_code overlay_load_module(vm::ptr<u32> ovlmid, const std::string& vpath, u64 /*flags*/, vm::ptr<u32> entry, fs::file src = {}, s64 file_offset = 0)
+static error_code overlay_load_module(vm::ptr<u32> ovlmid, std::string_view vpath, u64 /*flags*/, vm::ptr<u32> entry, fs::file src = {}, s64 file_offset = 0)
 {
 	if (!src)
 	{

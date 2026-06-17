@@ -536,7 +536,7 @@ namespace utils
 #ifdef _WIN32
 		fs::file f;
 
-		auto open_with_cleanup = [](fs::file& f, const std::string& path)
+		auto open_with_cleanup = [](fs::file& f, std::string_view path)
 		{
 			f.close();
 

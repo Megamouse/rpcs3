@@ -38,7 +38,7 @@ bool try_to_float(f64* out, std::string_view value, f64 min, f64 max, std::strin
 bool try_to_string(std::string* out, f64 value, std::string_view name = {});
 
 // Get the file extension of a file path ("png", "jpg", etc.)
-std::string get_file_extension(const std::string& file_path);
+std::string get_file_extension(std::string_view file_path);
 
 namespace fmt
 {
@@ -143,13 +143,13 @@ namespace fmt
 	std::vector<std::string_view> split_sv(std::string_view source, std::initializer_list<std::string_view> separators, bool is_skip_empty = true);
 
 	// Removes all preceding and trailing characters specified by 'values' from 'source'.
-	std::string trim(const std::string& source, std::string_view values = " \t");
+	std::string trim(std::string_view source, std::string_view values = " \t");
 
 	// Removes all preceding and trailing characters specified by 'values' from 'source' and returns the result.
 	std::string_view trim_sv(std::string_view source, std::string_view values = " \t");
 
 	// Removes all preceding characters specified by 'values' from 'source'.
-	std::string trim_front(const std::string& source, std::string_view values = " \t");
+	std::string trim_front(std::string_view source, std::string_view values = " \t");
 
 	// Removes all preceding characters specified by 'values' from 'source' and returns the result.
 	std::string_view trim_front_sv(std::string_view source, std::string_view values = " \t");

@@ -184,7 +184,7 @@ public:
 	void SetDSTScaDisasm(const std::string& code);
 
 
-	CgBinaryDisasm(const std::string& path);
+	CgBinaryDisasm(std::string_view path);
 
 	template <typename T>
 	CgBinaryDisasm(const std::span<T>& data)

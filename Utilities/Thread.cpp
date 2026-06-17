@@ -2358,7 +2358,11 @@ void thread_base::initialize(void (*error_cb)())
 	set_name(thread_ctrl::get_name_cached());
 }
 
+#ifdef _MSC_VER
+void thread_base::set_name(std::string_view name)
+#else
 void thread_base::set_name(std::string name)
+#endif
 {
 #ifdef _WIN32
 	if (SetThreadDescriptionImport)
@@ -2379,11 +2383,13 @@ void thread_base::set_name(std::string name)
 	// Set thread name for VS debugger
 	if (IsDebuggerPresent()) [&]() NEVER_INLINE
 	{
-		THREADNAME_INFO info;
-		info.dwType = 0x1000;
-		info.szName = name.c_str();
-		info.dwThreadID = -1;
-		info.dwFlags = 0;
+		THREADNAME_INFO info
+		{
+			.dwType = 0x1000,
+			.szName = name.data(),
+			.dwThreadID = umax,
+			.dwFlags = 0
+		};
 
 		__try
 		{

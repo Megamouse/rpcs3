@@ -864,7 +864,7 @@ error_code sys_fs_test(ppu_thread&, u32 arg1, u32 arg2, vm::ptr<u32> arg3, u32 a
 	return CELL_OK;
 }
 
-lv2_file::open_raw_result_t lv2_file::open_raw(const std::string& local_path, s32 flags, bool has_write_access, lv2_file_type type, const lv2_fs_mount_info& mp)
+lv2_file::open_raw_result_t lv2_file::open_raw(std::string_view local_path, s32 flags, bool has_write_access, lv2_file_type type, const lv2_fs_mount_info& mp)
 {
 	// TODO: other checks for path
 

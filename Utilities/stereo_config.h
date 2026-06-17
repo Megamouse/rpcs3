@@ -54,7 +54,7 @@ public:
 				const auto it = values.find(key);
 				if (it == values.cend()) continue;
 
-				const std::string& val_s = it->second;
+				const std::string_view val_s = it->second;
 				if (val_s.empty()) continue;
 
 				if (f64 val = 0.0f; try_to_float(&val, val_s, -10.0f, 10.0f))

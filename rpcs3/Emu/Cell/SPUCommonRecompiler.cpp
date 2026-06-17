@@ -635,7 +635,7 @@ DECLARE(spu_runtime::g_interpreter_table) = {};
 
 DECLARE(spu_runtime::g_interpreter) = nullptr;
 
-spu_cache::spu_cache(const std::string& loc)
+spu_cache::spu_cache(std::string_view loc)
 	: m_file(loc, fs::read + fs::write + fs::create + fs::append)
 {
 }

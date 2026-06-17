@@ -1571,7 +1571,7 @@ const char* get_prx_name_by_cia(u32 addr)
 	return nullptr;
 }
 
-shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object& elf, bool virtual_load, const std::string& path, s64 file_offset, utils::serial* ar)
+shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object& elf, bool virtual_load, std::string_view path, s64 file_offset, utils::serial* ar)
 {
 	if (elf != elf_error::ok)
 	{
@@ -2094,7 +2094,7 @@ void ppu_unload_prx(const lv2_prx& prx)
 	}
 }
 
-bool ppu_load_exec(const ppu_exec_object& elf, bool virtual_load, const std::string& elf_path, utils::serial* ar)
+bool ppu_load_exec(const ppu_exec_object& elf, bool virtual_load, std::string_view elf_path, utils::serial* ar)
 {
 	if (elf != elf_error::ok)
 	{
@@ -2851,7 +2851,7 @@ bool ppu_load_exec(const ppu_exec_object& elf, bool virtual_load, const std::str
 	return true;
 }
 
-std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object& elf, bool virtual_load, const std::string& path, s64 file_offset, utils::serial* ar)
+std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object& elf, bool virtual_load, std::string_view path, s64 file_offset, utils::serial* ar)
 {
 	if (elf != elf_error::ok)
 	{

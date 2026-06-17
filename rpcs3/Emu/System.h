@@ -217,7 +217,7 @@ public:
 		m_cb = std::move(cb);
 	}
 
-	void SetGameDir(const std::string& game_dir) { m_game_dir = game_dir; }
+	void SetGameDir(std::string_view game_dir) { m_game_dir = game_dir; }
 
 	const auto& GetCallbacks() const
 	{
@@ -362,7 +362,7 @@ public:
 		return m_usrid;
 	}
 
-	void SetUsr(const std::string& user);
+	void SetUsr(std::string_view user);
 
 	u64 GetPauseTime() const
 	{
@@ -429,13 +429,13 @@ public:
 		return emulation_state_guard_t{this};
 	}
 
-	game_boot_result BootGame(const std::string& path, const std::string& title_id = "", bool direct = false, cfg_mode config_mode = cfg_mode::custom, const std::string& config_path = "", const std::optional<std::string>& db_config = std::nullopt);
-	bool BootRsxCapture(const std::string& path);
+	game_boot_result BootGame(std::string_view path, std::string_view title_id = "", bool direct = false, cfg_mode config_mode = cfg_mode::custom, std::string_view config_path = "", const std::optional<std::string>& db_config = std::nullopt);
+	bool BootRsxCapture(std::string_view path);
 
 	void SetForceBoot(bool force_boot);
 	void SetContinuousMode(bool continuous_mode);
 
-	game_boot_result Load(const std::string& title_id = "", bool is_disc_patch = false, usz recursion_count = 0);
+	game_boot_result Load(std::string_view title_id = "", bool is_disc_patch = false, usz recursion_count = 0);
 	void Run(bool start_playtime);
 	void RunPPU();
 	void FixGuestTime();
@@ -501,16 +501,16 @@ public:
 	game_boot_result VerifyPathCasing(std::string_view path, std::string_view dir, bool from_dir) const;
 
 	void EjectDisc();
-	game_boot_result InsertDisc(const std::string& path);
+	game_boot_result InsertDisc(std::string_view path);
 
-	static game_boot_result GetElfPathFromDir(std::string& elf_path, const std::string& path);
-	static void GetBdvdDir(std::string& bdvd_dir, std::string& sfb_dir, std::string& game_dir, const std::string& elf_dir);
+	static game_boot_result GetElfPathFromDir(std::string& elf_path, std::string_view path);
+	static void GetBdvdDir(std::string& bdvd_dir, std::string& sfb_dir, std::string& game_dir, std::string_view elf_dir);
 	friend void init_fxo_for_exec(utils::serial*, bool);
 
 	static bool IsVsh();
-	static bool IsValidSfb(const std::string& path);
+	static bool IsValidSfb(std::string_view path);
 
-	static void SaveSettings(std::string_view settings, const std::string& title_id);
+	static void SaveSettings(std::string_view settings, std::string_view title_id);
 };
 
 extern Emulator Emu;

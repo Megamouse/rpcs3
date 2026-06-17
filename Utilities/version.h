@@ -71,5 +71,5 @@ namespace utils
 	};
 
 	// Generic version comparison (e.g. 0.0.5 vs 1.3)
-	int compare_versions(const std::string& v1, const std::string& v2, bool& ok);
+	int compare_versions(std::string_view v1, std::string_view v2, bool& ok);
 }

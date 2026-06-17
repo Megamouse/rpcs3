@@ -170,7 +170,7 @@ std::vector<version_entry> get_savestate_versioning_data(fs::file&& file, std::s
 	return ver_data;
 }
 
-std::shared_ptr<utils::serial> make_savestate_reader(const std::string& path)
+std::shared_ptr<utils::serial> make_savestate_reader(std::string_view path)
 {
 	std::shared_ptr<utils::serial> ar;
 
@@ -447,7 +447,7 @@ bool is_savestate_compatible(fs::file&& file, std::string_view filepath)
 	return is_savestate_version_compatible(get_savestate_versioning_data(std::move(file), filepath), false);
 }
 
-bool is_savestate_compatible(const std::string& filepath)
+bool is_savestate_compatible(std::string_view filepath)
 {
 	if (fs::file file{filepath, fs::isfile + fs::read})
 	{

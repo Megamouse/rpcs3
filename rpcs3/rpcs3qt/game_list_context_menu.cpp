@@ -128,7 +128,7 @@ void game_list_context_menu::show_single_selection_context_menu(const game_info&
 		});
 	}
 
-	extern bool is_savestate_compatible(const std::string& filepath);
+	extern bool is_savestate_compatible(std::string_view filepath);
 
 	if (const std::string sstate = get_savestate_file(serial, current_game.path, 1); is_savestate_compatible(sstate))
 	{

@@ -98,7 +98,7 @@ namespace logs
 		bool flush(u64 bufv);
 
 	public:
-		file_writer(const std::string& name, u64 max_size);
+		file_writer(std::string_view name, u64 max_size);
 
 		virtual ~file_writer();
 
@@ -114,7 +114,7 @@ namespace logs
 
 	struct file_listener final : file_writer, public listener
 	{
-		file_listener(const std::string& path, u64 max_size);
+		file_listener(std::string_view path, u64 max_size);
 
 		~file_listener() override = default;
 
@@ -455,7 +455,7 @@ void logs::message::broadcast(const char* fmt, const fmt_type_info* sup, ...) co
 	g_tls_log_control(fmt, -1);
 }
 
-logs::file_writer::file_writer(const std::string& name, u64 max_size)
+logs::file_writer::file_writer(std::string_view name, u64 max_size)
 	: m_max_size(max_size)
 {
 	if (name.empty() || !max_size)
@@ -469,11 +469,11 @@ logs::file_writer::file_writer(const std::string& name, u64 max_size)
 	// Actual log file (allowed to fail)
 	if (!m_fout.open(name, fs::rewrite))
 	{
-		fprintf(stderr, "Log file open failed: %s (error %d)\n", name.c_str(), errno);
+		fprintf(stderr, "Log file open failed: %s (error %d)\n", name.data(), errno);
 	}
 
 	// Compressed log, make it inaccessible (foolproof)
-	if (m_fout2.open(name + ".gz", fs::rewrite + fs::unread))
+	if (m_fout2.open(fmt::format("%s.gz", name), fs::rewrite + fs::unread))
 	{
 #ifndef _MSC_VER
 #pragma GCC diagnostic push
@@ -490,7 +490,7 @@ logs::file_writer::file_writer(const std::string& name, u64 max_size)
 
 	if (!m_fout2)
 	{
-		fprintf(stderr, "Log file open failed: %s.gz (error %d)\n", name.c_str(), errno);
+		fprintf(stderr, "Log file open failed: %s.gz (error %d)\n", name.data(), errno);
 	}
 
 #ifdef _WIN32
@@ -775,7 +775,7 @@ void logs::file_writer::close_prematurely()
 	}
 }
 
-logs::file_listener::file_listener(const std::string& path, u64 max_size)
+logs::file_listener::file_listener(std::string_view path, u64 max_size)
 	: file_writer(path, max_size)
 	, listener()
 {
@@ -837,7 +837,7 @@ void logs::file_listener::log(u64 stamp, const logs::message& msg, std::string_v
 	file_writer::log(text.data(), text.size());
 }
 
-std::unique_ptr<logs::listener> logs::make_file_listener(const std::string& path, u64 max_size)
+std::unique_ptr<logs::listener> logs::make_file_listener(std::string_view path, u64 max_size)
 {
 	std::unique_ptr<logs::listener> result = std::make_unique<logs::file_listener>(path, max_size);
 

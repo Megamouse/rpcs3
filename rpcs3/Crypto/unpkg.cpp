@@ -16,7 +16,7 @@
 
 LOG_CHANNEL(pkg_log, "PKG");
 
-package_reader::package_reader(const std::string& path, fs::file file)
+package_reader::package_reader(std::string_view path, fs::file file)
 	: m_path(path)
 	, m_file(std::move(file))
 {
@@ -947,7 +947,7 @@ bool package_reader::fill_data(std::map<std::string, install_entry*>& all_instal
 	return true;
 }
 
-fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, u8 *custom_klic);
+fs::file DecryptEDAT(const fs::file& input, std::string_view input_file_name, int mode, u8 *custom_klic);
 
 void package_reader::extract_worker()
 {
@@ -983,8 +983,8 @@ void package_reader::extract_worker()
 
 		const bool is_psp = (entry.type & PKG_FILE_ENTRY_PSP) != 0u;
 
-		const std::string& path = entry.weak_reference->first;
-		const std::string& name = entry.name;
+		const std::string_view path = entry.weak_reference->first;
+		const std::string_view name = entry.name;
 
 		if (entry.pad || (entry.type & ~PKG_FILE_ENTRY_KNOWN_BITS))
 		{

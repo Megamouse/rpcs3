@@ -170,11 +170,11 @@ bool serialize<ppu_thread::cr_bits>(utils::serial& ar, typename ppu_thread::cr_b
 extern void ppu_initialize();
 extern void ppu_finalize(const ppu_module<lv2_obj>& info, bool force_mem_release = false);
 extern bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only = false, u64 file_size = 0);
-static void ppu_initialize2(class jit_compiler& jit, const ppu_module<lv2_obj>& module_part, const std::string& cache_path, const std::string& obj_name);
-extern bool ppu_load_exec(const ppu_exec_object&, bool virtual_load, const std::string&, utils::serial* = nullptr);
-extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, const std::string& path, s64 file_offset, utils::serial* = nullptr);
+static void ppu_initialize2(class jit_compiler& jit, const ppu_module<lv2_obj>& module_part, std::string_view cache_path, const std::string& obj_name);
+extern bool ppu_load_exec(const ppu_exec_object&, bool virtual_load, std::string_view, utils::serial* = nullptr);
+extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, std::string_view path, s64 file_offset, utils::serial* = nullptr);
 extern void ppu_unload_prx(const lv2_prx&);
-extern shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object&, bool virtual_load, const std::string&, s64 file_offset, utils::serial* = nullptr);
+extern shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object&, bool virtual_load, std::string_view, s64 file_offset, utils::serial* = nullptr);
 extern void ppu_execute_syscall(ppu_thread& ppu, u64 code);
 static void ppu_break(ppu_thread&, ppu_opcode_t, be_t<u32>*, ppu_intrp_func*);
 
@@ -1090,7 +1090,7 @@ static void ppu_far_jump(ppu_thread& ppu, ppu_opcode_t, be_t<u32>* this_op, ppu_
 	ppu.cia = cia;
 }
 
-bool ppu_form_branch_to_code(u32 entry, u32 target, bool link, bool with_toc, std::string module_name)
+bool ppu_form_branch_to_code(u32 entry, u32 target, bool link, bool with_toc, std::string_view module_name)
 {
 	// Force align entry and target
 	entry &= -4;
@@ -1149,7 +1149,7 @@ bool ppu_form_branch_to_code(u32 entry, u32 target, bool link, bool with_toc, st
 	auto& jumps = g_fxo->get<ppu_far_jumps_t>();
 
 	std::lock_guard lock(jumps.mutex);
-	jumps.add_value(entry, ppu_far_jumps_t::all_info_t{target, link, with_toc, std::move(module_name)});
+	jumps.add_value(entry, ppu_far_jumps_t::all_info_t{target, link, with_toc, std::string(module_name)});
 	ppu_register_function_at(entry, 4, g_cfg.core.ppu_decoder == ppu_decoder_type::_static ? &ppu_far_jump : ensure(g_fxo->get<ppu_far_jumps_t>().gen_jump<false>(entry)));
 
 	return true;
@@ -5508,7 +5508,7 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 #endif
 }
 
-static void ppu_initialize2(jit_compiler& jit, const ppu_module<lv2_obj>& module_part, const std::string& cache_path, const std::string& obj_name)
+static void ppu_initialize2(jit_compiler& jit, const ppu_module<lv2_obj>& module_part, std::string_view cache_path, const std::string& obj_name)
 {
 #ifdef LLVM_AVAILABLE
 	using namespace llvm;
@@ -5663,7 +5663,7 @@ static void ppu_initialize2(jit_compiler& jit, const ppu_module<lv2_obj>& module
 		if (g_cfg.core.llvm_logs)
 		{
 			out << *_module; // print IR
-			fs::write_file(cache_path + obj_name + ".log", fs::rewrite, out.str());
+			fs::write_file(std::string(cache_path) + obj_name + ".log", fs::rewrite, out.str());
 			result.clear();
 		}
 

@@ -76,15 +76,15 @@ std::string g_cfg_defaults;
 
 atomic_t<u64> g_watchdog_hold_ctr{0};
 
-extern bool ppu_load_exec(const ppu_exec_object&, bool virtual_load, const std::string&, utils::serial* = nullptr);
+extern bool ppu_load_exec(const ppu_exec_object&, bool virtual_load, std::string_view, utils::serial* = nullptr);
 extern void spu_load_exec(const spu_exec_object&);
 extern void spu_load_rel_exec(const spu_rel_object&);
 extern void ppu_precompile(std::vector<std::string>& dir_queue, std::vector<ppu_module<lv2_obj>*>* loaded_prx, bool is_fast_compilation);
 extern bool ppu_initialize(const ppu_module<lv2_obj>&, bool check_only = false, u64 file_size = 0);
 extern void ppu_finalize(const ppu_module<lv2_obj>&);
 extern void ppu_unload_prx(const lv2_prx&);
-extern shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object&, bool virtual_load, const std::string&, s64 = 0, utils::serial* = nullptr);
-extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, const std::string& path, s64 = 0, utils::serial* = nullptr);
+extern shared_ptr<lv2_prx> ppu_load_prx(const ppu_prx_object&, bool virtual_load, std::string_view, s64 = 0, utils::serial* = nullptr);
+extern std::pair<shared_ptr<lv2_overlay>, CellError> ppu_load_overlay(const ppu_exec_object&, bool virtual_load, std::string_view path, s64 = 0, utils::serial* = nullptr);
 extern bool ppu_load_rel_exec(const ppu_rel_object&);
 
 extern void send_close_home_menu_cmds();
@@ -426,7 +426,7 @@ void Emulator::Init()
 	jit_runtime::initialize();
 
 	const std::string emu_dir = rpcs3::utils::get_emu_dir();
-	auto make_path_verbose = [&](const std::string& path, bool must_exist_outside_emu_dir)
+	auto make_path_verbose = [&](std::string_view path, bool must_exist_outside_emu_dir)
 	{
 		if (fs::is_dir(path))
 		{
@@ -802,7 +802,7 @@ void Emulator::Init()
 	}
 }
 
-void Emulator::SetUsr(const std::string& user)
+void Emulator::SetUsr(std::string_view user)
 {
 	sys_log.notice("Setting user ID '%s'", user);
 
@@ -817,7 +817,7 @@ void Emulator::SetUsr(const std::string& user)
 	m_usr = user;
 }
 
-bool Emulator::BootRsxCapture(const std::string& path)
+bool Emulator::BootRsxCapture(std::string_view path)
 {
 	if (m_state != system_state::stopped || m_restrict_emu_state_change)
 	{
@@ -937,7 +937,7 @@ bool Emulator::BootRsxCapture(const std::string& path)
 	return true;
 }
 
-game_boot_result Emulator::GetElfPathFromDir(std::string& elf_path, const std::string& path)
+game_boot_result Emulator::GetElfPathFromDir(std::string& elf_path, std::string_view path)
 {
 	if (!fs::is_dir(path))
 	{
@@ -954,7 +954,7 @@ game_boot_result Emulator::GetElfPathFromDir(std::string& elf_path, const std::s
 
 	for (std::string elf : boot_list)
 	{
-		elf = path + elf;
+		elf = fmt::format("%s%s", path, elf);
 
 		if (fs::is_file(elf))
 		{
@@ -966,7 +966,7 @@ game_boot_result Emulator::GetElfPathFromDir(std::string& elf_path, const std::s
 	return game_boot_result::invalid_file_or_folder;
 }
 
-game_boot_result Emulator::BootGame(const std::string& path, const std::string& title_id, bool direct, cfg_mode config_mode, const std::string& config_path, const std::optional<std::string>& db_config)
+game_boot_result Emulator::BootGame(std::string_view path, std::string_view title_id, bool direct, cfg_mode config_mode, std::string_view config_path, const std::optional<std::string>& db_config)
 {
 	sys_log.notice("Emulator::BootGame: path='%s', title_id='%s', direct=%d, config_mode='%s', config_path='%s', db_config=(set=%d, valid=%d)", path, title_id, direct, config_mode, config_path, db_config.has_value(), db_config && !db_config->empty());
 
@@ -1066,7 +1066,7 @@ void Emulator::SetContinuousMode(bool continuous_mode)
 	}
 }
 
-game_boot_result Emulator::Load(const std::string& title_id, bool is_disc_patch, usz recursion_count)
+game_boot_result Emulator::Load(std::string_view title_id, bool is_disc_patch, usz recursion_count)
 {
 	if (recursion_count == 0 && m_restrict_emu_state_change)
 	{
@@ -4665,7 +4665,7 @@ const std::string Emulator::GetSfoDir(bool prefer_disc_sfo) const
 	return m_sfo_dir;
 }
 
-void Emulator::GetBdvdDir(std::string& bdvd_dir, std::string& sfb_dir, std::string& game_dir, const std::string& elf_dir)
+void Emulator::GetBdvdDir(std::string& bdvd_dir, std::string& sfb_dir, std::string& game_dir, std::string_view elf_dir)
 {
 	// Find disc directory by searching a valid PS3_DISC.SFB closest to root directory
 	std::string main_dir;
@@ -4673,7 +4673,7 @@ void Emulator::GetBdvdDir(std::string& bdvd_dir, std::string& sfb_dir, std::stri
 
 	std::string parent_dir;
 
-	for (std::string search_dir = elf_dir.substr(0, elf_dir.find_last_not_of(fs::delim) + 1);; search_dir = std::move(parent_dir))
+	for (std::string search_dir = std::string(elf_dir.substr(0, elf_dir.find_last_not_of(fs::delim) + 1));; search_dir = std::move(parent_dir))
 	{
 		parent_dir = fs::get_parent_dir(search_dir);
 
@@ -4734,7 +4734,7 @@ void Emulator::EjectDisc()
 	}
 }
 
-game_boot_result Emulator::InsertDisc(const std::string& path)
+game_boot_result Emulator::InsertDisc(std::string_view path)
 {
 	if (!Emu.IsRunning())
 	{
@@ -4831,7 +4831,7 @@ bool Emulator::IsVsh()
 	return g_ps3_process_info.self_info.valid && (g_ps3_process_info.self_info.prog_id_hdr.program_authority_id >> 36 == 0x1070000); // Not only VSH but also most CoreOS LV2 SELFs need the special treatment
 }
 
-bool Emulator::IsValidSfb(const std::string& path)
+bool Emulator::IsValidSfb(std::string_view path)
 {
 	fs::file sfb_file{path, fs::read + fs::isfile};
 
@@ -4849,7 +4849,7 @@ bool Emulator::IsValidSfb(const std::string& path)
 	return false;
 }
 
-void Emulator::SaveSettings(std::string_view settings, const std::string& title_id)
+void Emulator::SaveSettings(std::string_view settings, std::string_view title_id)
 {
 	std::string config_name;
 

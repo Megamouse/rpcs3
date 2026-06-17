@@ -214,7 +214,7 @@ int check_filename(std::string_view file_path, bool disallow_system_files, bool 
 	return 0;
 }
 
-static std::vector<SaveDataEntry> get_save_entries(const std::string& base_dir, const std::string& prefix)
+static std::vector<SaveDataEntry> get_save_entries(std::string_view base_dir, std::string_view prefix)
 {
 	std::vector<SaveDataEntry> save_entries;
 
@@ -236,8 +236,10 @@ static std::vector<SaveDataEntry> get_save_entries(const std::string& base_dir, 
 			continue;
 		}
 
+		const std::string dir = fmt::format("%s%s", base_dir, entry.name);
+
 		// PSF parameters
-		const psf::registry psf = psf::load_object(base_dir + entry.name + "/PARAM.SFO");
+		const psf::registry psf = psf::load_object(dir + "/PARAM.SFO");
 
 		if (psf.empty())
 		{
@@ -251,7 +253,7 @@ static std::vector<SaveDataEntry> get_save_entries(const std::string& base_dir, 
 		save_entry.subtitle  = psf::get_string(psf, "SUB_TITLE");
 		save_entry.details   = psf::get_string(psf, "DETAIL");
 
-		for (const auto& entry2 : fs::dir(base_dir + entry.name))
+		for (const auto& entry2 : fs::dir(dir))
 		{
 			if (entry2.is_directory || check_filename(vfs::unescape(entry2.name), false, true))
 			{
@@ -264,7 +266,7 @@ static std::vector<SaveDataEntry> get_save_entries(const std::string& base_dir, 
 		save_entry.atime = entry.atime;
 		save_entry.mtime = entry.mtime;
 		save_entry.ctime = entry.ctime;
-		if (fs::file icon{base_dir + entry.name + "/ICON0.PNG"})
+		if (fs::file icon{dir + "/ICON0.PNG"})
 			save_entry.iconBuf = icon.to_vector<uchar>();
 		save_entry.isNew = false;
 
@@ -1948,18 +1950,18 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 		}
 
 		// clang-format off
-		auto add_to_blist = [&](const std::string& to_add)
+		auto add_to_blist = [&](std::string_view to_add)
 		{
 			if (std::find(blist.begin(), blist.end(), to_add) == blist.end())
 			{
 				if (auto it = std::find(blist.begin(), blist.end(), ""); it != blist.end())
 					*it = to_add;
 				else
-					blist.push_back(to_add);
+					blist.push_back(std::string(to_add));
 			}
 		};
 
-		auto del_from_blist = [&](const std::string& to_del)
+		auto del_from_blist = [&](std::string_view to_del)
 		{
 			if (auto it = std::find(blist.begin(), blist.end(), to_del); it != blist.end())
 				*it = "";

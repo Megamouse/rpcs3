@@ -70,7 +70,7 @@ public:
 	bool ValidateRemoval(const std::string& serial, const std::string& path, const std::string& desc, bool is_interactive = false);
 	bool ValidateBatchRemoval(const std::string& desc, bool is_interactive = false);
 
-	static bool CreateCPUCaches(const std::string& path, const std::string& serial = {}, bool is_fast_compilation = false);
+	static bool CreateCPUCaches(std::string_view path, std::string_view serial = {}, bool is_fast_compilation = false);
 	static bool CreateCPUCaches(const game_info& game, bool is_fast_compilation = false);
 	bool RemoveCustomConfiguration(const std::string& serial, const game_info& game = nullptr, bool is_interactive = false);
 	bool RemoveCustomPadConfiguration(const std::string& serial, const game_info& game = nullptr, bool is_interactive = false);

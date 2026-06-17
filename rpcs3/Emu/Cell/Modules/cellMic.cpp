@@ -180,7 +180,7 @@ void mic_context::load_config_and_init()
 	}
 }
 
-u32 mic_context::register_device(const std::string& device_name)
+u32 mic_context::register_device(std::string_view device_name)
 {
 	usz index = mic_list.size();
 	for (usz i = 0; i < mic_list.size(); i++)
@@ -307,10 +307,10 @@ microphone_device::microphone_device(microphone_handler type)
 	device_type = type;
 }
 
-void microphone_device::add_device(const std::string& name)
+void microphone_device::add_device(std::string_view name)
 {
 	devices.push_back(mic_device{
-		.name = name
+		.name = std::string(name)
 	});
 }
 
@@ -694,14 +694,14 @@ void microphone_device::enumerate_devices()
 	}
 }
 
-ALCdevice* microphone_device::open_device(const std::string& name, u32 samplingrate, ALCenum num_al_channels, u32 buf_size)
+ALCdevice* microphone_device::open_device(std::string_view name, u32 samplingrate, ALCenum num_al_channels, u32 buf_size)
 {
 	if (std::none_of(enumerated_devices.cbegin(), enumerated_devices.cend(), [&name](const std::string& dev){ return dev == name; }))
 	{
 		cellMic.error("Capture device '%s' not in enumerated devices", name);
 	}
 
-	ALCdevice* device = alcCaptureOpenDevice(name.c_str(), samplingrate, num_al_channels, buf_size);
+	ALCdevice* device = alcCaptureOpenDevice(name.data(), samplingrate, num_al_channels, buf_size);
 
 	if (ALCenum err = alcGetError(device); err != ALC_NO_ERROR || !device)
 	{

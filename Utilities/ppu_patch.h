@@ -15,5 +15,5 @@ struct ppu_patch_block_registry_t
 };
 
 void ppu_register_range(u32 addr, u32 size);
-bool ppu_form_branch_to_code(u32 entry, u32 target, bool link = false, bool with_toc = false, std::string module_name = {});
+bool ppu_form_branch_to_code(u32 entry, u32 target, bool link = false, bool with_toc = false, std::string_view module_name = {});
 u32 ppu_generate_id(std::string_view name);

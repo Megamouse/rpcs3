@@ -104,10 +104,10 @@ namespace utils
 			}
 		};
 
-		std::string path() const;
+		const std::string& path() const;
 		s64 last_video_pts() const;
 
-		void set_path(const std::string& path);
+		void set_path(std::string_view path);
 		void set_framerate(u32 framerate);
 		void set_video_bitrate(u32 bitrate);
 		void set_output_format(frame_format format);

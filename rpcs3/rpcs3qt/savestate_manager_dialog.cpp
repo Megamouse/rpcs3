@@ -299,7 +299,7 @@ bool savestate_manager_dialog::LoadSavestateFolderToDB(std::unique_ptr<game_save
 	game_savestates->savestates.resize(file_list.size());
 	game_savestates->dir_path = dir_path;
 
-	extern bool is_savestate_compatible(const std::string& filepath);
+	extern bool is_savestate_compatible(std::string_view filepath);
 
 	for (usz id = 0; id < game_savestates->savestates.size(); ++id)
 	{

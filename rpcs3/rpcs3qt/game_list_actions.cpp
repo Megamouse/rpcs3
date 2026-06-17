@@ -668,7 +668,7 @@ bool game_list_actions::ValidateBatchRemoval(const std::string& desc, bool is_in
 	return true;
 }
 
-bool game_list_actions::CreateCPUCaches(const std::string& path, const std::string& serial, bool is_fast_compilation)
+bool game_list_actions::CreateCPUCaches(std::string_view path, std::string_view serial, bool is_fast_compilation)
 {
 	Emu.GracefulShutdown(false);
 	Emu.SetForceBoot(true);

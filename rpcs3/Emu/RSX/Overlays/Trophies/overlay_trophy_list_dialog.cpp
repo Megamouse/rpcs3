@@ -207,7 +207,7 @@ namespace rsx
 			return result;
 		}
 
-		void trophy_list_dialog::show(const std::string& trop_name)
+		void trophy_list_dialog::show(std::string_view trop_name)
 		{
 			visible = false;
 			
@@ -234,13 +234,13 @@ namespace rsx
 			}
 		}
 
-		std::unique_ptr<trophy_data> trophy_list_dialog::load_trophies(const std::string& trop_name) const
+		std::unique_ptr<trophy_data> trophy_list_dialog::load_trophies(std::string_view trop_name) const
 		{
 			// Populate GameTrophiesData
 			std::unique_ptr<trophy_data> game_trophy_data = std::make_unique<trophy_data>();
 			game_trophy_data->trop_usr = std::make_unique<TROPUSRLoader>();
 
-			const std::string trophy_path = "/dev_hdd0/home/" + Emu.GetUsr() + "/trophy/" + trop_name;
+			const std::string trophy_path = fmt::format("/dev_hdd0/home/%s/trophy/%s", Emu.GetUsr(), trop_name);
 			const std::string vfs_path = vfs::get(trophy_path + "/");
 
 			if (vfs_path.empty())

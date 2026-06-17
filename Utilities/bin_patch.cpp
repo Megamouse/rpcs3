@@ -159,7 +159,7 @@ static void append_log_message(std::stringstream* log_messages, std::string_view
 	}
 };
 
-bool patch_engine::load(patch_map& patches_map, const std::string& path, std::string content, bool importing, std::stringstream* log_messages)
+bool patch_engine::load(patch_map& patches_map, std::string_view path, std::string content, bool importing, std::stringstream* log_messages)
 {
 	if (content.empty())
 	{
@@ -1246,7 +1246,7 @@ static usz apply_modification(std::vector<u32>& applied, patch_engine::patch_inf
 		}
 		case patch_type::jump_func:
 		{
-			const std::string& str = p.original_value;
+			const std::string_view str = p.original_value;
 
 			const u32 out_branch = vm::try_get_addr(relocate_instructions_at ? vm::get_super_ptr<u8>(offset & -4) : mem_translate(offset & -4, 4)).first;
 			const usz sep_pos = str.find_first_of(':');
@@ -1259,7 +1259,7 @@ static usz apply_modification(std::vector<u32>& applied, patch_engine::patch_inf
 				continue;
 			}
 
-			const std::string_view func_name{std::string_view(str).substr(sep_pos + 1)};
+			const std::string_view func_name = str.substr(sep_pos + 1);
 			u32 id = 0;
 
 			if (func_name.starts_with("0x"sv))
@@ -1285,7 +1285,7 @@ static usz apply_modification(std::vector<u32>& applied, patch_engine::patch_inf
 
 			// Allow only if points to a PPU executable instruction
 			// FNID/OPD-address is placed at target
-			if (!ppu_form_branch_to_code(out_branch, id, true, true, std::string{str.data(), sep_pos != umax ? sep_pos : 0}))
+			if (!ppu_form_branch_to_code(out_branch, id, true, true, str.substr(0, sep_pos != umax ? sep_pos : 0)))
 			{
 				continue;
 			}
@@ -1801,7 +1801,7 @@ static void append_patches(patch_engine::patch_map& existing_patches, const patc
 	}
 }
 
-bool patch_engine::save_patches(const patch_map& patches, const std::string& path, std::stringstream* log_messages)
+bool patch_engine::save_patches(const patch_map& patches, std::string_view path, std::stringstream* log_messages)
 {
 	fs::file file(path, fs::rewrite);
 	if (!file)
@@ -1923,7 +1923,7 @@ bool patch_engine::save_patches(const patch_map& patches, const std::string& pat
 	return true;
 }
 
-bool patch_engine::import_patches(const patch_engine::patch_map& patches, const std::string& path, usz& count, usz& total, std::stringstream* log_messages)
+bool patch_engine::import_patches(const patch_engine::patch_map& patches, std::string_view path, usz& count, usz& total, std::stringstream* log_messages)
 {
 	patch_map existing_patches;
 

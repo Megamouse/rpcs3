@@ -19,7 +19,7 @@ class spu_cache
 public:
 	spu_cache() = default;
 
-	spu_cache(const std::string& loc);
+	spu_cache(std::string_view loc);
 
 	spu_cache(spu_cache&&) noexcept = default;
 

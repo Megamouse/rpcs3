@@ -718,7 +718,7 @@ bool VerifyEDATHeaderWithKLicense(const fs::file& input, std::string_view input_
 }
 
 // Decrypts full file
-fs::file DecryptEDAT(const fs::file& input, const std::string& input_file_name, int mode, u8 *custom_klic)
+fs::file DecryptEDAT(const fs::file& input, std::string_view input_file_name, int mode, u8 *custom_klic)
 {
 	if (!input)
 	{

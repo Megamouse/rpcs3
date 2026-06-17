@@ -74,16 +74,16 @@ namespace rpcs3::utils
 	std::set<std::string> get_dir_list(const std::string& base_dir, const std::string& serial);
 	std::set<std::string> get_file_list(const std::string& base_dir, const std::string& serial);
 
-	std::string get_rap_file_path(const std::string_view& rap);
-	bool verify_c00_unlock_edat(const std::string_view& content_id, bool fast = false);
-	std::string get_sfo_dir_from_game_path(const std::string& game_path, const std::string& title_id = "");
+	std::string get_rap_file_path(std::string_view rap);
+	bool verify_c00_unlock_edat(std::string_view content_id, bool fast = false);
+	std::string get_sfo_dir_from_game_path(const std::string& game_path, std::string_view title_id = "");
 
 	std::string get_custom_config_dir();
-	std::string get_custom_config_path(const std::string& identifier);
+	std::string get_custom_config_path(std::string_view identifier);
 
 	std::string get_input_config_root();
-	std::string get_input_config_dir(const std::string& title_id = "");
-	std::string get_custom_input_config_path(const std::string& title_id);
+	std::string get_input_config_dir(std::string_view title_id = "");
+	std::string get_custom_input_config_path(std::string_view title_id);
 
 	std::string get_game_content_path(game_content_type type);
 

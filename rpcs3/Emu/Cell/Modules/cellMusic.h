@@ -165,8 +165,8 @@ struct music_selection_context
 	std::string to_string() const;
 	std::string get_yaml_path() const;
 
-	void set_playlist(const std::string& path);
-	void create_playlist(const std::string& new_hash);
+	void set_playlist(std::string_view path);
+	void create_playlist(std::string_view new_hash);
 	bool load_playlist();
 	void set_track(std::string_view track);
 	u32 step_track(bool next);

@@ -332,7 +332,7 @@ class package_reader
 	};
 
 public:
-	package_reader(const std::string& path, fs::file file = {});
+	package_reader(std::string_view path, fs::file file = {});
 	~package_reader();
 
 	enum result

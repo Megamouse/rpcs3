@@ -59,7 +59,7 @@ namespace gui::utils
 		m_entries_to_remove.push_back(std::move(entry));
 	}
 
-	bool steam_shortcut::parse_file(const std::string& path)
+	bool steam_shortcut::parse_file(std::string_view path)
 	{
 		m_vdf_entries.clear();
 
@@ -428,7 +428,7 @@ namespace gui::utils
 			std::string banner_small_path;
 			std::string banner_large_path;
 
-			const auto file_exists = [&entry](const std::string& path)
+			const auto file_exists = [&entry](std::string_view path)
 			{
 				return entry.iso ? entry.iso->is_file(path) : fs::is_file(path);
 			};
@@ -558,12 +558,12 @@ namespace gui::utils
 		return s;
 	}
 
-	std::string steam_shortcut::fix_slashes(const std::string& s)
+	std::string steam_shortcut::fix_slashes(std::string_view s)
 	{
 #ifdef _WIN32
 		return fmt::replace_all(s, "/", "\\");
 #else
-		return s;
+		return std::string(s);
 #endif
 	}
 
@@ -671,14 +671,14 @@ namespace gui::utils
 		return str;
 	}
 
-	void steam_shortcut::update_steam_input_config(const std::string& user_dir)
+	void steam_shortcut::update_steam_input_config(std::string_view user_dir)
 	{
 		if (m_entries_to_add.empty() && m_entries_to_remove.empty())
 		{
 			return;
 		}
 
-		const std::string vdf_path = user_dir + "localconfig.vdf";
+		const std::string vdf_path = fmt::format("%slocalconfig.vdf", user_dir);
 		const std::string backup_path = fs::get_config_dir() + "/localconfig.vdf.backup";
 
 		if (fs::is_file(vdf_path) && !fs::copy_file(vdf_path, backup_path, true))

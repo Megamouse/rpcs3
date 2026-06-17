@@ -26,8 +26,8 @@ namespace cfg
 		}
 	}
 
-	_base::_base(type _type, node* owner, std::string name, bool dynamic)
-		: m_type(_type), m_parent(owner), m_dynamic(dynamic), m_name(std::move(name)), m_id(id_counter++)
+	_base::_base(type _type, node* owner, std::string_view name, bool dynamic)
+		: m_type(_type), m_parent(owner), m_dynamic(dynamic), m_name(name), m_id(id_counter++)
 	{
 		for (const auto& node : owner->m_nodes)
 		{
@@ -722,9 +722,9 @@ std::string cfg::map_entry::get_value(std::string_view key)
 	return {};
 }
 
-void cfg::map_entry::set_value(std::string key, std::string value)
+void cfg::map_entry::set_value(std::string_view key, std::string_view value)
 {
-	m_map[std::move(key)] = std::move(value);
+	m_map[std::string(key)] = std::string(value);
 }
 
 void cfg::map_entry::set_map(map_of_type<std::string>&& map)

@@ -23,7 +23,7 @@ namespace rsx
 		struct trophy_list_dialog : public user_interface
 		{
 		private:
-			std::unique_ptr<trophy_data> load_trophies(const std::string& trop_name) const;
+			std::unique_ptr<trophy_data> load_trophies(std::string_view trop_name) const;
 			void reload();
 
 			std::unique_ptr<overlay_element> m_dim_background;
@@ -46,7 +46,7 @@ namespace rsx
 
 			compiled_resource get_compiled() override;
 
-			void show(const std::string& trop_name);
+			void show(std::string_view trop_name);
 		};
 	}
 }

@@ -6,7 +6,7 @@
 #include "Emu/RSX/GL/GLFragmentProgram.h"
 #endif
 
-CgBinaryDisasm::CgBinaryDisasm(const std::string& path)
+CgBinaryDisasm::CgBinaryDisasm(std::string_view path)
 	: m_path(path)
 {
 	fs::file f(path);
@@ -18,7 +18,7 @@ CgBinaryDisasm::CgBinaryDisasm(const std::string& path)
 	usz buffer_size = f.size();
 	m_buffer.resize(buffer_size);
 	f.read(m_buffer, buffer_size);
-	fmt::append(m_arb_shader, "Loading... [%s]\n", path.c_str());
+	fmt::append(m_arb_shader, "Loading... [%s]\n", path);
 }
 
 std::string CgBinaryDisasm::GetCgParamType(u32 type)

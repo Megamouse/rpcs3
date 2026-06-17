@@ -765,7 +765,7 @@ namespace rsx
 		ar(stereo_enabled, format, aspect, resolution_id, scanline_pitch, gamma, resolution_x, resolution_y, state, scan_mode);
 	}
 
-	void thread::capture_frame(const std::string& name) const
+	void thread::capture_frame(std::string_view name) const
 	{
 		frame_trace_data::draw_state draw_state{};
 

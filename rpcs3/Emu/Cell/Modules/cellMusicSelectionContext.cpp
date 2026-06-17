@@ -83,7 +83,7 @@ std::string music_selection_context::get_yaml_path() const
 	return path + hash + ".yml";
 }
 
-void music_selection_context::set_playlist(const std::string& path)
+void music_selection_context::set_playlist(std::string_view path)
 {
 	playlist.clear();
 
@@ -101,7 +101,7 @@ void music_selection_context::set_playlist(const std::string& path)
 				continue;
 			}
 
-			std::string track = dir_path + std::string(path + "/" + dir_entry.name).substr(vfs_dir_path.length());
+			std::string track = dir_path + fmt::format("%s/%s", path, dir_entry.name).substr(vfs_dir_path.length());
 			cellMusicSelectionContext.notice("set_playlist: Adding track to playlist: '%s'. (path: '%s', name: '%s')", track, path, dir_entry.name);
 			playlist.push_back(std::move(track));
 		}
@@ -110,7 +110,7 @@ void music_selection_context::set_playlist(const std::string& path)
 	{
 		content_type = CELL_SEARCH_CONTENTTYPE_MUSIC;
 
-		std::string track = dir_path + path.substr(vfs_dir_path.length());
+		std::string track = dir_path + std::string(path.substr(vfs_dir_path.length()));
 		cellMusicSelectionContext.notice("set_playlist: Adding track to playlist: '%s'. (path: '%s')", track, path);
 		playlist.push_back(std::move(track));
 	}
@@ -118,7 +118,7 @@ void music_selection_context::set_playlist(const std::string& path)
 	valid = true;
 }
 
-void music_selection_context::create_playlist(const std::string& new_hash)
+void music_selection_context::create_playlist(std::string_view new_hash)
 {
 	hash = new_hash;
 

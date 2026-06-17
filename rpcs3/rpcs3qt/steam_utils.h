@@ -101,9 +101,9 @@ namespace gui::utils
 			std::expected<std::string, std::string> build_binary_blob(usz index) const;
 		};
 
-		bool parse_file(const std::string& path);
+		bool parse_file(std::string_view path);
 
-		void update_steam_input_config(const std::string& user_dir);
+		void update_steam_input_config(std::string_view user_dir);
 
 		static u32 crc32(std::string_view data);
 		static u32 steam_appid(const std::string& exe, const std::string& name);
@@ -111,7 +111,7 @@ namespace gui::utils
 		static void append(std::string& s, const std::string& val);
 
 		static std::string quote(const std::string& s, bool force);
-		static std::string fix_slashes(const std::string& s);
+		static std::string fix_slashes(std::string_view s);
 		static std::string kv_string(const std::string& key, const std::string& value);
 		static std::string kv_int(const std::string& key, u32 value);
 		static std::string steamid64_to_32(std::string_view steam_id);

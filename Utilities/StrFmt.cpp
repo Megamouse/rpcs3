@@ -868,7 +868,7 @@ std::vector<std::string_view> fmt::split_sv(std::string_view source, std::initia
 	return result;
 }
 
-std::string fmt::trim(const std::string& source, std::string_view values)
+std::string fmt::trim(std::string_view source, std::string_view values)
 {
 	const usz begin = source.find_first_not_of(values);
 
@@ -878,9 +878,9 @@ std::string fmt::trim(const std::string& source, std::string_view values)
 	const usz end = source.find_last_not_of(values);
 
 	if (end == source.npos)
-		return source.substr(begin);
+		return std::string(source.substr(begin));
 
-	return source.substr(begin, end + 1 - begin);
+	return std::string(source.substr(begin, end + 1 - begin));
 }
 
 std::string_view fmt::trim_sv(std::string_view source, std::string_view values)
@@ -898,14 +898,14 @@ std::string_view fmt::trim_sv(std::string_view source, std::string_view values)
 	return source.substr(begin, end + 1 - begin);
 }
 
-std::string fmt::trim_front(const std::string& source, std::string_view values)
+std::string fmt::trim_front(std::string_view source, std::string_view values)
 {
 	const usz begin = source.find_first_not_of(values);
 
 	if (begin == source.npos)
 		return {};
 
-	return source.substr(begin);
+	return std::string(source.substr(begin));
 }
 
 std::string_view fmt::trim_front_sv(std::string_view source, std::string_view values)
@@ -962,11 +962,11 @@ std::string fmt::truncate(std::string_view src, usz length)
 	return std::string(src.begin(), src.begin() + std::min(src.size(), length));
 }
 
-std::string get_file_extension(const std::string& file_path)
+std::string get_file_extension(std::string_view file_path)
 {
 	if (usz dotpos = file_path.find_last_of('.'); dotpos != std::string::npos && dotpos + 1 < file_path.size())
 	{
-		return file_path.substr(dotpos + 1);
+		return std::string(file_path.substr(dotpos + 1));
 	}
 
 	return {};

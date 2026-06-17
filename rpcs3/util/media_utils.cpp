@@ -769,7 +769,7 @@ namespace utils
 		stop();
 	}
 
-	std::string video_encoder::path() const
+	const std::string& video_encoder::path() const
 	{
 		return m_path;
 	}
@@ -779,9 +779,9 @@ namespace utils
 		return m_last_video_pts;
 	}
 
-	void video_encoder::set_path(const std::string& path)
+	void video_encoder::set_path(std::string_view path)
 	{
-		m_path = path;
+		m_path = std::string(path);
 	}
 
 	void video_encoder::set_framerate(u32 framerate)

@@ -275,7 +275,7 @@ class microphone_device
 public:
 	microphone_device(microphone_handler type = microphone_handler::null);
 
-	void add_device(const std::string& name);
+	void add_device(std::string_view name);
 
 	void set_registered(bool registered) { mic_registered = registered; };
 
@@ -329,7 +329,7 @@ private:
 
 #ifndef WITHOUT_OPENAL
 	void enumerate_devices();
-	ALCdevice* open_device(const std::string& name, u32 samplingrate, ALCenum num_al_channels, u32 buf_size);
+	ALCdevice* open_device(std::string_view name, u32 samplingrate, ALCenum num_al_channels, u32 buf_size);
 #endif
 
 	u32 capture_audio();
@@ -383,7 +383,7 @@ public:
 	void wake_up();
 
 	// Returns index of registered device
-	u32 register_device(const std::string& device_name);
+	u32 register_device(std::string_view device_name);
 	void unregister_device(u32 dev_num);
 	bool check_device(u32 dev_num);
 

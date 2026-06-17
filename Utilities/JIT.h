@@ -541,10 +541,10 @@ public:
 	}
 
 	// Add module (path to obj cache dir)
-	void add(std::unique_ptr<llvm::Module> _module, const std::string& path);
+	void add(std::unique_ptr<llvm::Module> _module, std::string_view path);
 
 	// Returns false after LLVM fatal recovery. The compiler must be discarded.
-	bool try_add(std::unique_ptr<llvm::Module> _module, const std::string& path, std::string& error);
+	bool try_add(std::unique_ptr<llvm::Module> _module, std::string_view path, std::string& error);
 
 	// Add module (not cached)
 	void add(std::unique_ptr<llvm::Module> _module);
@@ -553,13 +553,13 @@ public:
 	bool try_add(std::unique_ptr<llvm::Module> _module, std::string& error);
 
 	// Add object (path to obj file)
-	bool add(const std::string& path);
+	bool add(std::string_view path);
 
 	// Update global mapping for a single value
-	void update_global_mapping(const std::string& name, u64 addr);
+	void update_global_mapping(std::string_view name, u64 addr);
 
 	// Check object file
-	static bool check(const std::string& path);
+	static bool check(std::string_view path);
 
 	// Finalize
 	void fin();

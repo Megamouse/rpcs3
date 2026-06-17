@@ -71,7 +71,7 @@ usz decrypt_binaries_t::decrypt(std::string_view klic_input)
 	while (m_index < m_modules.size())
 	{
 		const std::string& _module = m_modules[m_index];
-		const std::string old_path = _module;
+		const std::string& old_path = _module;
 
 		fs::file elf_file;
 		fs::file internal_file;

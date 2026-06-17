@@ -67,7 +67,7 @@ namespace cfg
 		_base(type _type);
 
 		// Owned entry constructor
-		_base(type _type, class node* owner, std::string name, bool dynamic);
+		_base(type _type, class node* owner, std::string_view name, bool dynamic);
 
 	public:
 		_base(const _base&) = delete;
@@ -248,7 +248,7 @@ namespace cfg
 	public:
 		T def;
 
-		_enum(node* owner, const std::string& name, T def = {}, bool dynamic = false)
+		_enum(node* owner, std::string_view name, T def = {}, bool dynamic = false)
 			: _base(type::_enum, owner, name, dynamic)
 			, m_value(def)
 			, original_def(def)
@@ -344,7 +344,7 @@ namespace cfg
 		static constexpr s64 max = Max;
 		static constexpr s64 min = Min;
 
-		_int(node* owner, const std::string& name, int_type def = std::min<int_type>(Max, std::max<int_type>(Min, 0)), bool dynamic = false)
+		_int(node* owner, std::string_view name, int_type def = std::min<int_type>(Max, std::max<int_type>(Min, 0)), bool dynamic = false)
 			: _base(type::_int, owner, name, dynamic)
 			, m_value(def)
 			, original_def(def)
@@ -423,7 +423,7 @@ namespace cfg
 		static constexpr float_type max = Max;
 		static constexpr float_type min = Min;
 
-		_float(node* owner, const std::string& name, float_type def = std::min<float_type>(Max, std::max<float_type>(Min, 0)), bool dynamic = false)
+		_float(node* owner, std::string_view name, float_type def = std::min<float_type>(Max, std::max<float_type>(Min, 0)), bool dynamic = false)
 			: _base(type::_int, owner, name, dynamic)
 			, m_value(def)
 			, original_def(def)
@@ -522,7 +522,7 @@ namespace cfg
 		static constexpr u64 max = Max;
 		static constexpr u64 min = Min;
 
-		uint(node* owner, const std::string& name, int_type def = std::max<int_type>(Min, 0), bool dynamic = false)
+		uint(node* owner, std::string_view name, int_type def = std::max<int_type>(Min, 0), bool dynamic = false)
 			: _base(type::uint, owner, name, dynamic)
 			, m_value(def)
 			, original_def(def)
@@ -601,7 +601,7 @@ namespace cfg
 	public:
 		int_type def;
 
-		uint128(node* owner, const std::string& name, int_type def = 0, bool dynamic = false)
+		uint128(node* owner, std::string_view name, int_type def = 0, bool dynamic = false)
 			: _base(type::uint128, owner, name, dynamic)
 			, m_value(def)
 			, original_def(def)
@@ -731,7 +731,7 @@ namespace cfg
 
 	public:
 		// Default value is empty list in current implementation
-		set_entry(node* owner, const std::string& name)
+		set_entry(node* owner, std::string_view name)
 			: _base(type::set, owner, name, false)
 		{
 		}
@@ -776,7 +776,7 @@ namespace cfg
 		map_of_type<std::string> m_map{};
 
 	public:
-		map_entry(node* owner, const std::string& name, type _type = type::map)
+		map_entry(node* owner, std::string_view name, type _type = type::map)
 			: _base(_type, owner, name, true)
 		{
 		}
@@ -788,7 +788,7 @@ namespace cfg
 
 		std::string get_value(std::string_view key);
 
-		void set_value(std::string key, std::string value);
+		void set_value(std::string_view key, std::string_view value);
 		void set_map(map_of_type<std::string>&& map);
 
 		void erase(std::string_view key);
@@ -803,7 +803,7 @@ namespace cfg
 	class node_map_entry final : public map_entry
 	{
 	public:
-		node_map_entry(node* owner, const std::string& name)
+		node_map_entry(node* owner, std::string_view name)
 			: map_entry(owner, name, type::node_map)
 		{
 		}
@@ -814,7 +814,7 @@ namespace cfg
 		map_of_type<logs::level> m_map{};
 
 	public:
-		log_entry(node* owner, const std::string& name)
+		log_entry(node* owner, std::string_view name)
 			: _base(type::log, owner, name, true)
 		{
 		}
@@ -848,7 +848,7 @@ namespace cfg
 		map_of_type<device_info> m_default{};
 
 	public:
-		device_entry(node* owner, const std::string& name, map_of_type<device_info> def = {})
+		device_entry(node* owner, std::string_view name, map_of_type<device_info> def = {})
 			: _base(type::device, owner, name, true)
 			, m_map(std::move(def))
 		{

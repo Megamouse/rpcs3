@@ -378,7 +378,7 @@ namespace rpcs3::utils
 		return file_list;
 	}
 
-	std::string get_rap_file_path(const std::string_view& rap)
+	std::string get_rap_file_path(std::string_view rap)
 	{
 		const std::string home_dir = get_hdd0_dir() + "home";
 
@@ -400,7 +400,7 @@ namespace rpcs3::utils
 		return rap_path;
 	}
 
-	std::string get_c00_unlock_edat_path(const std::string_view& content_id)
+	std::string get_c00_unlock_edat_path(std::string_view content_id)
 	{
 		const std::string home_dir = get_hdd0_dir() + "home";
 
@@ -422,7 +422,7 @@ namespace rpcs3::utils
 		return edat_path;
 	}
 
-	bool verify_c00_unlock_edat(const std::string_view& content_id, bool fast)
+	bool verify_c00_unlock_edat(std::string_view content_id, bool fast)
 	{
 		const std::string edat_path = rpcs3::utils::get_c00_unlock_edat_path(content_id);
 
@@ -486,7 +486,7 @@ namespace rpcs3::utils
 		return true;
 	}
 
-	std::string get_sfo_dir_from_game_path(const std::string& game_path, const std::string& title_id)
+	std::string get_sfo_dir_from_game_path(const std::string& game_path, std::string_view title_id)
 	{
 		if (fs::is_file(game_path + "/PS3_DISC.SFB"))
 		{
@@ -543,14 +543,14 @@ namespace rpcs3::utils
 		return fs::get_config_dir(true) + "custom_configs/";
 	}
 
-	std::string get_custom_config_path(const std::string& identifier)
+	std::string get_custom_config_path(std::string_view identifier)
 	{
 		if (identifier.empty())
 		{
 			return {};
 		}
 
-		return get_custom_config_dir() + "config_" + identifier + ".yml";
+		return fmt::format("%sconfig_%s.yml", get_custom_config_dir(), identifier);
 	}
 
 	std::string get_input_config_root()
@@ -558,12 +558,12 @@ namespace rpcs3::utils
 		return fs::get_config_dir(true) + "input_configs/";
 	}
 
-	std::string get_input_config_dir(const std::string& title_id)
+	std::string get_input_config_dir(std::string_view title_id)
 	{
-		return get_input_config_root() + (title_id.empty() ? "global" : title_id) + "/";
+		return fmt::format("%s%s/", get_input_config_root(), title_id.empty() ? "global"sv : title_id);
 	}
 
-	std::string get_custom_input_config_path(const std::string& title_id)
+	std::string get_custom_input_config_path(std::string_view title_id)
 	{
 		if (title_id.empty()) return "";
 		return get_input_config_dir(title_id) + g_cfg_input_configs.default_config + ".yml";

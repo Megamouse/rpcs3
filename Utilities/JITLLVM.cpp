@@ -439,11 +439,11 @@ struct MemoryManager2 : llvm::RTDyldMemoryManager
 // Helper class
 class ObjectCache final : public llvm::ObjectCache
 {
-	const std::string& m_path;
+	std::string_view m_path;
 	const std::add_pointer_t<jit_compiler> m_compiler = nullptr;
 
 public:
-	ObjectCache(const std::string& path, jit_compiler* compiler = nullptr)
+	ObjectCache(std::string_view path, jit_compiler* compiler = nullptr)
 		: m_path(path)
 		, m_compiler(compiler)
 	{
@@ -453,7 +453,7 @@ public:
 
 	void notifyObjectCompiled(const llvm::Module* _module, llvm::MemoryBufferRef obj) override
 	{
-		std::string name = m_path;
+		std::string name(m_path);
 
 		name.append(_module->getName());
 		//fs::file(name, fs::rewrite).write(obj.getBufferStart(), obj.getBufferSize());
@@ -497,9 +497,9 @@ public:
 		module_file.commit();
 	}
 
-	static std::unique_ptr<llvm::MemoryBuffer> load(const std::string& path)
+	static std::unique_ptr<llvm::MemoryBuffer> load(std::string_view path)
 	{
-		if (fs::file cached{path + ".gz", fs::read})
+		if (fs::file cached{fmt::format("%s.gz", path), fs::read})
 		{
 			const std::vector<u8> cached_data = cached.to_vector<u8>();
 
@@ -538,7 +538,7 @@ public:
 
 	std::unique_ptr<llvm::MemoryBuffer> getObject(const llvm::Module* _module) override
 	{
-		std::string path = m_path;
+		std::string path(m_path);
 		path.append(_module->getName().data());
 
 		if (auto buf = load(path))
@@ -829,7 +829,7 @@ jit_compiler::~jit_compiler() noexcept
 {
 }
 
-void jit_compiler::add(std::unique_ptr<llvm::Module> _module, const std::string& path)
+void jit_compiler::add(std::unique_ptr<llvm::Module> _module, std::string_view path)
 {
 	ObjectCache cache{path, this};
 	m_engine->setObjectCache(&cache);
@@ -846,7 +846,7 @@ void jit_compiler::add(std::unique_ptr<llvm::Module> _module, const std::string&
 	}
 }
 
-bool jit_compiler::try_add(std::unique_ptr<llvm::Module> _module, const std::string& path, std::string& error)
+bool jit_compiler::try_add(std::unique_ptr<llvm::Module> _module, std::string_view path, std::string& error)
 {
 	ObjectCache cache{path, this};
 	m_engine->setObjectCache(&cache);
@@ -908,7 +908,7 @@ bool jit_compiler::try_add(std::unique_ptr<llvm::Module> _module, std::string& e
 	return true;
 }
 
-bool jit_compiler::add(const std::string& path)
+bool jit_compiler::add(std::string_view path)
 {
 	auto cache = ObjectCache::load(path);
 
@@ -931,7 +931,7 @@ bool jit_compiler::add(const std::string& path)
 	}
 }
 
-bool jit_compiler::check(const std::string& path)
+bool jit_compiler::check(std::string_view path)
 {
 	if (auto cache = ObjectCache::load(path))
 	{
@@ -949,7 +949,7 @@ bool jit_compiler::check(const std::string& path)
 	return false;
 }
 
-void jit_compiler::update_global_mapping(const std::string& name, u64 addr)
+void jit_compiler::update_global_mapping(std::string_view name, u64 addr)
 {
 	m_engine->updateGlobalMapping(name, addr);
 }

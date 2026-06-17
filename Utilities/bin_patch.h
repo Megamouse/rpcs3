@@ -179,7 +179,7 @@ public:
 	static std::string get_imported_patch_path();
 
 	// Load from file and append to specified patches map
-	static bool load(patch_map& patches, const std::string& path, std::string content = "", bool importing = false, std::stringstream* log_messages = nullptr);
+	static bool load(patch_map& patches, std::string_view path, std::string content = "", bool importing = false, std::stringstream* log_messages = nullptr);
 
 	// Read and add a patch node to the patch info
 	static bool read_patch_node(patch_info& info, YAML::Node node, const YAML::Node& root, std::string_view path, std::stringstream* log_messages = nullptr);
@@ -197,10 +197,10 @@ public:
 	static void save_config(const patch_map& patches_map);
 
 	// Save a patch file
-	static bool save_patches(const patch_map& patches, const std::string& path, std::stringstream* log_messages = nullptr);
+	static bool save_patches(const patch_map& patches, std::string_view path, std::stringstream* log_messages = nullptr);
 
 	// Create or append patches to a file
-	static bool import_patches(const patch_map& patches, const std::string& path, usz& count, usz& total, std::stringstream* log_messages = nullptr);
+	static bool import_patches(const patch_map& patches, std::string_view path, usz& count, usz& total, std::stringstream* log_messages = nullptr);
 
 	// Remove a patch from a file
 	static bool remove_patch(const patch_info& info);
