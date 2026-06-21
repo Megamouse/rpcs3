@@ -1157,46 +1157,53 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 
 		const auto delete_save = [&]()
 		{
-			const SaveDataEntry& entry = ::at32(save_entries, selected);
-			strcpy_trunc(doneGet->dirName, entry.dirName);
 			doneGet->hddFreeSizeKB = 40 * 1024 * 1024 - 256; // Read explanation in cellHddGameCheck
-			doneGet->excResult     = CELL_OK;
+			doneGet->excResult     = CELL_SAVEDATA_ERROR_NODATA;
 			std::memset(doneGet->reserved, 0, sizeof(doneGet->reserved));
 
-			const std::string old_path = base_dir + ".backup_" + entry.escaped + "/";
-			const std::string del_path = base_dir + entry.escaped + "/";
-
-			const fs::dir _dir(del_path);
 			u64 size_bytes = 0;
 
-			for (auto&& file : _dir)
+			if (selected > 0)
 			{
-				if (!file.is_directory)
+				const SaveDataEntry& entry = ::at32(save_entries, selected);
+				strcpy_trunc(doneGet->dirName, entry.dirName);
+
+				std::string del_path = base_dir + entry.escaped + "/";
+
+				if (const fs::dir _dir{del_path})
 				{
-					size_bytes += utils::align(file.size, 1024);
+					for (auto&& file : _dir)
+					{
+						if (!file.is_directory)
+						{
+							size_bytes += utils::align(file.size, 1024);
+						}
+					}
+
+					const std::string old_path = base_dir + ".backup_" + entry.escaped + "/";
+
+					// Remove old backup
+					fs::remove_all(old_path);
+
+					// Remove savedata by renaming
+					if (!vfs::host::rename(del_path, old_path, &g_mp_sys_dev_hdd0, false))
+					{
+						fmt::throw_exception("Failed to move directory %s (%s)", del_path, fs::g_tls_error);
+					}
+
+					// Cleanup
+					fs::remove_all(old_path);
+
+					doneGet->excResult = CELL_OK;
 				}
-			}
-
-			doneGet->sizeKB = ::narrow<s32>(size_bytes / 1024);
-
-			if (_dir)
-			{
-				// Remove old backup
-				fs::remove_all(old_path);
-
-				// Remove savedata by renaming
-				if (!vfs::host::rename(del_path, old_path, &g_mp_sys_dev_hdd0, false))
-				{
-					fmt::throw_exception("Failed to move directory %s (%s)", del_path, fs::g_tls_error);
-				}
-
-				// Cleanup
-				fs::remove_all(old_path);
 			}
 			else
 			{
-				doneGet->excResult = CELL_SAVEDATA_ERROR_NODATA;
+				std::memset(doneGet->dirName, 0, sizeof(doneGet->dirName));
+				cellSaveData.error("cellSaveData: trying to delete entry without selection. operation=%d, selected=%d", operation, selected);
 			}
+
+			doneGet->sizeKB = ::narrow<s32>(size_bytes / 1024);
 
 			std::memset(result.get_ptr(), 0, ::offset32(&CellSaveDataCBResult::userdata));
 
