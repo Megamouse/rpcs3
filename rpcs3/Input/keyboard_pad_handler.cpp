@@ -478,12 +478,8 @@ void keyboard_pad_handler::processKeyEvent(QKeyEvent* event, bool pressed)
 		return;
 	}
 
-	const auto handle_key = [this, pressed, event]()
+	if (QStringList list = GetKeyNames(event); !list.isEmpty())
 	{
-		QStringList list = GetKeyNames(event);
-		if (list.isEmpty())
-			return;
-
 		const bool is_num_key = list.removeAll("Num") > 0;
 		const QString name = QString::fromStdString(GetKeyName(event, true));
 
@@ -500,9 +496,8 @@ void keyboard_pad_handler::processKeyEvent(QKeyEvent* event, bool pressed)
 				continue;
 			Key(GetKeyCode(keyname), pressed);
 		}
-	};
+	}
 
-	handle_key();
 	event->ignore();
 }
 
