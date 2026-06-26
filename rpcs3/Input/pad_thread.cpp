@@ -6,6 +6,7 @@
 #include "dualsense_pad_handler.h"
 #include "skateboard_pad_handler.h"
 #include "ps_move_handler.h"
+#include "openxr_handler.h"
 #ifdef _WIN32
 #include "xinput_pad_handler.h"
 #include "mm_joystick_handler.h"
@@ -475,6 +476,7 @@ void pad_thread::operator()()
 			switch (type)
 			{
 			case pad_handler::null:
+			case pad_handler::openxr:
 				break;
 			case pad_handler::ds3:
 			case pad_handler::ds4:
@@ -872,6 +874,8 @@ std::shared_ptr<PadHandlerBase> pad_thread::GetHandler(pad_handler type)
 		return std::make_shared<skateboard_pad_handler>();
 	case pad_handler::move:
 		return std::make_shared<ps_move_handler>();
+	case pad_handler::openxr:
+		return std::make_shared<openxr_handler>();
 #ifdef _WIN32
 	case pad_handler::xinput:
 		return std::make_shared<xinput_pad_handler>();

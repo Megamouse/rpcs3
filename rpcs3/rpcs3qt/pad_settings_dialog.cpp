@@ -1580,6 +1580,7 @@ void pad_settings_dialog::ChangeHandler()
 	case pad_handler::keyboard: m_description = tooltips.gamepad_settings.keyboard; break;
 	case pad_handler::skateboard: m_description = tooltips.gamepad_settings.skateboard; break;
 	case pad_handler::move: m_description = tooltips.gamepad_settings.move; break;
+	case pad_handler::openxr: m_description = tooltips.gamepad_settings.openxr; break;
 #ifdef _WIN32
 	case pad_handler::xinput: m_description = tooltips.gamepad_settings.xinput; break;
 	case pad_handler::mm: m_description = tooltips.gamepad_settings.mmjoy; break;
@@ -1644,6 +1645,7 @@ void pad_settings_dialog::ChangeHandler()
 	case pad_handler::dualsense:
 	case pad_handler::skateboard:
 	case pad_handler::move:
+	case pad_handler::openxr:
 	{
 		const QString name_string = QString::fromStdString(m_handler->name_string());
 		for (usz i = 1; i <= m_handler->max_devices(); i++) // Controllers 1-n in GUI
@@ -2282,6 +2284,7 @@ QString pad_settings_dialog::GetLocalizedPadHandler(const QString& original, pad
 		case pad_handler::dualsense: return tr("DualSense");
 		case pad_handler::skateboard: return tr("Skateboard");
 		case pad_handler::move: return tr("PS Move");
+		case pad_handler::openxr: return tr("OpenXR");
 #ifdef _WIN32
 		case pad_handler::xinput: return tr("XInput");
 		case pad_handler::mm: return tr("MMJoystick");
@@ -2307,6 +2310,7 @@ QString pad_settings_dialog::GetLocalizedPadName(pad_handler handler, const QStr
 		case pad_handler::dualsense: return tr("DualSense Pad #%0").arg(index);
 		case pad_handler::skateboard: return tr("Skateboard #%0").arg(index);
 		case pad_handler::move: return tr("PS Move #%0").arg(index);
+		case pad_handler::openxr: return tr("OpenXR #%0").arg(index);
 #ifdef _WIN32
 		case pad_handler::xinput: return tr("XInput Pad #%0").arg(index);
 		case pad_handler::mm: return tr("Joystick #%0").arg(index);
