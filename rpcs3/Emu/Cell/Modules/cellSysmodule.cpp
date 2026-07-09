@@ -408,9 +408,8 @@ static error_code load_module(ppu_thread& ppu, u8 module_idx, u32 args, vm::ptr<
 {
 	cellSysmodule.notice("load_module(module_idx=%d, args=%d, argp=*0x%x)", module_idx, args, argp);
 
-	ensure(module_idx < MODULE_INFOS.size());
-	auto& [loaded_count, prx_id] = s_sysmodule_context->module_states[module_idx];
-	const auto& [path, dependencies] = MODULE_INFOS[module_idx];
+	auto& [loaded_count, prx_id] = ::at32(s_sysmodule_context->module_states, module_idx);
+	const auto& [path, dependencies] = ::at32(MODULE_INFOS, module_idx);
 
 	cellSysmodule.notice("load_module(): path=\"%s\", loaded_count=%d, prx_id=%d", path, loaded_count, prx_id);
 
@@ -462,9 +461,8 @@ static error_code unload_module(ppu_thread& ppu, u8 module_idx)
 {
 	cellSysmodule.notice("unload_module(module_idx=%d)", module_idx);
 
-	ensure(module_idx < MODULE_INFOS.size());
-	auto& [loaded_count, prx_id] = s_sysmodule_context->module_states[module_idx];
-	const std::string_view& path = MODULE_INFOS[module_idx].path;
+	auto& [loaded_count, prx_id] = ::at32(s_sysmodule_context->module_states, module_idx);
+	const std::string_view& path = ::at32(MODULE_INFOS, module_idx).path;
 
 	cellSysmodule.notice("unload_module(): path=\"%s\", loaded_count=%d, prx_id=%d", path, loaded_count, prx_id);
 
@@ -657,7 +655,8 @@ extern error_code sysmoduleModuleStart(ppu_thread& ppu, u32 args, vm::ptr<void> 
 			{
 				const u8 module_idx = module_id >= INTERNAL_MODULE_ID_BASE ? INTERNAL_MODULES_OFFSET + (module_id & INTERNAL_MODULE_ID_MASK) : module_id;
 
-				s_sysmodule_context->module_states[module_idx].prx_id = static_cast<s32>(prx_ix);
+				module_state& state = ::at32(s_sysmodule_context->module_states, module_idx);
+				state.prx_id = static_cast<s32>(prx_ix);
 
 				if (ppu_execute<&sys_prx_start_module>(ppu, +prx_ix, 0, vm::null, +vm::make_var(0), 0, vm::null) != CELL_OK)
 				{
@@ -665,7 +664,7 @@ extern error_code sysmoduleModuleStart(ppu_thread& ppu, u32 args, vm::ptr<void> 
 					return 1;// SYS_PRX_NO_RESIDENT
 				}
 
-				s_sysmodule_context->module_states[module_idx].loaded_count++;
+				state.loaded_count++;
 			}
 
 			if (module_id == CELL_SYSMODULE_GCM_SYS)
@@ -1221,7 +1220,7 @@ error_code cellSysmoduleIsLoadedEx(ppu_thread& ppu, u16 id)
 		return CELL_SYSMODULE_ERROR_FATAL;
 	}
 
-	if (s_sysmodule_context->module_states[INTERNAL_MODULES_OFFSET + (id & INTERNAL_MODULE_ID_MASK)].loaded_count == 0)
+	if (::at32(s_sysmodule_context->module_states, INTERNAL_MODULES_OFFSET + (id & INTERNAL_MODULE_ID_MASK)).loaded_count == 0)
 	{
 		ensure(ppu_execute<&sys_lwmutex_unlock>(ppu, s_sysmodule_context.ptr(&sysmodule_context::mutex)) == CELL_OK); // Not checked on LLE
 		return not_an_error(CELL_SYSMODULE_ERROR_UNLOADED);
