@@ -24,7 +24,7 @@ enum
 	RESC_PARAM_NUM
 };
 
-enum CellRescBufferMode
+enum CellRescBufferMode // CellRescDisplayBufferMode
 {
 	CELL_RESC_720x480   = 0x1,
 	CELL_RESC_720x576   = 0x2,
@@ -49,6 +49,12 @@ enum CellRescRatioConvertMode
 	CELL_RESC_PANSCAN                = 2,
 };
 
+enum CellRescTableElement
+{
+	CELL_RESC_ELEMENT_HALF  = 0,
+	CELL_RESC_ELEMENT_FLOAT = 1,
+};
+
 enum CellRescFlipMode
 {
 	CELL_RESC_DISPLAY_VSYNC          = 0,
@@ -69,7 +75,7 @@ enum CellRescResourcePolicy
 	CELL_RESC_MINIMUM_GPU_LOAD       = 0x2,
 };
 
-enum CellRescConvolutionFilterMode
+enum CellRescConvolutionFilterMode // CellRescInterlaceFilterMode
 {
 	CELL_RESC_NORMAL_BILINEAR        = 0,
 	CELL_RESC_INTERLACE_FILTER       = 1,
@@ -104,6 +110,8 @@ struct CellRescSrc
 	be_t<u16> height;
 	be_t<u32> offset;
 };
+
+typedef void(CellRescHandler)(u32 head);
 
 struct cell_resc_manager
 {
