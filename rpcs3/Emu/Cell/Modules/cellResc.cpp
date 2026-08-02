@@ -71,7 +71,7 @@ void cellRescExit()
 
 error_code cellRescVideoOutResolutionId2RescBufferMode(u32 resolutionId, vm::cptr<u32> bufferMode)
 {
-	cellResc.todo("cellRescVideoOutResolutionId2RescBufferMode(resolutionId=%d, bufferMode=*0x%x)", resolutionId, bufferMode);
+	cellResc.todo("cellRescVideoOutResolutionId2RescBufferMode(resolutionId=0x%x, bufferMode=*0x%x)", resolutionId, bufferMode);
 
 	if (!bufferMode || !resolutionId || resolutionId > CELL_VIDEO_OUT_RESOLUTION_576)
 	{
@@ -83,7 +83,7 @@ error_code cellRescVideoOutResolutionId2RescBufferMode(u32 resolutionId, vm::cpt
 
 error_code cellRescSetDsts(u32 bufferMode, vm::cptr<CellRescDsts> dsts)
 {
-	cellResc.todo("cellRescSetDsts(bufferMode=%d, dsts=*0x%x)", bufferMode, dsts);
+	cellResc.todo("cellRescSetDsts(bufferMode=0x%x, dsts=*0x%x)", bufferMode, dsts);
 
 	auto& resc_manager = g_fxo->get<cell_resc_manager>();
 
@@ -102,7 +102,7 @@ error_code cellRescSetDsts(u32 bufferMode, vm::cptr<CellRescDsts> dsts)
 
 error_code cellRescSetDisplayMode(u32 bufferMode)
 {
-	cellResc.todo("cellRescSetDisplayMode(bufferMode=%d)", bufferMode);
+	cellResc.todo("cellRescSetDisplayMode(bufferMode=0x%x)", bufferMode);
 
 	auto& resc_manager = g_fxo->get<cell_resc_manager>();
 
@@ -182,7 +182,7 @@ error_code cellRescSetPalInterpolateDropFlexRatio(f32 ratio)
 	return CELL_OK;
 }
 
-error_code cellRescGetBufferSize(vm::ptr<s32> colorBuffers, vm::ptr<s32> vertexArray, vm::ptr<s32> fragmentShader)
+error_code cellRescGetBufferSize(vm::cptr<s32> colorBuffers, vm::cptr<s32> vertexArray, vm::cptr<s32> fragmentShader)
 {
 	cellResc.todo("cellRescGetBufferSize(colorBuffers=*0x%x, vertexArray=*0x%x, fragmentShader=*0x%x)", colorBuffers, vertexArray, fragmentShader);
 
@@ -216,9 +216,9 @@ error_code cellRescGetBufferSize(vm::ptr<s32> colorBuffers, vm::ptr<s32> vertexA
 	return CELL_OK;
 }
 
-s32 cellRescGetNumColorBuffers(u32 dstMode, u32 palTemporalMode, s32 reserved)
+s32 cellRescGetNumColorBuffers(u32 dstMode, u32 palTemporalMode, u32 reserved)
 {
-	cellResc.todo("cellRescGetNumColorBuffers(dstMode=%d, palTemporalMode=%d, reserved=%d)", dstMode, palTemporalMode, reserved);
+	cellResc.todo("cellRescGetNumColorBuffers(dstMode=0x%x, palTemporalMode=0x%x, reserved=%d)", dstMode, palTemporalMode, reserved);
 
 	if (reserved != 0)
 	{
@@ -299,7 +299,7 @@ error_code cellRescSetWaitFlip(vm::ptr<CellGcmContextData> con)
 	return CELL_OK;
 }
 
-error_code cellRescSetBufferAddress(vm::cptr<u32> colorBuffers, vm::cptr<u32> vertexArray, vm::cptr<u32> fragmentShader)
+error_code cellRescSetBufferAddress(vm::cptr<void> colorBuffers, vm::cptr<void> vertexArray, vm::cptr<void> fragmentShader)
 {
 	cellResc.todo("cellRescSetBufferAddress(colorBuffers=*0x%x, vertexArray=*0x%x, fragmentShader=*0x%x)", colorBuffers, vertexArray, fragmentShader);
 
@@ -323,7 +323,7 @@ error_code cellRescSetBufferAddress(vm::cptr<u32> colorBuffers, vm::cptr<u32> ve
 	return CELL_OK;
 }
 
-void cellRescSetFlipHandler(vm::ptr<void(u32)> handler)
+void cellRescSetFlipHandler(vm::ptr<CellRescHandler> handler)
 {
 	cellResc.todo("cellRescSetFlipHandler(handler=*0x%x)", handler);
 }
@@ -358,14 +358,14 @@ void cellRescSetRegisterCount(s32 regCount)
 	cellResc.todo("cellRescSetRegisterCount(regCount=0x%x)", regCount);
 }
 
-void cellRescSetVBlankHandler(vm::ptr<void(u32)> handler)
+void cellRescSetVBlankHandler(vm::ptr<CellRescHandler> handler)
 {
 	cellResc.todo("cellRescSetVBlankHandler(handler=*0x%x)", handler);
 }
 
 error_code cellRescCreateInterlaceTable(vm::ptr<void> ea_addr, f32 srcH, CellRescTableElement depth, s32 length)
 {
-	cellResc.todo("cellRescCreateInterlaceTable(ea_addr=0x%x, srcH=%f, depth=%d, length=%d)", ea_addr, srcH, +depth, length);
+	cellResc.todo("cellRescCreateInterlaceTable(ea_addr=*0x%x, srcH=%f, depth=0x%x, length=%d)", ea_addr, srcH, +depth, length);
 
 	if (!ea_addr || srcH <= 0.0f || depth > CELL_RESC_ELEMENT_FLOAT || length <= 0) // TODO: srcH check correct?
 	{
