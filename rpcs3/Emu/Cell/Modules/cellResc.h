@@ -20,11 +20,10 @@ enum
 	VERTEX_NUMBER_NORMAL = 4,
 
 	SRC_BUFFER_NUM = 8,
-	MAX_DST_BUFFER_NUM = 6,
-	RESC_PARAM_NUM
+	MAX_DST_BUFFER_NUM = 6
 };
 
-enum CellRescBufferMode
+enum CellRescBufferMode : u32 // CellRescDisplayBufferMode
 {
 	CELL_RESC_720x480   = 0x1,
 	CELL_RESC_720x576   = 0x2,
@@ -61,6 +60,12 @@ enum CellRescDstFormat
 	CELL_RESC_SURFACE_F_W16Z16Y16X16 = 11, // == CELL_GCM_SURFACE_F_W16Z16Y16X16
 };
 
+enum CellRescTableElement
+{
+	CELL_RESC_ELEMENT_HALF = 0,
+	CELL_RESC_ELEMENT_FLOAT = 1,
+};
+
 enum CellRescResourcePolicy
 {
 	CELL_RESC_CONSTANT_VRAM          = 0x0,
@@ -69,7 +74,7 @@ enum CellRescResourcePolicy
 	CELL_RESC_MINIMUM_GPU_LOAD       = 0x2,
 };
 
-enum CellRescConvolutionFilterMode
+enum CellRescConvolutionFilterMode // CellRescInterlaceFilterMode
 {
 	CELL_RESC_NORMAL_BILINEAR        = 0,
 	CELL_RESC_INTERLACE_FILTER       = 1,
@@ -77,6 +82,8 @@ enum CellRescConvolutionFilterMode
 	CELL_RESC_2X3_QUINCUNX           = 3,
 	CELL_RESC_2X3_QUINCUNX_ALT       = 4,
 };
+
+typedef CellRescConvolutionFilterMode CellRescInterlaceFilterMode;
 
 struct CellRescDsts
 {
@@ -105,20 +112,52 @@ struct CellRescSrc
 	be_t<u32> offset;
 };
 
+typedef void(CellRescHandler)(u32 head);
+
+struct fragment_shader // Not sure what this looks like
+{
+	u32 unk_0 = 0;
+	u32 unk_1 = 0;
+	vm::ptr<void> data = vm::null;
+	u32 size = 0;
+	u32 offset = 0;
+};
+
+#pragma pack (push, 1)
 struct cell_resc_manager
 {
+	CellRescInitConfig config {};
+	CellRescSrc srcs[SRC_BUFFER_NUM] {};
+	CellRescDsts dsts[4] {};
+	u32 activeDst {}; // 4 byte Pointer to CellRescDsts
+	CellRescBufferMode bufferMode {};
+	u32 tableLength = 0;
+	u8 pad1[36];
+	vm::ptr<fragment_shader> usedFragmentShader = vm::null;
+	vm::ptr<void> colorBuffers = vm::null;
+	vm::ptr<void> vertexArray = vm::null;
+	vm::ptr<void> fragmentShader = vm::null;
+	u32 table = 0;
+	u8 pad2[4];
+	u32 width = 0;
+	u32 height = 0;
+	u32 pitch = 0;
+	u8 pad3[4];
+	u32 bufferSize = 0;
+	u32 buffersOffsets[MAX_DST_BUFFER_NUM] {};
+	u8 pad4[4];
+	u32 depth = 0;
+	float horizontal = 0.0f;
+	float vertical = 0.0f;
 	atomic_t<bool> is_initialized = false;
 
-	u32 buffer_mode{};
+	u8 pad4[95];
+	u64 lastFlipTime = 0;
+	u8 pad5[32];
+	u8 flipStatus = 0;
+	u8 pad6[7];
+	float palInterpolateDropFlexRatio = 0.0f;
 
-	struct
-	{
-		u32 size{};
-		u32 resource_policy{};
-		u32 support_modes{};
-		u32 ratio_mode{};
-		u32 pal_temporal_mode{};
-		u32 interlace_mode{};
-		u32 flip_mode{};
-	} config;
+	vm::ptr<CellRescHandler> handler = vm::null;
 };
+#pragma pop
