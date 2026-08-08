@@ -1483,6 +1483,9 @@
     <ClCompile Include="Emu\Io\gem_config.cpp">
       <Filter>Emu\Io</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\RSX\gcm_methods.cpp">
+      <Filter>Emu\GPU\RSX\NV47\FW</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Crypto\aes.h">
@@ -2979,6 +2982,9 @@
     </ClInclude>
     <ClInclude Include="Emu\Cell\Modules\libsvc1d.h">
       <Filter>Emu\Cell\Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\RSX\gcm_methods.h">
+      <Filter>Emu\GPU\RSX\NV47\FW</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -2,9 +2,13 @@
 #include "Emu/IdManager.h"
 #include "Emu/Cell/PPUModule.h"
 #include "Emu/Cell/lv2/sys_process.h"
+#include "Emu/Cell/lv2/sys_timer.h"
+#include "Emu/Cell/Modules/sysPrxForUser.h"
+#include "Emu/Cell/Modules/cellGcmSys.h"
 
 #include "Emu/RSX/GCM.h"
 #include "Emu/RSX/gcm_enums.h"
+#include "Emu/RSX/gcm_methods.h"
 #include "cellResc.h"
 #include "cellVideoOut.h"
 
@@ -23,8 +27,19 @@ u32 cellGcmGetLabelAddress(u8 index);
 error_code cellGcmSetPrepareFlip(ppu_thread& ppu, vm::ptr<CellGcmContextData> ctxt, u32 id);
 error_code cellGcmAddressToOffset(u32 address, vm::ptr<u32> offset);
 error_code cellGcmSetDisplayBuffer(u8 id, u32 offset, u32 pitch, u32 width, u32 height);
+void _cellGcmSetFlipCommand(ppu_thread& ppu, vm::ptr<CellGcmContextData> ctx, u32 id);
 
 error_code cellVideoOutConfigure(u32 videoOut, vm::ptr<CellVideoOutConfiguration> config, vm::ptr<CellVideoOutOption> option, u32 waitForEvent);
+
+constexpr f32 DAT_0000c2e8 = 1.0f;
+constexpr f32 DAT_0000c2ec = 0.5f;
+constexpr f32 DAT_0000c2f4 = 1.0620916f;
+constexpr f32 DAT_0000c2f8 = -1.0f;
+constexpr f32 DAT_0000c300 = 4.0f / 3.0f;
+constexpr f32 DAT_0000c304 = 0.75f;
+constexpr f32 DAT_0000c3a0 = 0.5;
+constexpr f32 DAT_0000c3a4 = -0.5f;
+constexpr f32 DAT_0000c3a8 = 1.0f;
 
 LOG_CHANNEL(cellResc);
 
@@ -929,7 +944,292 @@ error_code cellRescSetSrc(s32 idx, vm::cptr<CellRescSrc> src)
 	return CELL_OK;
 }
 
-error_code cellRescSetConvertAndFlip(vm::ptr<CellGcmContextData> con, s32 idx)
+bool cell_gcm_reserve(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, u32 size_needed)
+{
+	if (con->current + size_needed > con->end)
+	{
+		if (con->callback(ppu, con, size_needed) != 0)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool try_write_and_advance(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, u32 method, u32 data, bool unsafe = false)
+{
+	if (!unsafe && !cell_gcm_reserve(ppu, con, 2))
+	{
+		return false;
+	}
+
+	gcm::gcm_method_set(con->current, method, data);
+	return true;
+}
+
+bool try_write_and_advance(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, u32 method, const std::vector<u32>& data, bool unsafe = false)
+{
+	ensure(!data.empty());
+
+	if (!unsafe && !cell_gcm_reserve(ppu, con, data.size() + 1))
+	{
+		return false;
+	}
+
+	gcm::gcm_method_set(con->current, method, data);
+	return true;
+}
+
+bool try_write_and_advance(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, const std::vector<u32>& data, bool unsafe = false)
+{
+	ensure(!data.empty());
+
+	if (!unsafe && !cell_gcm_reserve(ppu, con, data.size()))
+	{
+		return false;
+	}
+
+	write_to_ptr_unsafe(con->current.get_ptr(), data);
+	con->current += data.size();
+	return true;
+}
+
+error_code set_flip_command(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, u32 id)
+{
+	if (id > 7)
+	{
+		return CELL_GCM_ERROR_FAILURE;
+	}
+
+	if (!cell_gcm_reserve(ppu, con, 19))
+	{
+		return CELL_GCM_ERROR_FAILURE;
+	}
+
+	_cellGcmSetFlipCommand(ppu, con, id);
+
+	return CELL_OK;
+}
+
+void FUN_00002978(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, s32 idx)
+{
+	auto& resc_manager = g_fxo->get<cell_resc_manager>();
+	try_write_and_advance(ppu, con, NV4097_SET_COLOR_MASK, CELL_GCM_COLOR_MASK_B | CELL_GCM_COLOR_MASK_G | CELL_GCM_COLOR_MASK_R | CELL_GCM_COLOR_MASK_A); // 0x40324
+	try_write_and_advance(ppu, con, NV4097_SET_DEPTH_MASK, CELL_GCM_TRUE);                              // 0x40a70
+	try_write_and_advance(ppu, con, NV4097_SET_ALPHA_TEST_ENABLE, CELL_GCM_FALSE);                      // 0x40304
+	try_write_and_advance(ppu, con, NV4097_SET_BLEND_ENABLE, CELL_GCM_FALSE);                           // 0x40310
+	try_write_and_advance(ppu, con, NV4097_SET_BLEND_ENABLE_MRT, CELL_GCM_FALSE);                       // 0x4036c
+	try_write_and_advance(ppu, con, NV4097_SET_LOGIC_OP_ENABLE, CELL_GCM_FALSE);                        // 0x40374
+	try_write_and_advance(ppu, con, NV4097_SET_CULL_FACE_ENABLE, CELL_GCM_FALSE);                       // 0x4183c
+	try_write_and_advance(ppu, con, NV4097_SET_DEPTH_BOUNDS_TEST_ENABLE, CELL_GCM_FALSE);               // 0x40380
+	try_write_and_advance(ppu, con, NV4097_SET_DEPTH_TEST_ENABLE, CELL_GCM_FALSE);                      // 0x40a74
+	try_write_and_advance(ppu, con, NV4097_SET_POLY_OFFSET_FILL_ENABLE, CELL_GCM_FALSE);                // 0x40a68
+	try_write_and_advance(ppu, con, NV4097_SET_STENCIL_TEST_ENABLE, CELL_GCM_FALSE);                    // 0x40328
+	try_write_and_advance(ppu, con, NV4097_SET_TWO_SIDED_STENCIL_TEST_ENABLE, CELL_GCM_FALSE);          // 0x40348
+	// cellGcmSetPointSpriteControl
+	try_write_and_advance(ppu, con, {
+	    gcm::gcm_method(NV4097_SET_POINT_PARAMS_ENABLE, 1), CELL_GCM_FALSE,                             // 0x41ee4
+	    gcm::gcm_method(NV4097_SET_POINT_SPRITE_CONTROL, 1), 0                                          // 0x41ee8
+	});
+	try_write_and_advance(ppu, con, NV4097_SET_DITHER_ENABLE, CELL_GCM_TRUE);                           // 0x40300
+	try_write_and_advance(ppu, con, NV4097_SET_SHADE_MODE, CELL_GCM_SMOOTH);                            // 0x40368
+	try_write_and_advance(ppu, con, NV4097_SET_FREQUENCY_DIVIDER_OPERATION, CELL_GCM_FREQUENCY_DIVIDE); // 0x41fc0
+	try_write_and_advance(ppu, con, NV4097_SET_SCISSOR_HORIZONTAL, { resc_manager.width << 16, resc_manager.height << 16 }); // 0x808c0
+
+	constexpr u32 x = 0;
+	constexpr u32 y = 0;
+	const f32 center_x = resc_manager.width * 0.5f;
+	const f32 center_y = resc_manager.height * -0.5f;
+	const f32 shifted_x = center_x + x;
+	const f32 shifted_y = -(center_y + y);
+
+	// cellGcmSetViewPort
+	try_write_and_advance(ppu, con, {
+	    gcm::gcm_method(NV4097_SET_VIEWPORT_HORIZONTAL, 2), (x & 0xffff) | resc_manager.width << 16, (y & 0xffff) | resc_manager.height << 16, // 0x80a00, packed as 2 u16 each
+	    gcm::gcm_method(NV4097_SET_CLIP_MIN, 2), 0, u32{1.0f}, // 0x80394
+	    gcm::gcm_method(NV4097_SET_VIEWPORT_OFFSET, 8), u32{shifted_x}, u32{shifted_y}, u32{0.5f}, 0, u32{center_x}, u32{center_y}, u32{0.5f}, 0, // 0x200a20
+	    gcm::gcm_method(NV4097_SET_VIEWPORT_OFFSET, 8), u32{shifted_x}, u32{shifted_y}, u32{0.5f}, 0, u32{center_x}, u32{center_y}, u32{0.5f}, 0  // 0x200a20
+	});
+
+	if (resc_manager.bufferMode == CELL_RESC_720x576 &&
+		resc_manager.config.palTemporalMode >= CELL_RESC_PAL_60_INTERPOLATE &&
+		resc_manager.config.palTemporalMode <= CELL_RESC_PAL_60_INTERPOLATE_DROP_FLEXIBLE)
+	{
+		try_write_and_advance(ppu, con, NV4097_SET_COLOR_MASK_MRT, CELL_GCM_COLOR_MASK_MRT1_A | CELL_GCM_COLOR_MASK_MRT1_R | CELL_GCM_COLOR_MASK_MRT1_G | CELL_GCM_COLOR_MASK_MRT1_B); // 0x40370
+	}
+
+	vm::var<u32> offset;
+	cellGcmAddressToOffset(resc_manager.vertexArray.addr(), offset);
+
+	u32 index = resc_manager.field_0x152[0];
+	constexpr u32 vertex_format = (0/*frequency*/ << 16) | (24/*stride*/ << 8) | (2/*size*/ << 4) | CELL_GCM_VERTEX_F; // 0x1822
+
+	// cellGcmSetVertexDataArray
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_FORMAT, index, 1), vertex_format, // 0x41740, 0x1822
+		gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_OFFSET, index, 1), *offset        // 0x41680
+	});
+
+	index = resc_manager.field_0x152[1];
+
+	// cellGcmSetVertexDataArray
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_FORMAT, index, 1), vertex_format, // 0x41740, 0x1822
+		gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_OFFSET, index, 1), *offset + 8    // 0x41680
+	});
+
+	if (resc_manager.bufferMode == CELL_RESC_720x576 &&
+		resc_manager.config.palTemporalMode >= CELL_RESC_PAL_60_INTERPOLATE &&
+		resc_manager.config.palTemporalMode <= CELL_RESC_PAL_60_INTERPOLATE_DROP_FLEXIBLE)
+	{
+		index = resc_manager.field_0x152[2];
+
+		try_write_and_advance(ppu, con, {
+			gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_FORMAT, index, 1), vertex_format, // 0x41740, 0x1822
+			gcm::gcm_method(NV4097_SET_VERTEX_DATA_ARRAY_OFFSET, index, 1), *offset + 16   // 0x41680
+		});
+	}
+
+	// cellGcmSetInvalidateVertexCache
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_INVALIDATE_VERTEX_CACHE_FILE, 1), 0,
+		gcm::gcm_method(NV4097_INVALIDATE_VERTEX_FILE, 1), 0,
+		gcm::gcm_method(NV4097_INVALIDATE_VERTEX_FILE, 1), 0,
+		gcm::gcm_method(NV4097_INVALIDATE_VERTEX_FILE, 1), 0
+	});
+
+	u32 color_target_mask = CELL_GCM_SURFACE_TARGET_0;
+	u32 some_pitch = 64;
+	u32 some_buffer_offset = 0;
+
+	if (resc_manager.bufferMode == CELL_RESC_720x576 &&
+		resc_manager.config.palTemporalMode >= CELL_RESC_PAL_60_INTERPOLATE &&
+		resc_manager.config.palTemporalMode <= CELL_RESC_PAL_60_INTERPOLATE_DROP_FLEXIBLE)
+	{
+		color_target_mask = CELL_GCM_SURFACE_TARGET_MRT1;
+		some_pitch = resc_manager.pitch;
+		some_buffer_offset = resc_manager.bufferOffsets[resc_manager.field_0x1cc];
+	}
+
+	const u32 packed_format = resc_manager.dsts[resc_manager.activeDst].format | 0x140 | ((31 - std::countl_zero(resc_manager.width)) << 16) | ((31 - std::countl_zero(resc_manager.height)) << 24);
+
+	// cellGcmSetSurfaceWindow
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_SET_CONTEXT_DMA_COLOR_A, 1), CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER, // 0x40194
+		gcm::gcm_method(NV4097_SET_CONTEXT_DMA_COLOR_B, 1), CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER, // 0x4018c
+		gcm::gcm_method(NV4097_SET_CONTEXT_DMA_COLOR_C, 2), CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER, CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER, // 0x801b4
+		gcm::gcm_method(NV4097_SET_CONTEXT_DMA_ZETA, 1), CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER, // 0x40198
+		gcm::gcm_method(NV4097_SET_SURFACE_FORMAT, 6), packed_format, resc_manager.pitch, resc_manager.bufferOffsets[resc_manager.field_0x110], 0, some_buffer_offset, some_pitch, // 0x180208
+		gcm::gcm_method(NV4097_SET_SURFACE_PITCH_Z, 1), 64, // 0x4022c
+		gcm::gcm_method(NV4097_SET_SURFACE_PITCH_C, 4), 64, 64, 0, 0, // 0x100280
+		gcm::gcm_method(NV4097_SET_SURFACE_COLOR_TARGET, 1), color_target_mask, // 0x40220
+		gcm::gcm_method(NV4097_SET_WINDOW_OFFSET, 1), 0, // 0x402b8
+		gcm::gcm_method(NV4097_SET_SURFACE_CLIP_HORIZONTAL, 2), resc_manager.width << 16, resc_manager.height << 16, // 0x80200
+		gcm::gcm_method(NV4097_SET_SHADER_WINDOW, 1), resc_manager.height - ((resc_manager.height >> 12) & 1) | 0x1000 // 0x41d88
+	});
+
+	u32 tex_index = resc_manager.field_0x155 & 0xff;
+
+	if (resc_manager.bufferMode == CELL_RESC_720x576 &&
+		resc_manager.config.palTemporalMode >= CELL_RESC_PAL_60_INTERPOLATE &&
+		resc_manager.config.palTemporalMode <= CELL_RESC_PAL_60_INTERPOLATE_DROP_FLEXIBLE)
+	{
+		tex_index = resc_manager.field_0x15e & 0xff;
+
+		const u32 format_value = resc_manager.dsts[resc_manager.activeDst].format ^ 8;
+		u32 some_val = format_value >> 0x1f;
+		some_val = ((some_val - (some_val ^ format_value)) >> 0x1f & 0x15U) - 0x5b;
+		const u32 some_other_val = (resc_manager.config.interlaceMode == CELL_RESC_INTERLACE_FILTER) ? (some_val | 0x40) : (some_val & 0xbf);
+
+		// cellGcmSetTextureBorder
+		try_write_and_advance(ppu, con, {
+			gcm::gcm_method(NV4097_SET_TEXTURE_OFFSET, tex_index, 2), resc_manager.bufferOffsets[resc_manager.field_0x1c8 << 2], (some_other_val & 0xff) << 8 | 0x10029, // 0x81a00
+			gcm::gcm_method(NV4097_SET_TEXTURE_IMAGE_RECT, tex_index, 1), resc_manager.height | resc_manager.width << 0x10,                                              // 0x41a18
+			gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL3, tex_index, 1), resc_manager.pitch | 0x100000,                                                                   // 0x41840
+			gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL1, tex_index, 1), (uint) "not make 2nd instance\n"                                                                 // 0x41a10
+		});
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL0, tex_index, 1), 0x80000780); // 0x41a0c
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_ADDRESS, tex_index, 1), 0x10050505);  // 0x41a08
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_FILTER, tex_index, 1), 0x1012000);    // 0x41a14
+
+		tex_index = resc_manager.field_0x15f & 0xff;
+	}
+
+	const u32 some_val = (resc_manager.config.interlaceMode == CELL_RESC_INTERLACE_FILTER)
+		? (resc_manager.srcs[idx].format | 0x40)
+		: (resc_manager.srcs[idx].format & 0xbf);
+
+	// cellGcmSetTextureBorder
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_SET_TEXTURE_OFFSET, tex_index, 2), resc_manager.srcs[idx].offset, (some_val << 8) & 0xff00 | 0x10029,        // 0x81a00
+		gcm::gcm_method(NV4097_SET_TEXTURE_IMAGE_RECT, tex_index, 1), resc_manager.srcs[idx].height | (resc_manager.srcs[idx].width << 16), // 0x41a18
+		gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL3, tex_index, 1), resc_manager.srcs[idx].pitch | 0x100000,                                // 0x41840
+		gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL1, tex_index, 1), (u32)"not make 2nd instance\n"                                          // 0x41a10
+	});
+
+	try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL0, tex_index, 1), 0x80000780); // 0x41a0c
+	try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_ADDRESS, tex_index, 1), 0x10050404);  // 0x41a08
+
+	u32 some_val_1 = 1;
+	u32 some_val_2 = 1;
+	u32 some_val_3 = 1;
+	if (((((some_val << 0x20) >> 0x27) << 7 | some_val & 0x1f) + 0x66 & 0xff) > 1)
+	{
+		switch (resc_manager.config.interlaceMode)
+		{
+		case CELL_RESC_NORMAL_BILINEAR:
+		case CELL_RESC_INTERLACE_FILTER:
+			some_val_1 = 2;
+			some_val_2 = 2;
+			some_val_3 = 1;
+			break;
+		case CELL_RESC_3X3_GAUSSIAN:
+			some_val_1 = 7;
+			some_val_2 = 4;
+			some_val_3 = 2;
+			break;
+		case CELL_RESC_2X3_QUINCUNX:
+			some_val_1 = 7;
+			some_val_2 = 4;
+			some_val_3 = 1;
+			break;
+		case CELL_RESC_2X3_QUINCUNX_ALT:
+			some_val_1 = 7;
+			some_val_2 = 4;
+			some_val_3 = 3;
+			break;
+		}
+	}
+
+	try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_FILTER, tex_index, 1), (some_val_3 << 13) | (some_val_1 << 16) | (some_val_2 << 24)); // 0x41a14
+	try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_BORDER_COLOR, tex_index, 1), 0);                                                      // 0x41a1c
+
+	if (resc_manager.config.interlaceMode == CELL_RESC_INTERLACE_FILTER && resc_manager.table)
+	{
+		cellGcmAddressToOffset(resc_manager.table, offset);
+
+		const u32 count = (resc_manager.tableLength == 0) ? 8 : 16;
+		const u32 other_count = (resc_manager.tableLength == 0) ? 186 : 187;
+
+		tex_index = resc_manager.field_0x15d & 0xff;
+
+		// cellGcmSetTextureBorder
+		try_write_and_advance(ppu, con, {
+			gcm::gcm_method(NV4097_SET_TEXTURE_OFFSET, tex_index, 2), *offset, (other_count << 8) | 0x10019,   // 0x81a00
+			gcm::gcm_method(NV4097_SET_TEXTURE_IMAGE_RECT, tex_index, 1), resc_manager.depth << 16 | 1,        // 0x41a18
+			gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL3, tex_index, 1), count * resc_manager.depth | 0x100000, // 0x41840
+			gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL1, tex_index, 1), (u32)"not make 2nd instance\n"         // 0x41a10
+		});
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_CONTROL0, tex_index, 1), 0x80000780); // 0x41a0c
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_ADDRESS, tex_index, 1), 0x10050505);  // 0x41a08
+		try_write_and_advance(ppu, con, gcm::gcm_method(NV4097_SET_TEXTURE_FILTER, tex_index, 1), 0x1012000);    // 0x41a14
+	}
+
+	try_write_and_advance(ppu, con, NV4097_INVALIDATE_L2, CELL_GCM_INVALIDATE_TEXTURE);
+}
+
+error_code cellRescSetConvertAndFlip(ppu_thread& ppu, vm::ptr<CellGcmContextData> con, s32 idx)
 {
 	cellResc.todo("cellRescSetConvertAndFlip(con=*0x%x, idx=0x%x)", con, idx);
 
@@ -945,7 +1245,240 @@ error_code cellRescSetConvertAndFlip(vm::ptr<CellGcmContextData> con, s32 idx)
 		return CELL_RESC_ERROR_BAD_ARGUMENT;
 	}
 
-	// TODO
+	if (resc_manager.config.interlaceMode == CELL_RESC_INTERLACE_FILTER)
+	{
+		puVar8 = &TOC_BASE;
+		fill_vertex_array_from_src(idx);
+	}
+
+	FUN_00002978(ppu, con, idx);
+
+	if (resc_manager.bufferMode == CELL_RESC_720x576 &&
+		resc_manager.config.palTemporalMode >= CELL_RESC_PAL_60_INTERPOLATE &&
+		resc_manager.config.palTemporalMode <= CELL_RESC_PAL_60_INTERPOLATE_DROP_FLEXIBLE)
+	{
+		piVar3 = *(int**)(puVar8 + -0x7fdc);
+		error_code error = sys_lwmutex_lock(ppu, *piVar3 + 0x170, 0);
+		if (error != CELL_OK)
+		{
+			FUN_00007c5c(*(undefined4*)(puStack420 + -0x7fac), error);
+		}
+		uVar2 = state[1].config.flipMode;
+		error = sys_lwmutex_unlock(*piVar3 + 0x170);
+		if (error != CELL_OK)
+		{
+			FUN_00007c5c(*(undefined4*)(puStack420 + -0x7f9c), error);
+		}
+		error = sys_lwmutex_lock(*piVar3 + 0x188, 0);
+		puVar8 = puStack420;
+		if (error != CELL_OK)
+		{
+			FUN_00007c5c(*(undefined4*)(puStack420 + -0x7fac), error);
+		}
+		lVar18 = 0;
+		uVar19 = 0;
+		uVar20 = (ulonglong) * *(uint**)(puVar8 + -0x7fa8);
+		if (**(uint**)(puVar8 + -0x7fa8) != **(uint**)(puVar8 + -0x7fa4))
+		{
+			do
+			{
+				uVar11 = uVar20 & 0xffffffff;
+				iVar14 = (int)(uVar20 + 10);
+				iVar10 = iVar14 >> 0x1f;
+				uVar12 = (longlong)(iVar14 / 9 + iVar10) - (longlong)iVar10;
+				uVar20 = (uVar20 + 10) - ((uVar12 & 0x1fffffff) * 8 + uVar12);
+				lVar18 = lVar18 - ((longlong)((ulonglong) * (byte*)((int)(uVar11 << 5) + *(int*)(puVar8 + -0x7fa0) + 0x1a) - 1 << 0x20) >> 0x3f);
+				uVar19 = (undefined4)lVar18;
+			} while (**(uint**)(puVar8 + -0x7fa4) != (uint)uVar20);
+		}
+		error = sys_lwmutex_unlock(*piVar3 + 0x188);
+		puVar8 = puStack420;
+		if (error != CELL_OK)
+		{
+			FUN_00007c5c(*(undefined4*)(puStack420 + -0x7f9c), error);
+		}
+		local_c0 = uVar16 - 0x160;
+		FUN_00001dfc(state, local_c0, uVar16 - 0x158, uVar16 - 0x148, uVar16 - 0x138, uVar16 - 0x128, uVar2, uVar19);
+
+		try_write_and_advance(ppu, con, NV3062_SET_CONTEXT_DMA_IMAGE_DESTIN, CELL_GCM_CONTEXT_DMA_MEMORY_FRAME_BUFFER); // 0x46188
+
+		if (**(int**)&resc_manager.field_0x1d4 - 0x415U < 0x5a)
+		{
+			/* WARNING: Could not recover jumptable at 0x000053e4. Too many branches */
+			/* WARNING: Treating indirect jump as call */
+			EVar9 = (*(code*)(*(int*)((**(int**)&resc_manager.field_0x1d4 + -0x415) * 4 +
+									  *(int*)(puVar8 + -0x7f40)) +
+							  *(int*)(puVar8 + -0x7f40)))();
+			return EVar9;
+		}
+	}
+
+	(***(code***)(*resc_manager.fragmentShaders[0] + 8))(resc_manager.fragmentShaders[0], con);
+	(***(code***)(*resc_manager.usedFragmentShader + 8))(resc_manager.usedFragmentShader, con);
+
+	uVar16 = ZEXT48(con->current);
+	puVar22 = con->end;
+
+	// cellGcmSetDrawArrays
+	const auto draw_arrays = [&]()
+	{
+		u32 pos = 0;
+		u32 count = resc_manager.field_0x140 - 1;
+		u32 draw_count = count % 256;
+
+		if (!try_write_and_advance(ppu, con, {
+			gcm::gcm_method(NV4097_INVALIDATE_VERTEX_FILE, 3) | RSX_METHOD_NON_INCREMENT_CMD, 0, 0, 0, // 0x400c1714
+			gcm::gcm_method(NV4097_SET_BEGIN_END, 1), CELL_GCM_PRIMITIVE_QUADS,                        // 0x41808
+			gcm::gcm_method(NV4097_DRAW_ARRAYS, 1), pos | (draw_count << 24)                           // 0x41814
+		}))
+		{
+			return;
+		}
+
+		pos = draw_count + 1;
+		count /= 256;
+
+		std::vector<u32> data;
+		data.reserve(RSX_METHOD_MAX_METHOD_COUNT + 1);
+
+		while (count)
+		{
+			const u32 batch = std::min<u32>(count, RSX_METHOD_MAX_METHOD_COUNT);
+			data.resize(batch + 1);
+			data[0] = gcm::gcm_method(NV4097_DRAW_ARRAYS, batch) | RSX_METHOD_NON_INCREMENT_CMD; // 0x40001814
+
+			for (u32 i = 1; i < batch + 1; i++)
+			{
+				data[i] = pos | 0xFF000000;
+				pos += 256;
+			}
+
+			if (!try_write_and_advance(ppu, con, data))
+			{
+				return;
+			}
+
+			count -= batch;
+		}
+
+		try_write_and_advance(ppu, con, NV4097_SET_BEGIN_END, 0); // 0x41808, cellGcmSetDrawEnd
+	}();
+
+	if (resc_manager.bufferMode != CELL_RESC_720x576 ||
+		resc_manager.config.palTemporalMode == CELL_RESC_PAL_50 ||
+		resc_manager.config.palTemporalMode == CELL_RESC_PAL_60_FOR_HSYNC)
+	{
+		set_flip_command(ppu, con, state->field_0x113);
+		resc_manager.field_0x110 = resc_manager.field_0x110 ^ 1;
+		return CELL_OK;
+	}
+
+	if (resc_manager.config.palTemporalMode != CELL_RESC_PAL_60_DROP)
+	{
+		piVar3 = *(int**)(puVar8 + -0x7fa4);
+		piVar4 = *(int**)(puVar8 + -0x7fa8);
+
+		bool success = false;
+		u32 i = 0;
+		for (; i < 2; i++)
+		{
+			iVar14 = (*piVar3 - *piVar4) + 9;
+			uVar16 = (longlong)(iVar14 / 9 + (iVar14 >> 0x1f)) - (longlong)(iVar14 >> 0x1f);
+
+			if (!(iVar14 - ((int)((uVar16 & 0xffffffff) << 3) + (int)uVar16) < 8))
+			{
+				sys_timer_usleep(ppu, 20000);
+				continue;
+			}
+
+			if (cellGcmSetPrepareFlip(ppu, con, resc_manager.field_0x113) == CELL_GCM_ERROR_FAILURE)
+			{
+				break;
+			}
+
+			local_108 = *(undefined8*)&resc_manager.field_0x1e8;
+			local_100 = local_158;
+			local_f8 = local_148;
+			local_f0 = (undefined) * (undefined4*)&resc_manager.field_0x110;
+			local_ef = (undefined)iVar10;
+			local_ee = 0;
+
+			if (sys_lwmutex_lock(ppu, &resc_manager.field_0x188, 0) == CELL_OK)
+			{
+				iVar10 = *piVar3 + 10;
+				uVar16 = (longlong)(iVar10 / 9 + (iVar10 >> 0x1f)) - (longlong)(iVar10 >> 0x1f);
+				iVar10 = iVar10 - ((int)((uVar16 & 0xffffffff) << 3) + (int)uVar16);
+				if (iVar10 != *piVar4)
+				{
+					puVar13 = (undefined8*)(*piVar3 * 0x20 + *(int*)(puVar8 + -0x7fa0));
+					if (puVar13 != &local_108)
+					{
+						*puVar13 = local_108;
+						*(undefined*)((int)puVar13 + 0x1a) = local_ee;
+						puVar13[1] = local_100;
+						puVar13[2] = local_f8;
+						*(undefined*)(puVar13 + 3) = local_f0;
+						*(undefined*)((int)puVar13 + 0x19) = local_ef;
+					}
+					*piVar3 = iVar10;
+				}
+				sys_lwmutex_unlock(ppu, &resc_manager.field_0x188);
+			}
+
+			// cellGcmSetWriteBackEndLabel
+			try_write_and_advance(ppu, con, {
+				gcm::gcm_method(NV4097_SET_SEMAPHORE_OFFSET, 1), 0x110, // 0x41d6c
+				gcm::gcm_method(NV4097_BACK_END_WRITE_SEMAPHORE_RELEASE, 1), (resc_manager.field_0x1e8 & 0xff00ff00) | ((resc_manager.field_0x1e8 >> 16) & 0xff) | (((resc_manager.field_0x1e8 >> 0) & 0xff) << 16) // 0x41d70
+			});
+
+			const u32 some_value = resc_manager.field_0x1dc ^ 1;
+			const u32 some_other_value = (int)some_value >> 0x1f;
+
+			// cellGcmSetWriteCommandLabel
+			try_write_and_advance(ppu, con, {
+				gcm::gcm_method(NV406E_SEMAPHORE_OFFSET, 1), (0x12 - ((int)(((some_other_value ^ some_value) - some_other_value) + -1) >> 0x1f)) * 0x10, // 0x40064
+				gcm::gcm_method(NV406E_SEMAPHORE_RELEASE, 1), 1 // 0x4006c
+			});
+
+			resc_manager.field_0x110 = resc_manager.field_0x110 + 1U & 3;
+			success = true;
+			break;
+		}
+
+		const auto tmp = resc_manager.field_0x1cc;
+		resc_manager.field_0x1cc = resc_manager.field_0x1c8;
+		resc_manager.field_0x1e8++;
+		resc_manager.field_0x1c8 = tmp;
+
+		if (!success)
+		{
+			return CELL_RESC_ERROR_GCM_FLIP_QUE_FULL;
+		}
+
+		return CELL_OK;
+	}
+
+	set_flip_command(ppu, con, state->field_0x113);
+
+	// cellGcmSetWriteBackEndLabel
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV4097_SET_SEMAPHORE_OFFSET, 1), 0x110, // 0x41d6c
+		gcm::gcm_method(NV4097_BACK_END_WRITE_SEMAPHORE_RELEASE, 1), (resc_manager.field_0x1e8 & 0xff00ff00) | ((resc_manager.field_0x1e8 >> 16) & 0xff) | (((resc_manager.field_0x1e8 >> 0) & 0xff) << 16) // 0x41d70
+	});
+
+	const u32 some_value = resc_manager.field_0x1dc ^ 1;
+	const u32 some_other_value = (int)resc_manager.field_0x1dc ^ 1 >> 0x1f;
+
+	// cellGcmSetWriteCommandLabel
+	try_write_and_advance(ppu, con, {
+		gcm::gcm_method(NV406E_SEMAPHORE_OFFSET, 1), (0x12 - ((int)(((some_other_value ^ some_value) - some_other_value) + -1) >> 0x1f)) * 0x10, // 0x40064
+		gcm::gcm_method(NV406E_SEMAPHORE_RELEASE, 1), 1 // 0x4006c
+	});
+
+	const auto tmp = resc_manager.field_0x110;
+	resc_manager.field_0x1e8++;
+	resc_manager.field_0x110 = 3 - (tmp + resc_manager.field_0x1d0);
+	resc_manager.field_0x1d0 = tmp;
 
 	return CELL_OK;
 }
