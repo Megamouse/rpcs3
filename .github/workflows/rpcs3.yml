@@ -205,8 +205,6 @@ jobs:
           key: ${{ steps.restore-qt-cache.outputs.cache-primary-key }}
 
   Windows_Build:
-    # Only run push event on master branch of main repo, but run all PRs
-    if: github.event_name != 'push' || (github.repository == 'RPCS3/rpcs3' && github.ref_name == 'master')
     name: RPCS3 Windows
     runs-on: windows-2025-vs2026
     env:
@@ -333,14 +331,12 @@ jobs:
         run: .ci/github-upload.sh
 
       - name: Save Build Ccache
-        if: github.ref == 'refs/heads/master'
         uses: actions/cache/save@main
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ steps.restore-build-ccache.outputs.cache-primary-key }}
 
       - name: Save Dependencies Cache
-        if: github.ref == 'refs/heads/master'
         uses: actions/cache/save@main
         with:
           path: ${{ env.DEPS_CACHE_DIR }}
