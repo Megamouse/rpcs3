@@ -224,6 +224,7 @@ jobs:
       CCACHE_INODECACHE: 'true'
       CCACHE_SLOPPINESS: 'time_macros'
       CCACHE_LAUNCH_ARGS: '-DCMAKE_C_COMPILER_LAUNCHER=C:\ccache_bin\ccache.exe -DCMAKE_CXX_COMPILER_LAUNCHER=C:\ccache_bin\ccache.exe'
+      CCACHE_LOGFILE: '${{ github.workspace }}\ccache_log.txt'
       DEPS_CACHE_DIR: ./dependency_cache
       UPLOAD_COMMIT_HASH: 7d09e3be30805911226241afbb14f8cdc2eb054e
       UPLOAD_REPO_FULL_NAME: "RPCS3/rpcs3-binaries-win"
@@ -281,9 +282,28 @@ jobs:
       - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@main
 
+      - name: Zero ccache stats
+        shell: pwsh
+        run: |
+          Remove-Item -Path "${{ env.CCACHE_LOGFILE }}" -ErrorAction SilentlyContinue
+          & "${{ env.CCACHE_BIN_DIR }}\ccache.exe" -z
+
       - name: Compile RPCS3
         shell: pwsh
-        run: msbuild rpcs3.sln /p:Configuration=Release /v:minimal /p:Platform=x64 /p:PreferredToolArchitecture=x64 /p:CLToolPath=${{ env.CCACHE_BIN_DIR }} /p:UseMultiToolTask=true /p:CustomAfterMicrosoftCommonTargets="${{ github.workspace }}\buildfiles\msvc\ci_only.targets"
+        run: msbuild rpcs3.sln /p:Configuration=Release /v:minimal /clp:"ShowTimestamp;PerformanceSummary" /p:Platform=x64 /p:PreferredToolArchitecture=x64 /p:CLToolPath=${{ env.CCACHE_BIN_DIR }} /p:UseMultiToolTask=true /p:CustomAfterMicrosoftCommonTargets="${{ github.workspace }}\buildfiles\msvc\ci_only.targets"
+
+      - name: Show ccache stats
+        if: always()
+        shell: pwsh
+        run: '& "${{ env.CCACHE_BIN_DIR }}\ccache.exe" -s -v'
+
+      - name: Upload ccache log
+        if: always()
+        uses: actions/upload-artifact@main
+        with:
+          name: ccache-log-windows-msvc
+          path: ${{ env.CCACHE_LOGFILE }}
+          if-no-files-found: warn
 
       - name: Run Unit Tests
         if: github.event_name == 'pull_request'
