@@ -42,7 +42,7 @@
       cmake -G Ninja ^
         -DCMAKE_CXX_COMPILER="cl.exe" ^
         -DCMAKE_C_COMPILER="cl.exe" ^
-        %CCACHE_LAUNCH_ARGS% ^
+        %25CCACHE_LAUNCH_ARGS%25 ^
         -DCMAKE_BUILD_TYPE="Release" ^
         -DCMAKE_INSTALL_PREFIX="./Release" ^
         -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
@@ -69,7 +69,7 @@
       cmake -G Ninja ^
         -DCMAKE_CXX_COMPILER="cl.exe" ^
         -DCMAKE_C_COMPILER="cl.exe" ^
-        %CCACHE_LAUNCH_ARGS% ^
+        %25CCACHE_LAUNCH_ARGS%25 ^
         -DCMAKE_BUILD_TYPE="Debug" ^
         -DCMAKE_INSTALL_PREFIX="./Debug" ^
         -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDebug ^
