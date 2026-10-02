@@ -137,6 +137,7 @@ public:
 	u32 external_device_id = 0;
 	ps_move_calibration calibration{};
 
+	bool is_bluetooth = false; // Connected via Bluetooth or USB
 	bool has_new_input_report = false; // Set by get_data, consumed by get_extended_info
 	u64 last_input_report_time_us = 0;
 
@@ -186,7 +187,27 @@ public:
 	u32 get_battery_level(const std::string& padId) override;
 	void init_config(cfg_pad* cfg) override;
 
+	enum class pair_result
+	{
+		paired,
+		already_paired,
+		not_connected,
+		not_connected_via_usb,
+		read_failed,
+		no_local_bluetooth_address,
+		write_failed,
+	};
+
+	// Sets the controller's host Bluetooth address to the Bluetooth adapter of this PC. The controller has to be connected via USB.
+	// The controller still has to be registered with the operating system's Bluetooth stack.
+	pair_result pair_device(const std::string& padId, std::string& controller_address, std::string& host_address);
+
 private:
+	using bluetooth_address = std::array<u8, 6>; // Least significant byte first
+
+	bool get_bluetooth_addresses(ps_move_device* device, bluetooth_address& controller, bluetooth_address& host);
+	bool set_host_bluetooth_address(ps_move_device* device, const bluetooth_address& host);
+
 #ifdef _WIN32
 	hid_device* connect_move_device(ps_move_device* device, std::string_view path);
 #endif
