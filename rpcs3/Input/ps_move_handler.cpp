@@ -5,6 +5,14 @@
 #include "Emu/Cell/Modules/cellGem.h"
 #include "Emu/Cell/timers.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <bluetoothapis.h>
+#ifdef _MSC_VER
+#pragma comment(lib, "Bthprops.lib")
+#endif
+#endif
+
 LOG_CHANNEL(move_log, "Move");
 
 using namespace reports;
@@ -25,6 +33,55 @@ namespace
 		usb_charging = 0xEE,
 		usb_charged  = 0xEF,
 	};
+
+	// Feature reports
+	constexpr u8 REPORT_ID_GET_BT_ADDRESSES = 0x04;    // Returns the controller's and the host's Bluetooth address
+	constexpr u8 REPORT_ID_SET_HOST_BT_ADDRESS = 0x05; // Sets the host's Bluetooth address
+	constexpr usz REPORT_SIZE_GET_BT_ADDRESSES = 16;
+	constexpr usz REPORT_SIZE_SET_HOST_BT_ADDRESS = 23;
+
+	std::string bluetooth_address_to_string(const std::array<u8, 6>& address)
+	{
+		// The address is stored with the least significant byte first
+		return fmt::format("%02x:%02x:%02x:%02x:%02x:%02x", address[5], address[4], address[3], address[2], address[1], address[0]);
+	}
+
+	// Get the address of this PC's Bluetooth adapter (least significant byte first)
+	bool get_local_bluetooth_address(std::array<u8, 6>& address)
+	{
+#ifdef _WIN32
+		BLUETOOTH_FIND_RADIO_PARAMS radio_params{};
+		radio_params.dwSize = sizeof(BLUETOOTH_FIND_RADIO_PARAMS);
+
+		HANDLE radio = nullptr;
+		const HBLUETOOTH_RADIO_FIND find = BluetoothFindFirstRadio(&radio_params, &radio);
+		if (!find)
+		{
+			move_log.error("get_local_bluetooth_address: Failed to find a Bluetooth adapter (error=%d)", GetLastError());
+			return false;
+		}
+		BluetoothFindRadioClose(find);
+
+		BLUETOOTH_RADIO_INFO radio_info{};
+		radio_info.dwSize = sizeof(BLUETOOTH_RADIO_INFO);
+
+		const DWORD res = BluetoothGetRadioInfo(radio, &radio_info);
+		CloseHandle(radio);
+
+		if (res != ERROR_SUCCESS)
+		{
+			move_log.error("get_local_bluetooth_address: BluetoothGetRadioInfo failed (error=%d)", res);
+			return false;
+		}
+
+		std::copy_n(radio_info.address.rgBytes, address.size(), address.begin());
+		return true;
+#else
+		static_cast<void>(address);
+		move_log.error("get_local_bluetooth_address: Not implemented on this platform");
+		return false;
+#endif
+	}
 }
 
 const ps_move_input_report_common& ps_move_device::input_report_common() const
@@ -283,6 +340,13 @@ void ps_move_handler::check_add_device(hid_device* hidDevice, hid_enumerated_dev
 
 	device->hidDevice = hidDevice;
 	device->path = path;
+
+	// Bluetooth devices report their Bluetooth address as serial. On Windows, USB devices report "0".
+#ifdef _WIN32
+	device->is_bluetooth = wide_serial.size() > 1;
+#else
+	device->is_bluetooth = !wide_serial.empty();
+#endif
 
 	// Get calibration
 	device->calibration = {};
@@ -953,4 +1017,88 @@ u32 ps_move_handler::get_battery_level(const std::string& padId)
 
 	// 0 to 5
 	return std::clamp<u32>(device->battery_level * 20, 0, 100);
+}
+
+bool ps_move_handler::get_bluetooth_addresses(ps_move_device* device, bluetooth_address& controller, bluetooth_address& host)
+{
+	// On Windows, the Bluetooth addresses are only available on the 2nd HID collection
+	hid_device* handle = device->bt_device ? device->bt_device : device->hidDevice;
+
+	// Windows may return a larger report for the ZCM2 if it is connected via Bluetooth
+	std::array<u8, 20> buf{};
+	buf[0] = REPORT_ID_GET_BT_ADDRESSES;
+
+	if (const int res = hid_get_feature_report(handle, buf.data(), buf.size()); res < static_cast<int>(REPORT_SIZE_GET_BT_ADDRESSES))
+	{
+		move_log.error("get_bluetooth_addresses: hid_get_feature_report 0x%x failed! result=%d, error=%s", REPORT_ID_GET_BT_ADDRESSES, res, hid_error(handle));
+		return false;
+	}
+
+	std::copy_n(&buf[1], controller.size(), controller.begin());
+	std::copy_n(&buf[10], host.size(), host.begin());
+	return true;
+}
+
+bool ps_move_handler::set_host_bluetooth_address(ps_move_device* device, const bluetooth_address& host)
+{
+	// On Windows, the Bluetooth addresses are only available on the 2nd HID collection
+	hid_device* handle = device->bt_device ? device->bt_device : device->hidDevice;
+
+	std::array<u8, REPORT_SIZE_SET_HOST_BT_ADDRESS> buf{};
+	buf[0] = REPORT_ID_SET_HOST_BT_ADDRESS;
+	std::copy(host.begin(), host.end(), &buf[1]);
+
+	if (const int res = hid_send_feature_report(handle, buf.data(), buf.size()); res < 0)
+	{
+		move_log.error("set_host_bluetooth_address: hid_send_feature_report 0x%x failed! result=%d, error=%s", REPORT_ID_SET_HOST_BT_ADDRESS, res, hid_error(handle));
+		return false;
+	}
+
+	return true;
+}
+
+ps_move_handler::pair_result ps_move_handler::pair_device(const std::string& padId, std::string& controller_address, std::string& host_address)
+{
+	const std::shared_ptr<ps_move_device> device = get_hid_device(padId);
+	if (!device || !device->hidDevice)
+	{
+		return pair_result::not_connected;
+	}
+
+	// The host address can only be changed via USB
+	if (device->is_bluetooth)
+	{
+		return pair_result::not_connected_via_usb;
+	}
+
+	bluetooth_address controller{};
+	bluetooth_address current_host{};
+	if (!get_bluetooth_addresses(device.get(), controller, current_host))
+	{
+		return pair_result::read_failed;
+	}
+
+	controller_address = bluetooth_address_to_string(controller);
+
+	bluetooth_address new_host{};
+	if (!get_local_bluetooth_address(new_host))
+	{
+		return pair_result::no_local_bluetooth_address;
+	}
+
+	host_address = bluetooth_address_to_string(new_host);
+
+	if (current_host == new_host)
+	{
+		move_log.notice("pair_device: Controller %s is already paired with host %s", controller_address, host_address);
+		return pair_result::already_paired;
+	}
+
+	if (!set_host_bluetooth_address(device.get(), new_host))
+	{
+		return pair_result::write_failed;
+	}
+
+	move_log.success("pair_device: Changed host of controller %s from %s to %s", controller_address, bluetooth_address_to_string(current_host), host_address);
+	return pair_result::paired;
 }

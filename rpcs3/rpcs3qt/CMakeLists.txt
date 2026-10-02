@@ -196,6 +196,7 @@ if(WIN32)
         RCC_OPTIONS "--include;${CMAKE_CURRENT_SOURCE_DIR}/../qt/etc/qt.conf"
     )
     target_compile_definitions(rpcs3_ui PRIVATE UNICODE _UNICODE)
+    target_link_libraries(rpcs3_ui PRIVATE bthprops) # PS Move pairing
 endif()
 
 set_target_properties(rpcs3_ui
