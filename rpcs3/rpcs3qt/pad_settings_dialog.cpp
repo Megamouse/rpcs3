@@ -23,6 +23,7 @@
 #include "Input/gui_pad_thread.h"
 #include "Input/product_info.h"
 #include "Input/keyboard_pad_handler.h"
+#include "Input/ps_move_handler.h"
 
 #include <thread>
 
@@ -453,6 +454,53 @@ void pad_settings_dialog::InitButtons()
 		});
 		dialog.exec();
 		SetPadData(0, 0);
+	});
+
+	// Pair PS Move controller with this PC (controller side only)
+	connect(ui->b_pair_device, &QPushButton::clicked, this, [this]()
+	{
+		ensure(m_handler);
+
+		if (m_handler->m_type != pad_handler::move)
+		{
+			return;
+		}
+
+		std::string controller_address;
+		std::string host_address;
+		ps_move_handler::pair_result result{};
+		{
+			std::lock_guard lock(m_handler_mutex);
+			result = static_cast<ps_move_handler*>(m_handler.get())->pair_device(m_device_name, controller_address, host_address);
+		}
+
+		const QString controller = QString::fromStdString(controller_address);
+		const QString host = QString::fromStdString(host_address);
+
+		switch (result)
+		{
+		case ps_move_handler::pair_result::paired:
+			QMessageBox::information(this, tr("Pair Controller"), tr("The controller %0 is now paired with this PC (%1).\n\nDisconnect the USB cable and press the PS button to connect via Bluetooth.\nThe controller may also have to be added in the Bluetooth settings of your operating system.").arg(controller, host));
+			break;
+		case ps_move_handler::pair_result::already_paired:
+			QMessageBox::information(this, tr("Pair Controller"), tr("The controller %0 is already paired with this PC (%1).").arg(controller, host));
+			break;
+		case ps_move_handler::pair_result::not_connected:
+			QMessageBox::warning(this, tr("Pair Controller"), tr("The controller is not connected."));
+			break;
+		case ps_move_handler::pair_result::not_connected_via_usb:
+			QMessageBox::warning(this, tr("Pair Controller"), tr("The controller has to be connected via USB to pair it."));
+			break;
+		case ps_move_handler::pair_result::read_failed:
+			QMessageBox::warning(this, tr("Pair Controller"), tr("Failed to read the Bluetooth addresses from the controller."));
+			break;
+		case ps_move_handler::pair_result::no_local_bluetooth_address:
+			QMessageBox::warning(this, tr("Pair Controller"), tr("Failed to get the Bluetooth address of this PC.\nMake sure that Bluetooth is enabled."));
+			break;
+		case ps_move_handler::pair_result::write_failed:
+			QMessageBox::warning(this, tr("Pair Controller"), tr("Failed to set the Bluetooth address of the controller."));
+			break;
+		}
 	});
 
 	// Open Motion settings
@@ -1372,6 +1420,13 @@ void pad_settings_dialog::UpdateLabels(bool is_reset)
 
 		// Enable battery and LED group box
 		ui->gb_battery->setVisible(m_enable_battery || m_enable_led);
+
+		// Pairing is only available for the PS Move on Windows for now
+#ifdef _WIN32
+		ui->b_pair_device->setVisible(m_handler->m_type == pad_handler::move);
+#else
+		ui->b_pair_device->setVisible(false);
+#endif
 	}
 
 	for (auto& [id, button] : m_cfg_entries)
@@ -1410,6 +1465,7 @@ void pad_settings_dialog::SwitchButtons(bool is_enabled)
 	ui->gb_battery->setEnabled(is_enabled && (m_enable_battery || m_enable_led));
 	ui->pb_battery->setEnabled(is_enabled && m_enable_battery);
 	ui->b_led_settings->setEnabled(is_enabled && m_enable_led);
+	ui->b_pair_device->setEnabled(is_enabled && m_handler->m_type == pad_handler::move);
 	ui->gb_mouse_movement->setEnabled(is_enabled && m_handler->m_type == pad_handler::keyboard);
 	ui->gb_mouse_accel->setEnabled(is_enabled && m_handler->m_type == pad_handler::keyboard);
 	ui->gb_mouse_dz->setEnabled(is_enabled && m_handler->m_type == pad_handler::keyboard);
