@@ -682,35 +682,42 @@ bool gdb_thread::cmd_read_memory(gdb_cmd& cmd)
 
 bool gdb_thread::cmd_write_memory(gdb_cmd& cmd)
 {
-	usz s = cmd.data.find(',');
-	usz s2 = cmd.data.find(':');
-	if ((s == umax) || (s2 == umax))
+	const usz s = cmd.data.find(',');
+	const usz s2 = cmd.data.find(':');
+
+	if (s == umax || s2 == umax || s2 < s)
 	{
 		GDB.warning("Malformed write memory request received: '%s'.", cmd.data);
 		return send_cmd_ack("E01");
 	}
-	u32 addr = hex_to_u32(cmd.data.substr(0, s));
-	u32 len = hex_to_u32(cmd.data.substr(s + 1, s2 - s - 1));
-	const char* data_ptr = (cmd.data.c_str()) + s2 + 1;
-	for (u32 i = 0; i < len; ++i)
+
+	const u32 addr = hex_to_u32(cmd.data.substr(0, s));
+	const u32 len = hex_to_u32(cmd.data.substr(s + 1, s2 - s - 1));
+
+	if (cmd.data.size() - (s2 + 1) < usz{len} * 2)
 	{
-		if (vm::check_addr(addr + i, vm::page_writable))
-		{
-			u8 val;
-			int res = sscanf_s(data_ptr, "%02hhX", &val);
-			if (res <= 0)
-			{
-				GDB.warning("Couldn't read u8 from string '%s'.", data_ptr);
-				return send_cmd_ack("E02");
-			}
-			data_ptr += 2;
-			vm::write8(addr + i, val);
-		}
-		else
+		GDB.warning("Malformed write memory request received: '%s'.", cmd.data);
+		return send_cmd_ack("E01");
+	}
+
+	const char* data_ptr = cmd.data.c_str() + s2 + 1;
+
+	for (u32 i = 0; i < len; ++i, data_ptr += 2)
+	{
+		if (!vm::check_addr(addr + i, vm::page_writable))
 		{
 			return send_cmd_ack("E03");
 		}
+
+		u8 val{};
+		if (std::from_chars(data_ptr, data_ptr + 2, val, 16).ptr != data_ptr + 2)
+		{
+			return send_cmd_ack("E02");
+		}
+
+		vm::write8(addr + i, val);
 	}
+
 	return send_cmd_ack("OK");
 }
 
