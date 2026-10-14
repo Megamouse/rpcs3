@@ -401,15 +401,21 @@ namespace rsx
 						quad = get_char(c, x_advance, y_advance);
 					}
 
+					// CJK/Hangul scripts don't use spaces between words, so allow breaking right after each such character.
+					const bool is_cjk = !is_whitespace && classify(get_page_id(c)) != language_class::default_;
+					if (is_cjk)
+					{
+						begin_of_word = result.size();
+					}
+
 					// Add the glyph's vertices.
 					result.emplace_back(quad.x0, quad.y0, quad.s0, quad.t0);
 					result.emplace_back(quad.x1, quad.y0, quad.s1, quad.t0);
 					result.emplace_back(quad.x0, quad.y1, quad.s0, quad.t1);
 					result.emplace_back(quad.x1, quad.y1, quad.s1, quad.t1);
 
-					// The next word will begin after any whitespaces. CJK/Hangul scripts don't use spaces
-					// between words, so also allow breaking right after each such character.
-					if (is_whitespace || classify(get_page_id(c)) != language_class::default_)
+					// The next word will begin after any whitespaces.
+					if (is_whitespace)
 					{
 						begin_of_word = result.size();
 					}
@@ -447,6 +453,11 @@ namespace rsx
 						{
 							// TODO: Ellipsize
 						}
+					}
+
+					if (is_cjk)
+					{
+						begin_of_word = result.size();
 					}
 
 					break;
