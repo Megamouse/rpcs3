@@ -32,7 +32,8 @@ namespace rsx
 #define RSX_DMA_OP_ENCODE_TILE 0
 #define RSX_DMA_OP_DECODE_TILE 1
 
-	static inline void tiled_dma_copy(const uint32_t row, const uint32_t col, const detiler_config& conf, char* tiled_data, char* linear_data, int direction)
+	template <int Direction>
+	static inline void tiled_dma_copy(const uint32_t row, const uint32_t col, const detiler_config& conf, char* tiled_data, char* linear_data)
 	{
 		const uint32_t row_offset = (row * conf.tile_pitch) + conf.tile_base_address + conf.tile_address_offset;
 		const uint32_t this_address = row_offset + (col * conf.image_bpp);
@@ -51,7 +52,7 @@ namespace rsx
 		// 2. Calculate bank selector
 		// There's a lot of weird math here, but it's just a variant of (tile_selector % 4) to pick a value between [0..3]
 		uint32_t bank_selector = 0;
-		const uint32_t bank_distribution_lookup[16] = { 0, 1, 2, 3, 2, 3, 0, 1, 1, 2, 3, 0, 3, 0, 1, 2 };
+		constexpr uint32_t bank_distribution_lookup[16] = { 0, 1, 2, 3, 2, 3, 0, 1, 1, 2, 3, 0, 3, 0, 1, 2 };
 
 		if (conf.factor == 1)
 		{
@@ -113,7 +114,7 @@ namespace rsx
 			return;
 		}
 
-		if (direction == RSX_DMA_OP_ENCODE_TILE)
+		if constexpr (Direction == RSX_DMA_OP_ENCODE_TILE)
 		{
 			std::memcpy(tiled_data + tile_data_offset, linear_data + linear_image_offset, conf.image_bpp);
 		}
@@ -177,11 +178,11 @@ namespace rsx
 			{
 				if constexpr (op == RSX_DMA_OP_DECODE_TILE)
 				{
-					tiled_dma_copy(row, col, dconf, src2, dst2, op);
+					tiled_dma_copy<op>(row, col, dconf, src2, dst2);
 				}
 				else
 				{
-					tiled_dma_copy(row, col, dconf, dst2, src2, op);
+					tiled_dma_copy<op>(row, col, dconf, dst2, src2);
 				}
 			}
 		}
