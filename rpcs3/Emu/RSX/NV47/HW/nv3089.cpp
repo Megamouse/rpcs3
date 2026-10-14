@@ -331,7 +331,7 @@ namespace rsx
 			bool src_is_modified,
 			bool interpolate)
 		{
-			std::vector<u8> temp2;
+			thread_local std::vector<u8> tmp;
 
 			if (!need_convert) [[ likely ]]
 			{
@@ -346,16 +346,16 @@ namespace rsx
 				{
 					if (need_clip)
 					{
-						temp2.resize(dst.pitch * dst.clip_height);
-						clip_image_may_overlap(dst.pixels, src.pixels, dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, src.pitch, dst.pitch, temp2.data());
+						tmp.resize(dst.pitch * dst.clip_height);
+						clip_image_may_overlap(dst.pixels, src.pixels, dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, src.pitch, dst.pitch, tmp.data());
 						return;
 					}
 
 					if (dst.pitch != src.pitch || dst.pitch != dst.bpp * out_w)
 					{
 						const u32 buffer_pitch = dst.bpp * out_w;
-						temp2.resize(buffer_pitch * out_h);
-						std::add_pointer_t<u8> buf = temp2.data(), pixels = src.pixels;
+						tmp.resize(buffer_pitch * out_h);
+						std::add_pointer_t<u8> buf = tmp.data(), pixels = src.pixels;
 
 						// Read the whole buffer from source
 						for (u32 y = 0; y < out_h; ++y)
@@ -365,7 +365,7 @@ namespace rsx
 							buf += buffer_pitch;
 						}
 
-						buf = temp2.data(), pixels = dst.pixels;
+						buf = tmp.data(), pixels = dst.pixels;
 
 						// Write to destination
 						for (u32 y = 0; y < out_h; ++y)
@@ -408,12 +408,12 @@ namespace rsx
 
 			if (need_clip) [[ unlikely ]]
 			{
-				temp2.resize(dst.pitch * std::max<u32>(dst.height, dst.clip_height));
+				tmp.resize(dst.pitch * std::max<u32>(dst.height, dst.clip_height));
 
-				convert_scale_image(temp2.data(), ffmpeg_dst_format, dst.width, dst.height, dst.pitch,
+				convert_scale_image(tmp.data(), ffmpeg_dst_format, dst.width, dst.height, dst.pitch,
 					src.pixels, ffmpeg_src_format, src.width, src.height, src.pitch, slice_h, interpolate);
 
-				clip_image(dst.pixels, temp2.data(), dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, dst.pitch, dst.pitch);
+				clip_image(dst.pixels, tmp.data(), dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, dst.pitch, dst.pitch);
 				return;
 			}
 
@@ -422,7 +422,8 @@ namespace rsx
 				interpolate);
 		}
 
-		std::vector<u8> swizzled_copy_1(
+		void swizzled_copy_1(
+			std::vector<u8>& out,
 			const blit_dst_info& dst,
 			const blit_src_info& src,
 			u16 out_w,
@@ -434,40 +435,39 @@ namespace rsx
 			bool need_clip,
 			bool interpolate)
 		{
-			std::vector<u8> temp2, temp3;
-
 			if (need_clip)
 			{
-				temp3.resize(dst.pitch * dst.clip_height);
+				out.resize(dst.pitch * dst.clip_height);
 
 				if (need_convert)
 				{
-					temp2.resize(dst.pitch * std::max<u32>(dst.height, dst.clip_height));
+					thread_local std::vector<u8> tmp;
+					tmp.resize(dst.pitch * std::max<u32>(dst.height, dst.clip_height));
 
-					convert_scale_image(temp2.data(), ffmpeg_dst_format, dst.width, dst.height, dst.pitch,
+					convert_scale_image(tmp.data(), ffmpeg_dst_format, dst.width, dst.height, dst.pitch,
 						src.pixels, ffmpeg_src_format, src.width, src.height, src.pitch, slice_h,
 						interpolate);
 
-					clip_image(temp3.data(), temp2.data(), dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, dst.pitch, dst.pitch);
-					return temp3;
+					clip_image(out.data(), tmp.data(), dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, dst.pitch, dst.pitch);
+					return;
 				}
 
-				clip_image(temp3.data(), src.pixels, dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, src.pitch, dst.pitch);
-				return temp3;
+				clip_image(out.data(), src.pixels, dst.clip_x, dst.clip_y, dst.clip_width, dst.clip_height, dst.bpp, src.pitch, dst.pitch);
+				return;
 			}
 
 			if (need_convert)
 			{
-				temp3.resize(dst.pitch * out_h);
+				out.resize(dst.pitch * out_h);
 
-				convert_scale_image(temp3.data(), ffmpeg_dst_format, out_w, out_h, dst.pitch,
+				convert_scale_image(out.data(), ffmpeg_dst_format, out_w, out_h, dst.pitch,
 					src.pixels, ffmpeg_src_format, src.width, src.height, src.pitch, slice_h,
 					interpolate);
 
-				return temp3;
+				return;
 			}
 
-			return {};
+			out.clear();
 		}
 
 		void swizzled_copy_2(
@@ -493,7 +493,7 @@ namespace rsx
 			const u16 sw_height = 1 << sw_height_log2;
 			*/
 
-			std::vector<u8> sw_temp;
+			thread_local std::vector<u8> sw_temp;
 
 			const u32 sw_width = next_pow2(out_w);
 			const u32 sw_height = next_pow2(out_h);
@@ -533,22 +533,22 @@ namespace rsx
 			}
 		}
 
-		std::vector<u8> _mirror_transform(const blit_src_info& src, bool flip_x, bool flip_y)
+		void _mirror_transform(std::vector<u8>& out, const blit_src_info& src, bool flip_x, bool flip_y)
 		{
-			std::vector<u8> temp1;
 			if (!flip_x && !flip_y)
 			{
-				return temp1;
+				out.clear();
+				return;
 			}
 
 			const u32 packed_pitch = src.width * src.bpp;
-			temp1.resize(packed_pitch * src.height);
+			out.resize(packed_pitch * src.height);
 
 			const s32 stride_y = (flip_y ? -1 : 1) * static_cast<s32>(src.pitch);
 
 			for (u32 y = 0; y < src.height; ++y)
 			{
-				u8* dst_pixels = temp1.data() + (packed_pitch * y);
+				u8* dst_pixels = out.data() + (packed_pitch * y);
 				u8* src_pixels = src.pixels + (static_cast<s32>(y) * stride_y);
 
 				if (flip_x)
@@ -565,8 +565,6 @@ namespace rsx
 
 				std::memcpy(dst_pixels, src_pixels, packed_pitch);
 			}
-
-			return temp1;
 		}
 
 		void image_in(context* ctx, u32 /*reg*/, u32 /*arg*/)
@@ -605,13 +603,13 @@ namespace rsx
 			};
 			rsx::mm_flush(flush_mm_ranges);
 
-			std::vector<u8> mirror_tmp;
+			thread_local std::vector<u8> mirror_tmp;
 			bool src_is_temp = false;
 
 			// Flip source if needed
 			if (dst.scale_y < 0 || dst.scale_x < 0)
 			{
-				mirror_tmp = _mirror_transform(src, dst.scale_x < 0, dst.scale_y < 0);
+				_mirror_transform(mirror_tmp, src, dst.scale_x < 0, dst.scale_y < 0);
 				src.pixels = mirror_tmp.data();
 				src.pitch = src.width * src.bpp;
 				src_is_temp = true;
@@ -648,7 +646,8 @@ namespace rsx
 			else
 			{
 				// Swizzle_copy_1 prepares usable output buffer from our original source. It mostly deals with cropping and scaling the input pixels so that the final swizzle does not need to apply that.
-				const auto swz_temp = swizzled_copy_1(dst, src, out_w, out_h, slice_h, in_format, out_format, need_convert, need_clip, interpolate);
+				thread_local std::vector<u8> swz_temp;
+				swizzled_copy_1(swz_temp, dst, src, out_w, out_h, slice_h, in_format, out_format, need_convert, need_clip, interpolate);
 				const u8* pixels_src = src.pixels;
 				auto src_pitch = src.pitch;
 
