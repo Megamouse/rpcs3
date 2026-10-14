@@ -721,6 +721,8 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 			else
 				flip_idx = idx_check;
 
+			ensure(flip_idx < 8);
+
 			// fyi -- u32 hardware_channel = (a4 >> 8) & 0xFF;
 
 			// sanity check, the head should have a 'queued' buffer on it, and it should have been previously 'queued'
@@ -761,6 +763,7 @@ error_code sys_rsx_context_attribute(u32 context_id, u32 package_id, u64 a3, u64
 	{
 		// NOTE: There currently seem to only be 2 active heads on PS3
 		ensure(a3 < 2);
+		ensure(a4 < 8);
 
 		driverInfo.head[a3].lastQueuedBufferId = static_cast<u32>(a4);
 		driverInfo.head[a3].flipFlags |= 0x40000000 | (1 << a4);

@@ -61,10 +61,23 @@ namespace rsx
 		const auto required_vertex_count = (vertex_id + 1);
 		const auto vertex_size = get_vertex_size_in_dwords();
 
+		if (sub_index >= vertex_size) [[unlikely]]
+		{
+			// e.g. the unused 4th register of VERTEX_DATA3F_M; it has no slot in the packed stream
+			return;
+		}
+
 		if (vertex_count != required_vertex_count)
 		{
 			pad_to(required_vertex_count, true);
 			ensure(vertex_count == required_vertex_count);
+		}
+
+		// The attribute may have been respecced mid-draw (error logged above), so the existing
+		// storage can be sized for the old vertex layout
+		if (const usz required_dwords = usz{vertex_count} * vertex_size; data.size() < required_dwords) [[unlikely]]
+		{
+			data.resize(required_dwords);
 		}
 
 		auto current_vertex = data.data() + ((vertex_count - 1) * vertex_size);

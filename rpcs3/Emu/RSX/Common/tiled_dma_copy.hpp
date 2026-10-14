@@ -104,10 +104,10 @@ namespace rsx
 
 		// Calculate relative addresses and sample
 		const uint32_t linear_image_offset = (row * conf.image_pitch) + (col * conf.image_bpp);
-		const uint32_t tile_base_offset = tile_address - conf.tile_base_address;  // Distance from tile base address
-		const uint32_t tile_data_offset = tile_base_offset - conf.tile_rw_offset; // Distance from data base address
+		const int64_t tile_base_offset = static_cast<int64_t>(tile_address) - conf.tile_base_address; // Distance from tile base address
+		const int64_t tile_data_offset = tile_base_offset - conf.tile_rw_offset; // Distance from data base address
 
-		if (tile_base_offset >= conf.tile_size)
+		if (tile_base_offset < 0 || tile_base_offset >= conf.tile_size)
 		{
 			// Do not touch anything out of bounds
 			return;
