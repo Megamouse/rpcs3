@@ -836,6 +836,9 @@ void spu_cache::add(const spu_program& func)
 	m_file.write_gather(gather, 3);
 }
 
+// When set, ubertrampoline rebuilds requested on this thread are only recorded (used by the SPU cache builder)
+static thread_local std::vector<u32>* s_deferred_ubertrampolines = nullptr;
+
 void spu_cache::initialize(bool build_existing_cache)
 {
 	jit_write_guard jit_guard;
@@ -1013,6 +1016,11 @@ void spu_cache::initialize(bool build_existing_cache)
 #endif
 
 		compiler->init();
+
+		// Rebuilding the ubertrampoline after every program is quadratic in the amount of programs sharing the first instruction.
+		// No SPU code is executed while the cache is built, so rebuild each of them once after compiling all programs instead.
+		std::vector<u32> deferred_ubertrampolines;
+		s_deferred_ubertrampolines = &deferred_ubertrampolines;
 
 		auto compile_program = [&](spu_program&& program) -> spu_function_t
 		{
@@ -1301,6 +1309,26 @@ void spu_cache::initialize(bool build_existing_cache)
 			}
 		}
 
+		s_deferred_ubertrampolines = nullptr;
+
+		// Rebuild deferred ubertrampolines (once per first instruction bucket)
+		std::sort(deferred_ubertrampolines.begin(), deferred_ubertrampolines.end(), FN((x >> 12) < (y >> 12)));
+		deferred_ubertrampolines.erase(std::unique(deferred_ubertrampolines.begin(), deferred_ubertrampolines.end(), FN((x >> 12) == (y >> 12))), deferred_ubertrampolines.end());
+
+		for (u32 id_inst : deferred_ubertrampolines)
+		{
+			if (Emu.IsStopped() || fail_flag)
+			{
+				break;
+			}
+
+			if (!g_fxo->get<spu_runtime>().rebuild_ubertrampoline(id_inst))
+			{
+				// Likely, out of JIT memory
+				fail_flag |= 1;
+			}
+		}
+
 		if (showing_progress && pending_progress)
 		{
 			// Cover missing progress due to a race
@@ -1436,6 +1464,13 @@ spu_item* spu_runtime::add_empty(spu_program&& data)
 
 spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
 {
+	if (auto deferred = s_deferred_ubertrampolines)
+	{
+		// The caller rebuilds it later, only a non-null result is expected until then
+		deferred->emplace_back(id_inst);
+		return tr_all;
+	}
+
 	// Prepare sorted list
 	static thread_local std::vector<std::pair<std::span<const u32>, spu_function_t>> m_flat_list;
 
