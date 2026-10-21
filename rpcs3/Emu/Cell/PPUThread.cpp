@@ -5412,6 +5412,8 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 
 			int has_dcbz = !!g_cfg.core.accurate_cache_line_stores;
 
+			const auto relocs = part.get_relocs();
+
 			for (const auto& func : part.get_funcs())
 			{
 				if (func.size == 0)
@@ -5429,65 +5431,13 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 				sha1_update(&ctx, reinterpret_cast<const u8*>(&addr), sizeof(addr));
 				sha1_update(&ctx, reinterpret_cast<const u8*>(&size), sizeof(size));
 
-				for (const auto block : func)
-				{
-					if (block.second == 0 || reloc)
-					{
-						continue;
-					}
-
-					// Find relevant relocations
-					auto low = std::lower_bound(part.relocs.cbegin(), part.relocs.cend(), block.first);
-					auto high = std::lower_bound(low, part.relocs.cend(), block.first + block.second);
-					auto addr = block.first;
-
-					for (; low != high; ++low)
-					{
-						// Aligned relocation address
-						const u32 roff = low->addr & ~3;
-
-						if (roff > addr)
-						{
-							// Hash from addr to the beginning of the relocation
-							sha1_update(&ctx, ensure(info.get_ptr<const u8>(addr)), roff - addr);
-						}
-
-						// Hash relocation type instead
-						const be_t<u32> type = low->type;
-						sha1_update(&ctx, reinterpret_cast<const u8*>(&type), sizeof(type));
-
-						// Set the next addr
-						addr = roff + 4;
-					}
-
-					if (has_dcbz == 1)
-					{
-						auto i_ptr = ensure(info.get_ptr<u32>(addr));
-
-						for (u32 i = addr, end = block.second + block.first - 1; i <= end; i += 4, i_ptr++)
-						{
-							if (g_ppu_itype.decode(*i_ptr) == ppu_itype::DCBZ)
-							{
-								has_dcbz = 2;
-								break;
-							}
-						}
-					}
-
-					// Hash from addr to the end of the block
-					sha1_update(&ctx, ensure(info.get_ptr<const u8>(addr)), block.second - (addr - block.first));
-				}
-
-				if (reloc)
-				{
-					continue;
-				}
+				const u32 func_end = func.addr + func.size;
 
 				if (has_dcbz == 1)
 				{
 					auto i_ptr = ensure(info.get_ptr<u32>(func.addr));
 
-					for (u32 i = func.addr, end = func.addr + func.size - 1; i <= end; i += 4, i_ptr++)
+					for (u32 i = func.addr; i < func_end; i += 4, i_ptr++)
 					{
 						if (g_ppu_itype.decode(*i_ptr) == ppu_itype::DCBZ)
 						{
@@ -5497,7 +5447,41 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 					}
 				}
 
-				sha1_update(&ctx, ensure(info.get_ptr<const u8>(func.addr)), func.size);
+				if (reloc)
+				{
+					// Relocatable module: the contents are covered by the module hash (cache path)
+					continue;
+				}
+
+				// Hash the function contents once, with relocated instructions replaced by their relocation type
+				auto low = std::lower_bound(relocs.begin(), relocs.end(), func.addr);
+				const auto high = std::lower_bound(low, relocs.end(), func_end);
+				u32 pos = func.addr;
+
+				for (; low != high; ++low)
+				{
+					// Aligned relocation address
+					const u32 roff = low->addr & ~3;
+
+					if (roff > pos)
+					{
+						// Hash from pos to the beginning of the relocation
+						sha1_update(&ctx, ensure(info.get_ptr<const u8>(pos)), roff - pos);
+					}
+
+					// Hash relocation type instead
+					const be_t<u32> type = low->type;
+					sha1_update(&ctx, reinterpret_cast<const u8*>(&type), sizeof(type));
+
+					// Set the next pos
+					pos = std::max<u32>(pos, roff + 4);
+				}
+
+				if (func_end > pos)
+				{
+					// Hash from pos to the end of the function
+					sha1_update(&ctx, ensure(info.get_ptr<const u8>(pos)), func_end - pos);
+				}
 			}
 
 			const bool has_symbol_resolver = fpos >= all_funcs.size() || (module_counter % c_modules_per_jit) == (c_modules_per_jit - 1);
@@ -5604,7 +5588,7 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 				settings += ppu_settings::accurate_vest;
 
 			// Write version, hash, CPU, settings
-			fmt::append(obj_name, "v9-kusa-%s-%s-%s.obj", fmt::base57(output, 16), fmt::base57(settings), jit_compiler::cpu(g_cfg.core.llvm_cpu.to_string()));
+			fmt::append(obj_name, "v10-kusa-%s-%s-%s.obj", fmt::base57(output, 16), fmt::base57(settings), jit_compiler::cpu(g_cfg.core.llvm_cpu.to_string()));
 		}
 
 		if (cpu ? cpu->state.all_of(cpu_flag::exit) : Emu.IsStopped())
