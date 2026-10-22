@@ -5846,7 +5846,9 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 		jit_mod.symbol_resolvers.resize(jits.size());
 	}
 
-	bool failed_to_load = false;
+	const bool is_first = !jit_mod.init;
+
+	atomic_t<bool> failed_to_load = false;
 	{
 		if (!is_being_used_in_emulation || (cpu ? cpu->state.all_of(cpu_flag::exit) : Emu.IsStopped()))
 		{
@@ -5861,48 +5863,80 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 
 		g_progr_ptotal += static_cast<u32>(utils::aligned_div<u64>(link_workload.size(), increment_link_count_at));
 
-		usz mod_index = umax;
+		atomic_t<usz> modules_linked = 0;
 
 		ppu_log.notice("Loading %u modules", link_workload.size());
 
-		for (link_entry& entry : link_workload)
+		// Each JIT instance has its own engine and memory manager (shared state like the symbol trampolines is synchronized),
+		// so the instances can be linked and finalized in parallel. Modules of one instance must be added sequentially.
+		const usz jit_count = std::min<usz>(jits.size(), utils::aligned_div<usz>(link_workload.size(), c_modules_per_jit));
+		const usz thread_count = std::clamp<usz>(jit_count, 1, rpcs3::utils::get_max_threads());
+
+		const usz num_threads_succeeded = map_workload("PPU Linker "sv, thread_count, jit_count, [&](usz jit_index)
 		{
-			mod_index++;
+			jit_write_guard jit_guard;
 
-			if (cpu ? cpu->state.all_of(cpu_flag::exit) : Emu.IsStopped())
-			{
-				break;
-			}
+			const u64 link_start = get_system_time();
 
-			if (!failed_to_load)
+			auto& jit = jits[jit_index];
+			const usz begin = jit_index * c_modules_per_jit;
+			const usz end = std::min<usz>(begin + c_modules_per_jit, link_workload.size());
+
+			for (usz mod_index = begin; mod_index < end; mod_index++)
 			{
-				auto& jit = jits[mod_index / c_modules_per_jit];
+				if (failed_to_load || (cpu ? cpu->state.all_of(cpu_flag::exit) : Emu.IsStopped()))
+				{
+					return;
+				}
+
+				link_entry& entry = link_workload[mod_index];
 
 				const bool ok = entry.object
 					? jit->add(std::move(entry.object), cache_path + entry.obj_name)
 					: jit->add(cache_path + entry.obj_name); // freshly compiled modules
 
+				if (const usz done = ++modules_linked; done % increment_link_count_at == 0 || done == link_workload.size())
+				{
+					// Increment 'pdone' Nth times where N is link workload size ceil-divided by increment_link_count_at
+					g_progr_pdone++;
+				}
+
 				if (!ok)
 				{
 					ppu_log.error("LLVM: Failed to load module %s", entry.obj_name);
 					failed_to_load = true;
+					return;
+				}
+
+				if (!entry.is_compiled)
+				{
+					ppu_log.success("LLVM: Loaded module #%u %s", mod_index, entry.obj_name);
 				}
 			}
 
-			if (mod_index % increment_link_count_at == (link_workload.size() - 1) % increment_link_count_at)
+			const u64 fin_start = get_system_time();
+
+			if (is_first)
 			{
-				// Incremenet 'pdone' Nth times where N is link workload size ceil-divided by increment_link_count_at
-				g_progr_pdone++;
+				// Resolve relocations of this instance
+				jit->fin();
 			}
 
-			if (failed_to_load)
-			{
-				continue;
-			}
+			ppu_log.notice("Linked JIT instance #%u (%u modules): add took %u ms, fin took %u ms", jit_index, end - begin, (fin_start - link_start) / 1000, (get_system_time() - fin_start) / 1000);
+		});
 
-			if (!entry.is_compiled)
+		if (thread_count != num_threads_succeeded)
+		{
+			ppu_log.error("%d PPU Linker thread(s) failed with an exception!", thread_count - num_threads_succeeded);
+			failed_to_load = true;
+		}
+
+		if (is_first && !failed_to_load)
+		{
+			// Finalize instances without modules as well (normally there are none)
+			for (usz jit_index = jit_count; jit_index < jits.size(); jit_index++)
 			{
-				ppu_log.success("LLVM: Loaded module #%u %s", mod_index, entry.obj_name);
+				jits[jit_index]->fin();
 			}
 		}
 	}
@@ -5928,16 +5962,6 @@ bool ppu_initialize(const ppu_module<lv2_obj>& info, bool check_only, u64 file_s
 		// No functions - nothing to do
 		ensure(info.get_funcs().empty());
 		return compiled_new;
-	}
-
-	const bool is_first = !jit_mod.init;
-
-	if (is_first)
-	{
-		for (auto& jit : jits)
-		{
-			jit->fin();
-		}
 	}
 
 	{
