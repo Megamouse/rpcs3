@@ -267,11 +267,16 @@ struct MemoryManager1 : llvm::RTDyldMemoryManager
 
 	llvm::JITSymbol findSymbol(const std::string& name) override
 	{
-		u64 addr = RTDyldMemoryManager::getSymbolAddress(name);
+		u64 addr = 0;
 
-		if (!addr && m_symbols_cement)
+		if (m_symbols_cement)
 		{
 			addr = m_symbols_cement(name);
+		}
+
+		if (!addr)
+		{
+			addr = RTDyldMemoryManager::getSymbolAddress(name);
 		}
 
 		if (!addr)
@@ -394,11 +399,16 @@ struct MemoryManager2 : llvm::RTDyldMemoryManager
 
 	llvm::JITSymbol findSymbol(const std::string& name) override
 	{
-		u64 addr = RTDyldMemoryManager::getSymbolAddress(name);
+		u64 addr = 0;
 
-		if (!addr && m_symbols_cement)
+		if (m_symbols_cement)
 		{
 			addr = m_symbols_cement(name);
+		}
+
+		if (!addr)
+		{
+			addr = RTDyldMemoryManager::getSymbolAddress(name);
 		}
 
 		if (!addr)
