@@ -3826,6 +3826,21 @@ u64 thread_ctrl::get_affinity_mask(thread_class group)
 				}
 				break;
 			}
+			case 0x1A: // Zen5
+			{
+				switch (thread_count)
+				{
+				case 48:
+					// TR PRO 9965WX (4 CCDs with 6 cores each, SMT siblings are adjacent on Windows)
+					spu_mask = 0b000000000000000000000000000000000000010101010101; // CCD0, one thread per core
+					ppu_mask = 0b000000000000000000000000111111111111000000000000; // CCD1
+					rsx_mask = 0b000000000000111111111111000000000000000000000000; // CCD2
+					break;
+				default:
+					break;
+				}
+				break;
+			}
 			default:
 			{
 				break;
