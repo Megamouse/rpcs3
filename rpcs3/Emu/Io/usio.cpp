@@ -532,7 +532,7 @@ void usb_device_usio::emulate_card_reader(std::vector<u8>& buf, u16 reg)
 		auto& response = pending_response[reader_index];
 		const auto& status = ::at32(m_io_status, reader_index);
 		const usz card_player = reader_index * 2 + status.card_index;
-		const auto& card = g_fxo->get<usio_memory>().card_data[card_player];
+		auto& card = g_fxo->get<usio_memory>().card_data[card_player];
 
 		nfc_reader::write_response(buf, response, card, status);
 		break;

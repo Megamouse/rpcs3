@@ -108,7 +108,7 @@ void nfc_reader::build_response(std::vector<u8>& out, const std::vector<u8>& in,
 		out.push_back(postamble);
 }
 
-void nfc_reader::write_response(std::vector<u8>& buf, std::vector<u8>& response, const std::array<u8, 0x40>& card, const usio_io_status& status)
+void nfc_reader::write_response(std::vector<u8>& buf, std::vector<u8>& response, std::array<u8, 0x40>& card, const usio_io_status& status)
 {
 	const std::span<const u8> frame = find_frame(buf);
 
@@ -192,16 +192,55 @@ void nfc_reader::write_response(std::vector<u8>& buf, std::vector<u8>& response,
 
 		const auto req = read_from_ptr<in_data_exchange_request>(payload);
 
-		if (req.block < (card.size() / mifare_block_size))
+		switch (req.mifare)
 		{
-			in_data_exchange_response resp{};
-			std::memcpy(resp.block.data(), card.data() + req.block * mifare_block_size, mifare_block_size);
-			build_response(response, to_bytes(resp));
+		case mifare_cmd::auth_key_a:
+		case mifare_cmd::auth_key_b:
+		{
+			// Keys are not checked, authentication always succeeds
+			build_response(response, {res, static_cast<u8>(status::success)});
+			break;
 		}
-		else
+		case mifare_cmd::write:
 		{
+			// Block 0 holds the UID and is read-only on real cards
+			// Written data only lives in memory and is not saved to the card file
+			const auto data = payload.subspan(sizeof(in_data_exchange_request));
+
+			if (req.block > 0 && req.block < (card.size() / mifare_block_size) && data.size() >= mifare_block_size)
+			{
+				std::memcpy(card.data() + req.block * mifare_block_size, data.data(), mifare_block_size);
+			}
+			else
+			{
+				usio_log.warning("Ignored MIFARE write (block: %d, size: %d)", req.block, data.size());
+			}
+
+			build_response(response, {res, static_cast<u8>(status::success)});
+			break;
+		}
+		case mifare_cmd::read:
+		{
+			if (req.block < (card.size() / mifare_block_size))
+			{
+				in_data_exchange_response resp{};
+				std::memcpy(resp.block.data(), card.data() + req.block * mifare_block_size, mifare_block_size);
+				build_response(response, to_bytes(resp));
+			}
+			else
+			{
+				build_response(response, {res, 0x01});
+			}
+			break;
+		}
+		default:
+		{
+			usio_log.warning("Unhandled MIFARE command: 0x%02X, treating it as read", static_cast<u8>(req.mifare));
 			build_response(response, {res, 0x01});
+			break;
 		}
+		}
+
 		break;
 	}
 	case command_code::in_list_passive_target:
@@ -221,6 +260,23 @@ void nfc_reader::write_response(std::vector<u8>& buf, std::vector<u8>& response,
 	case command_code::in_release:
 	{
 		build_response(response, {res, 0x01, 0x00});
+		break;
+	}
+	case command_code::get_firmware_version:
+	{
+		build_response(response, to_bytes(get_firmware_version_response{}));
+		break;
+	}
+	case command_code::sam_configuration:
+	{
+		build_response(response, {res});
+		break;
+	}
+	case command_code::power_down:
+	case command_code::in_deselect:
+	case command_code::in_select:
+	{
+		build_response(response, {res, static_cast<u8>(status::success)});
 		break;
 	}
 	default:

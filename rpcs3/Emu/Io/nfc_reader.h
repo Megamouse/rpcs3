@@ -16,7 +16,7 @@ class nfc_reader
 {
 public:
 	// Writes a response to out
-	static void write_response(std::vector<u8>& buf, std::vector<u8>& response, const std::array<u8, 0x40>& card, const usio_io_status& status);
+	static void write_response(std::vector<u8>& buf, std::vector<u8>& response, std::array<u8, 0x40>& card, const usio_io_status& status);
 
 private:
 	// Frames are wrapped in a preamble and a postamble byte, which are optional when receiving
@@ -115,6 +115,16 @@ private:
 		u8 block = 0;
 	};
 
+	// GetFirmwareVersion response (PN532 firmware 1.6, supports ISO/IEC 14443 Type A and B and ISO 18092)
+	struct get_firmware_version_response
+	{
+		u8 cmd = response_code(command_code::get_firmware_version);
+		u8 ic = 0x32;
+		u8 ver = 0x01;
+		u8 rev = 0x06;
+		u8 support = 0x07;
+	};
+
 	// ReadGPIO response
 	struct read_gpio_response
 	{
@@ -182,6 +192,7 @@ private:
 	static_assert(sizeof(extended_frame_header) == 8);
 	static_assert(sizeof(frame_footer) == 1);
 	static_assert(sizeof(read_register_request) == 3);
+	static_assert(sizeof(get_firmware_version_response) == 5);
 	static_assert(sizeof(in_data_exchange_request) == 4);
 	static_assert(sizeof(read_gpio_response) == 4);
 	static_assert(sizeof(in_data_exchange_response) == 18);
